@@ -165,3 +165,70 @@ One note: `package.json` `main`/`exports.default` point to `./src/index.ts` (Typ
 The implementation correctly and completely delivers the TICKET-3 contract: three venue modes, listen starvation cap, skip-no-penalty, mode-switch grandfathering, immutable state, serializable QueueState. Algorithms are sound. 40/40 tests pass (verified independently). TypeScript is clean. Scope is new-files-only. Dev report is current and accurate. Spec delta is correctly represented.
 
 **Gate-waiver note for TM:** App Tester and Cyber Security gates were not run before this review. For a zero-dep, I/O-free pure library this is low-risk, but the TM should record the gate-waiver decision in DECISIONS.md or close those gate items explicitly before merge.
+
+---
+
+## Second pass — D-022 opus merge-counting review (2026-07-05)
+
+- **Model tier:** opus (judgment pass — hunting for correctness/fairness flaws the sonnet pass and the tests do not cover).
+- **Verdict: REQUEST-CHANGES** (one blocking correctness flaw, empirically reproduced).
+- Re-ran the suite myself: `node --test` → 40/40 pass; `tsc --noEmit` clean. The sonnet pass's structural findings all hold. This pass is purely the adversarial fairness/API-contract layer.
+
+### BLOCKING — F1: the listen-starvation cap is defeated in real playback (peek ≠ play)
+
+The `maxConsecutiveListen` cap is the library's central fairness guarantee (README: *"at most `maxConsecutiveListen` listen songs may play in a row while a singer is still waiting"*, motivated by *"20 people queueing dance tracks while one nervous singer waits forever"*). It is enforced **only inside a single `getEffectiveOrder` snapshot**. `mergeListens` re-initializes `consecutiveListen = 0` on every call, and there is **no consecutive-listen counter persisted in `QueueState`**. But real playback is driven head-by-head: the app plays the head, the song ends, it calls `advance` again on the (re-derived) queue — because the live queue changes between songs, recomputation is the *intended* usage (README: *"The order songs actually play in is always computed fresh from the current queue"*). Each recomputation forgets that a listen just played, so a listen with a lower `submittedAt` than the waiting singer jumps ahead **every single tick** — exactly the starvation the cap exists to prevent.
+
+Empirically reproduced (default cap = 1; queue = l1, l2, l3 listens then s1 sing; no adds between plays):
+
+```
+PEEK  (getEffectiveOrder snapshot):  l1, s1, l2, l3     <- cap honored
+ACTUAL playback via advance-loop:    l1, l2, l3, s1     <- singer starved behind ALL 3 listens
+```
+
+Two problems in one: (a) the fairness guarantee is broken in the exact README scenario, and (b) `peekUpcoming` / `getEffectiveOrder` (what `/tv` renders) disagrees with what `advance` actually plays — TICKET-1's `/tv` preview would show a different, cap-respecting order than the one that airs. This is untested: every listen test asserts a single `getEffectiveOrder` snapshot; none drives a multi-`advance` loop.
+
+**Failing-test sketch (fails on current HEAD):**
+
+```ts
+test("listen: starvation cap holds ACROSS advances, not just in one snapshot", () => {
+  let s = fresh("full-karaoke"); // default maxConsecutiveListen = 1
+  s = add(s, { id: "l1", mode: "listen" });
+  s = add(s, { id: "l2", mode: "listen" });
+  s = add(s, { id: "l3", mode: "listen" });
+  s = add(s, { id: "s1", mode: "sing" });
+  const played: string[] = [];
+  for (let i = 0; i < 4; i += 1) { const r = advance(s); s = r.state; played.push(r.played!.id); }
+  // cap=1 => the singer must not sit behind more than one listen.
+  assert.ok(played.indexOf("s1") <= 1, `singer starved: ${played.join(",")}`); // ACTUAL: l1,l2,l3,s1 -> idx 3
+});
+```
+
+**Fix direction (small, design-level):** persist the run in state — e.g. a `consecutiveListen` counter on `QueueState`, incremented when `advance` plays a `listen`, reset to 0 when it plays a `sing`; seed `mergeListens` from it so the head derivation respects the cap across ticks. (Equivalent: have `advance` force the next singer when the persisted run has hit the cap.) Either restores peek==play.
+
+### MED — F2: `maxConsecutiveListen: Infinity` does not survive JSON round-trip (serializability)
+
+The task asks whether `QueueState` is serializable into an in-memory server store. It is *almost* fully JSON-round-trippable, with one advertised-option footgun: `JSON.stringify(Infinity) === "null"`. A venue that sets the README-documented `Infinity` (dance-forward vibe) and whose server snapshots/rehydrates state via JSON gets `options.maxConsecutiveListen === null` back. `consecutiveListen >= null` coerces to `>= 0` → **always true** → cap fires immediately → the *opposite* of the intended "never cap" behavior (listens only when no singer waits). Empirically confirmed: round-trip yields `null`. The prior pass's "Fully JSON-round-trippable ✓" is inaccurate for this option. Not blocking on its own, but should be fixed alongside F1 (e.g. use a sentinel like `0`-means-off or a large int, or document "don't use Infinity if you serialize"). Fixing F1 by persisting a counter also puts the option value on the persisted-state hot path, so decide the representation once.
+
+### NIT — F3: cross-mode duplicate scope
+
+`addEntry`'s duplicate check keys on `uuid + videoId` across **all** modes, so a participant with a `listen` entry for video X cannot also queue a `sing` for X (and vice-versa). Probably fine, but it's an unstated coupling between the two modes; worth a one-line README note or a `mode` term in the dup check if unintended.
+
+### Confirmed sound (adversarial probes that held up)
+
+- **Sing round-robin is consistent batch-vs-iterative.** Traced per-person-1 and per-table-2 with recency: the virtual-tick simulation in `roundRobin` and the real `singClock` progression stay aligned (both +1 per play), so head-by-head `advance` reproduces the batch sing order. The peek≠play defect is isolated to the listen layer (F1).
+- **Late joiner mid-round** (never-sang bucket seeded at -1) correctly outranks recently-sang buckets; tie-break by `submittedAt` holds.
+- **Recency across mode switches**: `consume` updates *both* `lastSangByUuid` and `lastSangByTable` unconditionally, so switching modes preserves fairness history. Correct.
+- **Table switch mid-round** (`moveEntryToTable`): re-buckets under the destination's table recency (per-table semantics, not per-person) and grandfathers over-cap — correct and tested.
+- **Skip keeps priority** (no recency bump); **cap grandfathering** on `setVenueMode` — correct and tested.
+
+### Waiver soundness (App Tester + Cyber Security N/A-by-content)
+
+**Sound.** App Tester (boot app, screenshot flows) genuinely N/A — there is no app, no UI, no route. Cyber Security N/A is also sound *at this layer*: pure, I/O-free, no network/FS/eval/regex-on-input, no unbounded recursion; untrusted strings (`videoId`, `nickname`, `table`) are only stored/compared, never interpreted — sanitization/escaping is correctly TICKET-1's responsibility (YouTube-embed injection, XSS on the `/tv` render). One low note for the integration ticket: `roundRobin` is ~O(n·buckets) per full order and `getEffectiveOrder` is recomputed each render — negligible for bar-scale queues, not a security concern. Waiver stands.
+
+### Spec-delta honesty
+
+The PR-body / dev-report delta table faithfully represents the divergences from `work/planning/rotation-modes-fair-queue.md`. As flagged in the task: the planning doc was updated on `main` *after* this branch (adding `graceRequeue` + `nowPlaying` semantics) and the lib predates that — **flagged, not blocking**; alignment is a filed follow-up. No misrepresentation.
+
+### Verdict rationale
+
+REQUEST-CHANGES rather than "approve + follow-up ticket": F1 is not polish — it silently breaks the library's headline fairness guarantee in the exact scenario the README advertises, and it makes the `/tv` preview (`peekUpcoming`) disagree with actual playback (`advance`), which TICKET-1 builds directly on. It is also currently untested. The fix is small and localized (persist one counter). F2 should ride along since it touches the same option's persisted representation. Recommend fixing F1+F2 (with the F1 test above added and green) and a quick re-review of the delta; F3 is a NIT the TM may defer.
