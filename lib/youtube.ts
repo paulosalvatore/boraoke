@@ -52,6 +52,7 @@ export function parseYouTubeVideoId(input: string): string | null {
   return null;
 }
 
-function isValidVideoId(id: string): boolean {
+/** Strict YouTube video-ID check: exactly 11 chars of [A-Za-z0-9_-]. */
+export function isValidVideoId(id: string): boolean {
   return /^[A-Za-z0-9_-]{11}$/.test(id);
 }

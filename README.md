@@ -8,6 +8,8 @@ Cantai is a free, embeddable karaoke-queue platform any bar can run with zero se
 
 ## Running locally
 
+Requires Node.js 22 or later.
+
 ```bash
 npm install
 npm run dev

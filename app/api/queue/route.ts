@@ -8,7 +8,7 @@ import {
   QUEUE_MAX,
   type Mode,
 } from "@/lib/store";
-import { parseYouTubeVideoId } from "@/lib/youtube";
+import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
 
 // Input limits — this is an unauthenticated endpoint; reject oversized input with 400.
 const MAX_BODY_BYTES = 4096;
@@ -17,7 +17,6 @@ const MAX_TITLE = 120;
 const MAX_TABLE = 10;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
 export function GET() {
   return NextResponse.json({
@@ -61,7 +60,7 @@ export async function POST(req: NextRequest) {
       ? rawVideoId
       : parseYouTubeVideoId(typeof youtubeUrl === "string" ? youtubeUrl : "");
 
-  if (!resolvedVideoId || !VIDEO_ID_RE.test(resolvedVideoId)) {
+  if (!resolvedVideoId || !isValidVideoId(resolvedVideoId)) {
     return NextResponse.json(
       { error: "Valid YouTube URL or videoId is required" },
       { status: 400 }

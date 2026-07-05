@@ -1,7 +1,7 @@
 # TICKET-1 — Dev report
 
 ## Status
-SECURITY FIXES APPLIED — all 4 Cyber Security MEDIUMs fixed; build green, 39 unit tests pass, 1 Playwright e2e passes, next@15.5.20. App Tester PASS and Cyber Security PASS-WITH-NOTES recorded on PR #4; ready for Reviewer gate.
+REVIEW FINDINGS ADDRESSED — Reviewer blocker (CI node-version 20→22) + 2 nits fixed; build green, 39 unit tests pass, 1 Playwright e2e passes, next@15.5.20. App Tester PASS + Cyber Security PASS-WITH-NOTES recorded on PR #4; awaiting re-review.
 
 ## Context
 - Worktree: `/Users/paulosalvatore/Documents/GitHub/cantai/.worktrees/ticket-1`
@@ -91,6 +91,16 @@ npm run test:e2e:
 ```
 
 Dev server stopped after e2e.
+
+### 2026-07-05 reviewer findings addressed (1 blocker + 2 nits)
+
+Sonnet review REQUEST-CHANGES (https://github.com/paulosalvatore/cantai/pull/4#issuecomment-4887879141):
+
+- **BLOCKER:** `.github/workflows/ci.yml` e2e step sets `NODE_OPTIONS --localstorage-file` but pinned `node-version: "20"` — the flag needs Node >= 22.4, so post-merge CI would fail with "bad option" exit 9. Fixed: `node-version: "22"`.
+- **NIT-1:** README now states "Requires Node.js 22 or later."
+- **NIT-2:** `isValidVideoId` exported from `lib/youtube.ts` and reused in `app/api/queue/route.ts` (duplicated `VIDEO_ID_RE` regex removed).
+
+Re-verification (real output): `npm run build` ✓ clean; `npm test` ✓ 39/39 (3 suites); `npm run test:e2e` ✓ 1 passed (5.4s); dev server stopped after.
 
 ## Friction
 - Node.js 25 `localStorage` global (stub without methods) causes Next.js 15 SSR failures for client components that access localStorage. Workaround: `--localstorage-file` flag. Candidate for a framework-level dev environment note (future inbox item if recurring across products).
