@@ -10,3 +10,5 @@ cdk.out/
 /.worktrees/
 .DS_Store
 *.log
+/test-results/
+/playwright-report/
