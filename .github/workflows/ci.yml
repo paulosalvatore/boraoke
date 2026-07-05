@@ -9,7 +9,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Placeholder until TICKET-1 lands the Next.js app.
-      # TICKET-1 replaces this with: setup-node, npm ci, npm run build, npm test.
-      - name: Placeholder
-        run: echo "CI stub — real build+test arrive with TICKET-1"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright e2e
+        run: npm run test:e2e
+        env:
+          # Node.js 22+ localStorage global needs a file path to be functional during Next.js SSR
+          NODE_OPTIONS: "--localstorage-file=/tmp/cantai-ls.json"
