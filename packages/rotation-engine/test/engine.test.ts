@@ -262,6 +262,54 @@ test("listen: a listen submitted after the next singer waits its turn", () => {
   assert.deepEqual(orderIds(s), ["s1", "l1"]);
 });
 
+// F1 (opus review): the reviewer's failing case — the cap must hold across
+// successive advance() calls, not just within one getEffectiveOrder snapshot.
+test("listen: starvation cap holds ACROSS advances, not just in one snapshot", () => {
+  let s = fresh("full-karaoke"); // default maxConsecutiveListen = 1
+  s = add(s, { id: "l1", mode: "listen" });
+  s = add(s, { id: "l2", mode: "listen" });
+  s = add(s, { id: "l3", mode: "listen" });
+  s = add(s, { id: "s1", mode: "sing" });
+  const played: string[] = [];
+  for (let i = 0; i < 4; i += 1) {
+    const r = advance(s);
+    s = r.state;
+    played.push(r.played!.id);
+  }
+  // cap=1 => the singer must not sit behind more than one listen.
+  assert.ok(played.indexOf("s1") <= 1, `singer starved: ${played.join(",")}`);
+  // and the whole iterative playback matches the batch promise exactly
+  assert.deepEqual(played, ["l1", "s1", "l2", "l3"]);
+});
+
+test("listen: peekUpcoming(1) always equals what advance() plays (peek == play)", () => {
+  let s = fresh("full-karaoke");
+  s = add(s, { id: "l1", mode: "listen" });
+  s = add(s, { id: "s1", mode: "sing" });
+  s = add(s, { id: "l2", mode: "listen" });
+  s = add(s, { id: "l3", mode: "listen" });
+  s = add(s, { id: "s2", mode: "sing" });
+  while (s.entries.length > 0) {
+    const promised = peekUpcoming(s, 1)[0];
+    const r = advance(s);
+    assert.equal(r.played?.id, promised.id);
+    s = r.state;
+  }
+});
+
+test("listen: persisted consecutiveListen counter updates on advance, resets on sing", () => {
+  let s = fresh("full-karaoke");
+  s = add(s, { id: "l1", mode: "listen" });
+  s = add(s, { id: "s1", mode: "sing" });
+  assert.equal(s.consecutiveListen, 0);
+  let r = advance(s); // plays l1
+  assert.equal(r.played?.id, "l1");
+  assert.equal(r.state.consecutiveListen, 1);
+  r = advance(r.state); // plays s1 -> run broken
+  assert.equal(r.played?.id, "s1");
+  assert.equal(r.state.consecutiveListen, 0);
+});
+
 test("listen: higher cap allows more consecutive listens", () => {
   let s = fresh("full-karaoke", { maxConsecutiveListen: 2 });
   s = add(s, { id: "l1", mode: "listen" });
@@ -270,6 +318,63 @@ test("listen: higher cap allows more consecutive listens", () => {
   s = add(s, { id: "s1", mode: "sing" });
   // cap 2: l1, l2, then singer, then l3
   assert.deepEqual(orderIds(s), ["l1", "l2", "s1", "l3"]);
+});
+
+// F2 (opus review): no-cap must survive a JSON round-trip of QueueState.
+test("options: Infinity normalizes to null (no cap) and survives JSON round-trip", () => {
+  let s = fresh("full-karaoke", { maxConsecutiveListen: Infinity });
+  assert.equal(s.options.maxConsecutiveListen, null); // normalized at creation
+  s = add(s, { id: "l1", mode: "listen" });
+  s = add(s, { id: "l2", mode: "listen" });
+  s = add(s, { id: "l3", mode: "listen" });
+  s = add(s, { id: "s1", mode: "sing" });
+  // no cap: pure submission-order interleave
+  assert.deepEqual(orderIds(s), ["l1", "l2", "l3", "s1"]);
+  // round-trip the whole state and verify identical behavior
+  const revived = JSON.parse(JSON.stringify(s)) as typeof s;
+  assert.deepEqual(revived, s);
+  assert.deepEqual(orderIds(revived), ["l1", "l2", "l3", "s1"]);
+  // iterative playback agrees too
+  const played: string[] = [];
+  let cur = revived;
+  while (cur.entries.length > 0) {
+    const r = advance(cur);
+    played.push(r.played!.id);
+    cur = r.state;
+  }
+  assert.deepEqual(played, ["l1", "l2", "l3", "s1"]);
+});
+
+test("options: null accepted directly as no-cap", () => {
+  const s = fresh("full-karaoke", { maxConsecutiveListen: null });
+  assert.equal(s.options.maxConsecutiveListen, null);
+});
+
+test("options: default (cap 1) state survives JSON round-trip identically", () => {
+  let s = fresh("full-karaoke");
+  s = add(s, { id: "l1", mode: "listen" });
+  s = add(s, { id: "s1", mode: "sing" });
+  s = advance(s).state; // plays l1 -> consecutiveListen persisted as 1
+  const revived = JSON.parse(JSON.stringify(s)) as typeof s;
+  assert.deepEqual(revived, s);
+  assert.deepEqual(orderIds(revived), orderIds(s));
+});
+
+// F3 (opus review): duplicates are scoped per mode.
+test("duplicate: a listen for video X does not block a sing for X (and vice-versa)", () => {
+  let s = fresh("full-karaoke");
+  s = add(s, { id: "l", uuid: "u1", videoId: "song1", mode: "listen" });
+  const r = addEntry(
+    s,
+    input({ id: "sg", uuid: "u1", videoId: "song1", mode: "sing" }),
+  );
+  assert.equal(r.accepted, true);
+  // but a second listen for the same video by the same user IS a duplicate
+  const r2 = addEntry(
+    s,
+    input({ id: "l2", uuid: "u1", videoId: "song1", mode: "listen" }),
+  );
+  assert.equal(!r2.accepted && r2.reason, "duplicate");
 });
 
 test("listen: playing a listen does not affect sing recency", () => {

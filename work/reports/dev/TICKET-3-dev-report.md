@@ -1,6 +1,6 @@
 # TICKET-3 — Dev Report
 
-- **Status:** IMPLEMENTED — draft PR #3 open (https://github.com/paulosalvatore/cantai/pull/3), self-verify green (40/40 tests, typecheck clean). Implementation commit: db36ea5.
+- **Status:** REVIEW FIXES APPLIED — draft PR #3 (https://github.com/paulosalvatore/cantai/pull/3). D-022 opus REQUEST-CHANGES (F1/F2/F3) addressed; self-verify green (**47/47 tests**, typecheck clean). Implementation commit: db36ea5; review fixes in the follow-up commit carrying this report.
 - **Branch:** `ticket/3-rotation-engine`
 - **Worktree:** `/Users/paulosalvatore/Documents/GitHub/cantai/.worktrees/ticket-3`
 - **Package path:** `packages/rotation-engine/`
@@ -53,9 +53,9 @@ codebase exploration was required.
 ## Self-verification (real output)
 
 ```
-$ node --test
-ℹ tests 40
-ℹ pass 40
+$ node --test          # after opus-review fixes
+ℹ tests 47
+ℹ pass 47
 ℹ fail 0
 ```
 
@@ -85,6 +85,18 @@ scenarios (multi-round fairness, mode switch with in-flight entries).
 - **No `run-app`** — library, not an app; nothing to boot.
 - Package ships TypeScript source (with `.ts` import extensions) consumed via the
   app's transpiler at integration; no separate build artifact for the POC.
+
+## Opus review fixes (D-022 second pass — REQUEST-CHANGES, resolved)
+
+Review record: `work/reports/review/TICKET-3-review.md` (second pass) + PR comment https://github.com/paulosalvatore/cantai/pull/3#issuecomment-4887744709. Suite went 40 → 47 tests, all green.
+
+- **F1 (BLOCKING) — listen cap defeated across advances (peek ≠ play).** Root cause: `mergeListens` re-initialized its consecutive-listen counter to 0 on every `getEffectiveOrder` call; nothing persisted the run between `advance` calls. Fix: added `consecutiveListen: number` to `QueueState` (init 0). `consume` increments it when a `listen` plays and resets it to 0 when a `sing` plays; `skip` leaves it untouched (nothing played). `getEffectiveOrder` seeds `mergeListens` from the persisted value, so batch order and head-by-head playback agree. Tests added: the reviewer's exact failing case (multi-advance loop, cap=1, singer index ≤ 1 AND full played order equals the batch promise l1,s1,l2,l3), a full-drain peek(1)==advance consistency loop, and a counter-lifecycle test (increments on listen, resets on sing).
+- **F2 (MED) — `Infinity` cap broke JSON round-trip** (stringify → `null` → coerced to cap-0, the opposite behavior). Fix: serialization contract changed — `maxConsecutiveListen: number | null`, with **`null` = no cap** as the canonical representation; `createQueue` accepts `Infinity` and normalizes it to `null`; `mergeListens` treats `null` as uncapped. Tests added: Infinity→null normalization + full-state JSON round-trip asserting deep-equal state and identical batch AND iterative playback; `null` accepted directly; default-cap state (with a non-zero persisted counter) round-trips deep-equal.
+- **F3 (NIT) — cross-mode duplicate coupling.** Fix (cheap): duplicate key is now `uuid + videoId + mode` — a `listen` for X no longer blocks a `sing` for X (and vice-versa); same-mode duplicates still rejected. Test added; README documents the rule.
+
+README updated accordingly (null/Infinity no-cap semantics, persisted-counter "what the screen shows is what airs" guarantee, per-mode duplicate rule).
+
+Design note: `consecutiveListen` increments on a listen play even when no singer was waiting at that moment; if a singer then joins mid-run, the cap check treats the run as already at/over cap and favors the singer. Deliberately singer-favoring in a rare edge — simplest semantics that keep peek==play.
 
 ## Spec delta vs TICKET-5 (`work/planning/rotation-modes-fair-queue.md`, branch ticket/5-roadmap)
 

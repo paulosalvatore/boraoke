@@ -61,8 +61,16 @@ The rule: **at most `maxConsecutiveListen` listen songs may play in a row while
 a singer is still waiting** (default **1**). So with the default, a listen song
 can slip in between two sing turns, but never two listen songs back-to-back
 while a singer waits. When *no* singers are queued, all listen songs simply play
-in submission order. Set `maxConsecutiveListen` higher (or `Infinity`) if a
-venue wants a more dance-forward vibe.
+in submission order. Set `maxConsecutiveListen` higher — or to **`null` ("no
+cap")** — if a venue wants a more dance-forward vibe. (`Infinity` is accepted at
+`createQueue` and normalized to `null` so that queue state stays safe to
+snapshot as JSON.)
+
+This cap is enforced **across real playback, not just in a preview**: the
+engine persists the current consecutive-listen run on `QueueState`
+(`consecutiveListen`, reset whenever a sing entry plays), so calling `advance`
+song-by-song plays exactly the order `peekUpcoming` promised. What the venue
+screen shows is what actually airs.
 
 ### No-shows, leavers, and edits
 
@@ -76,8 +84,10 @@ venue wants a more dance-forward vibe.
   is always honored, even if it briefly pushes a table over its 2-song cap
   (those extras simply drain off; nothing is dropped).
 - **Duplicate submissions**: the same person submitting the same video twice
-  while it's still queued is rejected (`duplicate`). After it plays, they may
-  submit it again.
+  **in the same mode** while it's still queued is rejected (`duplicate`). After
+  it plays, they may submit it again. A `listen` request for a video does not
+  block a `sing` request for the same video (and vice-versa) — asking to dance
+  to a song and asking to sing it are different requests.
 - **Mode switch mid-session** (`setVenueMode`): **never drops anyone.** Existing
   entries are grandfathered in — even if they'd now be over a cap — and the play
   order simply recomputes under the new policy. The new caps apply only to

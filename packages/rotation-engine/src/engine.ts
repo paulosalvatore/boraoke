@@ -30,6 +30,13 @@ export function createQueue(
   venueMode: VenueMode,
   options: Partial<QueueOptions> = {},
 ): QueueState {
+  const merged = { ...DEFAULT_OPTIONS, ...options };
+  // Normalize the no-cap representation: `Infinity` is accepted for ergonomics
+  // but stored as `null` so the state survives a JSON round-trip unchanged
+  // (JSON.stringify(Infinity) === "null"; null is the canonical no-cap value).
+  if (merged.maxConsecutiveListen === Infinity) {
+    merged.maxConsecutiveListen = null;
+  }
   return {
     venueMode,
     entries: [],
@@ -38,7 +45,8 @@ export function createQueue(
     singClock: 0,
     lastSangByUuid: {},
     lastSangByTable: {},
-    options: { ...DEFAULT_OPTIONS, ...options },
+    consecutiveListen: 0,
+    options: merged,
   };
 }
 
@@ -72,9 +80,14 @@ function queuedSings(state: QueueState): Entry[] {
  * here. Listen entries are never rejected by fairness caps.
  */
 export function addEntry(state: QueueState, input: EntryInput): AddResult {
-  // Duplicate: same participant already has this exact video queued.
+  // Duplicate: same participant already has this exact video queued *in the
+  // same mode*. A `listen` for video X does not block a `sing` for X (and
+  // vice-versa) — they are different requests (ambiance vs. a mic turn).
   const isDuplicate = state.entries.some(
-    (e) => e.uuid === input.uuid && e.videoId === input.videoId,
+    (e) =>
+      e.uuid === input.uuid &&
+      e.videoId === input.videoId &&
+      e.mode === input.mode,
   );
   if (isDuplicate) {
     return { accepted: false, state, reason: "duplicate" };
@@ -174,7 +187,15 @@ export function getEffectiveOrder(state: QueueState): Entry[] {
   const listens = state.entries
     .filter((e) => e.mode === "listen")
     .sort(bySubmittedAt);
-  return mergeListens(singOrder, listens, state.options.maxConsecutiveListen);
+  // Seed the merge from the PERSISTED consecutive-listen run so that the cap
+  // holds across successive advance() calls, not just within one snapshot —
+  // what peekUpcoming promises is exactly what advance plays.
+  return mergeListens(
+    singOrder,
+    listens,
+    state.options.maxConsecutiveListen,
+    state.consecutiveListen,
+  );
 }
 
 /** First `n` entries of the effective order. */
@@ -266,18 +287,21 @@ function roundRobin(
 /**
  * Merge listen entries into the sing order under a starvation cap: at most
  * `maxConsecutiveListen` listen entries may play in a row while sing entries
- * remain. Listen entries otherwise slot in by submission order relative to the
- * next-up singer. With no singers left, all remaining listens flush FIFO.
+ * remain (`null` = no cap). Listen entries otherwise slot in by submission
+ * order relative to the next-up singer. With no singers left, all remaining
+ * listens flush FIFO. `initialConsecutiveListen` seeds the run counter from
+ * persisted state so the cap spans advance() calls, not just one snapshot.
  */
 function mergeListens(
   sings: Entry[],
   listens: Entry[],
-  maxConsecutiveListen: number,
+  maxConsecutiveListen: number | null,
+  initialConsecutiveListen = 0,
 ): Entry[] {
   const result: Entry[] = [];
   let si = 0;
   let li = 0;
-  let consecutiveListen = 0;
+  let consecutiveListen = initialConsecutiveListen;
 
   while (si < sings.length || li < listens.length) {
     const nextSing = sings[si];
@@ -296,7 +320,7 @@ function mergeListens(
       continue;
     }
 
-    if (consecutiveListen >= maxConsecutiveListen) {
+    if (maxConsecutiveListen !== null && consecutiveListen >= maxConsecutiveListen) {
       // Cap hit: a singer must go next so singers aren't starved.
       result.push(nextSing);
       si += 1;
@@ -373,8 +397,15 @@ function consume(
   ];
 
   if (entry.mode !== "sing") {
-    // Listen entries don't consume a sing turn or affect fairness recency.
-    return { ...state, entries, history };
+    // Listen entries don't consume a sing turn or affect fairness recency,
+    // but they DO extend the persisted consecutive-listen run so the
+    // starvation cap holds across successive advance() calls (peek == play).
+    return {
+      ...state,
+      entries,
+      history,
+      consecutiveListen: state.consecutiveListen + 1,
+    };
   }
 
   const singClock = state.singClock + 1;
@@ -393,5 +424,7 @@ function consume(
     singClock,
     lastSangByUuid,
     lastSangByTable,
+    // A sing turn breaks any listen run.
+    consecutiveListen: 0,
   };
 }

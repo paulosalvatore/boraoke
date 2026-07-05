@@ -56,10 +56,13 @@ export interface HistoryRecord {
 export interface QueueOptions {
   /**
    * Maximum number of `listen` entries allowed to play consecutively while at
-   * least one `sing` entry is still waiting. Default 1. Set to `Infinity` to
-   * let listen entries interleave purely by submission order.
+   * least one `sing` entry is still waiting. Default 1. `null` means "no cap"
+   * (listen entries interleave purely by submission order). `Infinity` is
+   * accepted at `createQueue` and normalized to `null` so that `QueueState`
+   * stays JSON-round-trip safe (`JSON.stringify(Infinity)` yields `null`;
+   * we make `null` the canonical no-cap representation).
    */
-  maxConsecutiveListen: number;
+  maxConsecutiveListen: number | null;
 }
 
 /** The full immutable state of a venue's queue. */
@@ -80,6 +83,13 @@ export interface QueueState {
    */
   lastSangByUuid: Record<string, number>;
   lastSangByTable: Record<string, number>;
+  /**
+   * Persisted count of `listen` entries played consecutively (reset to 0 each
+   * time a `sing` entry plays; skips leave it untouched). This is what makes
+   * the listen-starvation cap hold across successive `advance` calls, not just
+   * within one `getEffectiveOrder` snapshot — peek and play always agree.
+   */
+  consecutiveListen: number;
   options: QueueOptions;
 }
 
