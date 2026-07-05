@@ -5,3 +5,6 @@
 {"v": "1", "ts": "2026-07-05T21:52:35Z", "actor": "dev", "product": "cantai", "ticket": "TICKET-5", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/5-roadmap", "short_sha": "197ff57", "message_slug": "review: TICKET-5 review report (REQUEST-CHANGES)"}}
 {"v": "1", "ts": "2026-07-05T21:54:59Z", "actor": "dev", "product": "cantai", "ticket": "TICKET-5", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/5-roadmap", "short_sha": "6f197bf", "message_slug": "TICKET-5: address review B1/B2 + nits — graceRequeue in schema/order(), "}}
 {"v": "1", "ts": "2026-07-05T21:56:50Z", "actor": "dev", "product": "cantai", "ticket": "TICKET-5", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/5-roadmap", "short_sha": "6d1944e", "message_slug": "review: TICKET-5 re-review — APPROVE (B1/B2 resolved)"}}
+{"v": "1", "ts": "2026-07-05T21:32:03Z", "actor": "tech-manager", "product": "cantai", "ticket": "TICKET-1", "pr": null, "event": "worktree_created", "payload": {"branch": "ticket/1-walking-skeleton", "path": ".worktrees/ticket-1"}}
+{"v": "1", "ts": "2026-07-05T21:34:45Z", "actor": "dev", "product": "cantai", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "29539ae", "message_slug": "status: fleet fan-out — TICKET-1/3/4/5 in progress in parallel, TICKET-2"}}
+
