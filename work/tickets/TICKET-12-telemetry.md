@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-05 · **Product:** cantai · **Author:** Product Owner (TICKET-19 batch)
 - **Wave:** 2 (after TICKET-6 merges — events need the durable store)
-- **Depends on:** TICKET-6. Soft-coordinates with wave-2 siblings (instrumentation lines in shared API routes — see ownership). Blocks: the monetization flip decision (data), #16 analytics.
+- **Depends on:** TICKET-6 (durable store). TICKET-7 for the `app/api/host/**` instrumentation specifically — those routes don't exist until #7 merges; core telemetry (lib, store, beacon, queue/search events) is buildable before that, host events land at the final rebase. Soft-coordinates with wave-2 siblings (instrumentation lines in shared API routes — see ownership; #12 rebases/merges last in wave 2). Blocks: the monetization flip decision (data), #16 analytics.
 - **Sizing:** S
 
 ## Goal

@@ -1,8 +1,8 @@
 # TICKET-9 — Multi-room + QR join + table capture
 
 - **Date:** 2026-07-05 · **Product:** cantai · **Author:** Product Owner (TICKET-19 batch)
-- **Wave:** 2 (after TICKET-6 AND TICKET-8 merge — needs room-scoped store; restructures the patron routes #8 just edited)
-- **Depends on:** TICKET-6 (room-scoped keys), TICKET-8 (patron page final form before the route move). Blocks: TICKET-10 (table identity feeds 2-per-table mode).
+- **Wave:** 2 (after TICKET-6, TICKET-7 AND TICKET-8 merge — needs room-scoped store; extends #7's `lib/host-auth.ts`; restructures the patron routes #8 just edited)
+- **Depends on:** TICKET-6 (room-scoped keys), TICKET-7 (`lib/host-auth.ts` must exist — this ticket swaps its lookup to per-room host codes), TICKET-8 (patron page final form before the route move). Blocks: TICKET-10 (table identity feeds 2-per-table mode).
 - **Sizing:** M
 
 ## Goal
