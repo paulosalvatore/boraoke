@@ -1,0 +1,35 @@
+{
+  "name": "@cantai/rotation-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure, immutable rotation/fairness queue engine for cantai venue modes.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "cantai",
+    "karaoke",
+    "queue",
+    "rotation",
+    "fairness"
+  ],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.3"
+  }
+}
