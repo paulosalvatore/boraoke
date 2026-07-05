@@ -168,3 +168,27 @@ The implementation is functionally sound and complete. All 4 security MEDIUMs ar
 The single blocking issue is a one-line CI fix: `node-version: "20"` → `"22"`. Once fixed, CI is ready to enforce build + test + e2e on all subsequent PRs. The two nits (README Node version, duplicated regex) can be fixed in the same commit or deferred.
 
 **Verdict: REQUEST-CHANGES — fix node-version in ci.yml, then re-review.**
+
+---
+
+## Delta Re-Review — commit 7f866f1 (2026-07-05, replacement Reviewer)
+
+Scope: `git show 7f866f1` only (fix commit for the REQUEST-CHANGES items above) + independent unit-suite run. Prior gates unchanged and on record (App Tester PASS, Security PASS-WITH-NOTES with all 4 MEDIUMs verified fixed, prior review otherwise clean).
+
+| Item | Verified | Evidence |
+|---|---|---|
+| BLOCKER #1 — ci.yml node-version "20" → "22" | ✅ Fixed | `.github/workflows/ci.yml` line 16 now `node-version: "22"`. Single job / single `setup-node` step, so **every** step (npm ci, build, unit tests, Playwright e2e with `NODE_OPTIONS: --localstorage-file`) runs on Node 22. Grepped the repo for other Node pins: no `.nvmrc`, no `engines` in project `package.json`, no other workflow — nothing still assumes Node 20. |
+| NIT-1 — README Node requirement | ✅ Fixed | README "Running locally" section now states "Requires Node.js 22 or later." |
+| NIT-2 — duplicated video-ID regex | ✅ Fixed | `isValidVideoId` exported from `lib/youtube.ts` (regex unchanged: `/^[A-Za-z0-9_-]{11}$/`), imported in `app/api/queue/route.ts`; local `VIDEO_ID_RE` removed. Validation call site (`!resolvedVideoId || !isValidVideoId(resolvedVideoId)`) is behavior-identical to the previous regex test. |
+
+**Reviewer-run verification (worktree, commit 702f279 tip = 7f866f1 + event-log auto-commit):**
+
+```
+npm test → Test Suites: 3 passed, 3 total; Tests: 39 passed, 39 total (api-queue, queue, youtube)
+```
+
+**CI status (S1):** no required checks exist on `main` (private repo without branch protection — GitHub API 403 "Upgrade to Pro"). Vercel deploy check fails but is non-required and explicitly out of TICKET-1 scope (deploy = TICKET-2, recorded above). GitHub Actions still cannot trigger until the workflow lands on `main` (bootstrap limitation, recorded above). No required check pending or failing.
+
+Nothing else changed in 7f866f1 beyond the three items + a dev-report update (implementation-log entry for this fix — current per F23).
+
+**Verdict: APPROVE.** All REQUEST-CHANGES items resolved and independently verified; delta is minimal and sound.
