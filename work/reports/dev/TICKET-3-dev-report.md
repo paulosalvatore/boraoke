@@ -1,6 +1,6 @@
 # TICKET-3 — Dev Report
 
-- **Status:** IMPLEMENTED — draft PR open, self-verify green (40/40 tests, typecheck clean).
+- **Status:** IMPLEMENTED — draft PR #3 open (https://github.com/paulosalvatore/cantai/pull/3), self-verify green (40/40 tests, typecheck clean). Implementation commit: db36ea5.
 - **Branch:** `ticket/3-rotation-engine`
 - **Worktree:** `/Users/paulosalvatore/Documents/GitHub/cantai/.worktrees/ticket-3`
 - **Package path:** `packages/rotation-engine/`

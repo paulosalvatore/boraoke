@@ -1,6 +1,6 @@
 # TICKET-3 — Plan
 
-- **APPROVED-BY:** auto-approved (no plan-gate escalation; fully-autonomous POC run) — validated downstream by gates + TL merge of the PR.
+- **APPROVED-BY:** auto-approved (no plan-gate escalation; fully-autonomous POC run) — validated downstream by gates + TL merge of PR #3.
 
 ## Approach
 
