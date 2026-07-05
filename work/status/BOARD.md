@@ -1,6 +1,6 @@
 # cantai — Board
 
-_Last updated: 2026-07-05 (PR #3 merged; PR #4 security-fix round)_
+_Last updated: 2026-07-05 (PR #5 merged — wave plan armed; PR #4 in re-review)_
 
 ## Notes
 
@@ -16,6 +16,6 @@ _Last updated: 2026-07-05 (PR #3 merged; PR #4 security-fix round)_
 | TICKET-3 | Rotation/fairness engine lib | DONE | PR #3 merged: sonnet+opus APPROVE; opus caught real peek≠play starvation bug pre-merge; 47/47 tests |
 | TICKET-4 | Design language + mockups | DONE | PR #2 merged, TL-ratified |
 | TICKET-5 | Roadmap + specs (modes/feedback/monetization) | DONE | PR #1 merged (Reviewer APPROVE after B1/B2 fixes; opus-skip recorded, docs-only) |
-| TICKET-19 | PMF wave ticket batch | IN PROGRESS | PO (fable) writing buildable tickets 6-12+18 with ownership boundaries |
-| TICKET-1 | (gates) | SECURITY-FIX ROUND | App Tester PASS; Security PASS-WITH-NOTES; Dev fixing 4 MEDIUMs pre-merge (public deploy on merge); then review chain |
+| TICKET-19 | PMF wave ticket batch | DONE | PR #5 merged (Reviewer APPROVE after B1 wave-dependency fix; opus-skip, docs-only). Tickets 6-12+18 armed in waves |
+| TICKET-1 | (gates) | IN RE-REVIEW | App Tester PASS; Security MEDIUMs fixed (+14 tests); sonnet CI-blocker fixed; sonnet re-review → opus pass → merge |
 | TICKET-18 | TV mode: bigger type + fullscreen | UP NEXT | TL follow-up on design ratification (prompt 004); numbered past PO backlog #6–#17 |
