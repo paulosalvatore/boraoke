@@ -145,6 +145,7 @@ export default function PatronPage() {
           aria-label="Your nickname"
           autoFocus
           placeholder="e.g. Maria, Table 4 Guy…"
+          maxLength={30}
           value={nickname}
           onChange={(e) => setNickname(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && saveNickname()}
@@ -203,6 +204,7 @@ export default function PatronPage() {
             </label>
             <input
               placeholder="e.g. Bohemian Rhapsody"
+              maxLength={120}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -215,6 +217,7 @@ export default function PatronPage() {
               </label>
               <input
                 placeholder="e.g. 7"
+                maxLength={10}
                 value={table}
                 onChange={(e) => setTable(e.target.value)}
               />

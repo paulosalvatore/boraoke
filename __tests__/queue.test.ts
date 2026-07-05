@@ -4,6 +4,8 @@ import {
   advanceQueue,
   nowPlaying,
   clearQueue,
+  isQueueFull,
+  QUEUE_MAX,
   type QueueEntry,
 } from "@/lib/store";
 
@@ -77,6 +79,31 @@ describe("queue store", () => {
 
     it("returns null on empty queue", () => {
       expect(advanceQueue()).toBeNull();
+    });
+  });
+
+  describe("queue depth cap (QUEUE_MAX)", () => {
+    it("rejects additions beyond QUEUE_MAX", () => {
+      for (let i = 0; i < QUEUE_MAX; i++) {
+        expect(addToQueue(makeEntry({ id: `e${i}` }))).toBe(true);
+      }
+      expect(isQueueFull()).toBe(true);
+      expect(addToQueue(makeEntry({ id: "overflow" }))).toBe(false);
+      expect(getQueue()).toHaveLength(QUEUE_MAX);
+    });
+
+    it("isQueueFull is false below capacity", () => {
+      addToQueue(makeEntry({ id: "a" }));
+      expect(isQueueFull()).toBe(false);
+    });
+
+    it("accepts again after advancing when full", () => {
+      for (let i = 0; i < QUEUE_MAX; i++) {
+        addToQueue(makeEntry({ id: `e${i}` }));
+      }
+      advanceQueue();
+      expect(isQueueFull()).toBe(false);
+      expect(addToQueue(makeEntry({ id: "after-advance" }))).toBe(true);
     });
   });
 

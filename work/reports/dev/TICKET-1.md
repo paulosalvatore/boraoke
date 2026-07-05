@@ -1,7 +1,7 @@
 # TICKET-1 — Dev report
 
 ## Status
-IMPLEMENTED — build green, 25 unit tests pass, 1 Playwright e2e passes. Draft PR open. Ready for testing gate.
+SECURITY FIXES APPLIED — all 4 Cyber Security MEDIUMs fixed; build green, 39 unit tests pass, 1 Playwright e2e passes, next@15.5.20. App Tester PASS and Cyber Security PASS-WITH-NOTES recorded on PR #4; ready for Reviewer gate.
 
 ## Context
 - Worktree: `/Users/paulosalvatore/Documents/GitHub/cantai/.worktrees/ticket-1`
@@ -60,6 +60,37 @@ npm run test:e2e:
 1 passed (7.8s)
 [chromium] › e2e/submit-song.spec.ts › patron submits a song and it appears in the queue ✓
 ```
+
+### 2026-07-05 security-gate MEDIUMs fixed (4/4)
+
+Cyber Security PASS-WITH-NOTES flagged 4 MEDIUMs (report: `work/reports/security/TICKET-1-security.md`); merging triggers the first public Vercel deploy, so all fixed now:
+
+1. **Direct videoId bypass** — `app/api/queue/route.ts`: ALL paths to a stored videoId now validated against `^[A-Za-z0-9_-]{11}$` (direct `videoId` POSTs previously skipped `isValidVideoId`).
+2. **Field length limits** — nickname ≤30, title ≤120, table ≤10, patronUuid must match strict UUID shape; violations → 400. Request body capped at 4096 bytes (handler reads `req.text()` and rejects oversized before JSON.parse). Matching client-side `maxLength` attrs added on `/` inputs.
+3. **Queue depth cap** — `lib/store.ts`: `QUEUE_MAX = 200`; `addToQueue` refuses (returns false) when full, `isQueueFull()` exported; API returns 429 with a clear error when full.
+4. **Next.js CVEs** — bumped `next` 15.3.4 → **15.5.20** (`^15.5.20` pin), reinstalled, build verified. Remaining `npm audit` noise: 2 moderates from a transitive `postcss` pinned INSIDE next itself — no non-breaking fix exists (audit suggests downgrading next to 9.x, nonsense); documented as accepted for prototype.
+
+**New tests:** `__tests__/api-queue.test.ts` (11 tests: valid entry, invalid direct videoIds x3, over-length nickname/title/table, UUID shape, oversized body, boundary nickname=30, queue-full 429) + 3 queue-cap tests in `__tests__/queue.test.ts`. Total unit tests: 25 → **39**.
+
+**Re-verification (real output):**
+
+```
+npm run build:
+ ✓ Compiled successfully (next 15.5.20)
+ ○ / and /tv static, API routes dynamic
+
+npm test:
+PASS __tests__/api-queue.test.ts
+PASS __tests__/youtube.test.ts
+PASS __tests__/queue.test.ts
+Tests: 39 passed, 39 total
+
+npm run test:e2e:
+✓ 1 [chromium] › e2e/submit-song.spec.ts › patron submits a song and it appears in the queue (2.0s)
+1 passed (7.6s)
+```
+
+Dev server stopped after e2e.
 
 ## Friction
 - Node.js 25 `localStorage` global (stub without methods) causes Next.js 15 SSR failures for client components that access localStorage. Workaround: `--localstorage-file` flag. Candidate for a framework-level dev environment note (future inbox item if recurring across products).

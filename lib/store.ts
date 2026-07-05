@@ -20,6 +20,9 @@ export interface QueueEntry {
   submittedAt: string; // ISO 8601
 }
 
+/** Maximum queue depth — caps unauthenticated memory growth (security MEDIUM #3). */
+export const QUEUE_MAX = 200;
+
 /** Module-level array = the shared queue (one default room). */
 let queue: QueueEntry[] = [];
 
@@ -27,8 +30,18 @@ export function getQueue(): QueueEntry[] {
   return queue;
 }
 
-export function addToQueue(entry: QueueEntry): void {
+export function isQueueFull(): boolean {
+  return queue.length >= QUEUE_MAX;
+}
+
+/**
+ * Add an entry to the queue.
+ * Returns false (and does NOT add) when the queue is at QUEUE_MAX capacity.
+ */
+export function addToQueue(entry: QueueEntry): boolean {
+  if (isQueueFull()) return false;
   queue.push(entry);
+  return true;
 }
 
 /** Advance (skip) the current head of the queue. Returns the new head, or null if empty. */
