@@ -16,17 +16,46 @@
  *   - HOST_TOKEN unset + production    → host controls are LOCKED (deny all).
  *                                        The bar owner must configure a token.
  *
- * TICKET-9 (per-room host codes) swaps ONLY `resolveRoomToken` — every call
- * site goes through this helper, so the lookup changes, not the callers.
+ * TICKET-9 (per-room host codes) swaps ONLY the `resolveRoomToken` lookup —
+ * every call site goes through this helper. Because the per-room host code now
+ * lives in the (async) room store, `resolveRoomToken` and everything that
+ * derives from it are async; call sites already run inside async routes and
+ * simply `await`. The token lookup precedence is:
+ *
+ *   1. The room's own `hostCode` (the multi-room identity, #9).
+ *   2. Env `HOST_TOKEN` — the legacy global secret; still governs the `default`
+ *      room (which has no room record) so the pre-multi-room /admin keeps working.
+ *   3. Dev fallback token (non-production only).
+ *   4. null → host controls LOCKED (production with nothing configured).
+ *
+ * Cookie-per-room (opus-review heads-up): the session value is derived from the
+ * token, and the cookie NAME is now room-scoped (`hostCookieName`). Two effects:
+ * (a) a session minted for room A's code cannot authenticate room B (different
+ * token → different session value), and (b) one browser can host multiple rooms
+ * at once because each room's session lives in its OWN cookie. The `default`
+ * room keeps the legacy `cantai_host` name for back-compat.
  */
 
 import "server-only";
 
 import { createHmac, timingSafeEqual } from "crypto";
 import type { NextRequest } from "next/server";
+import { DEFAULT_ROOM, getRoom, hashHostCode, isValidRoomId } from "./rooms";
 
-/** Cookie name holding the host session value. */
+/**
+ * Base cookie name (legacy `default` room). Per-room cookies append the room id
+ * via `hostCookieName`. Kept exported for back-compat / tests.
+ */
 export const HOST_COOKIE = "cantai_host";
+
+/**
+ * The host session cookie name for a room. The legacy `default` room keeps the
+ * bare `cantai_host` name; every other room gets `cantai_host_<roomId>` so one
+ * browser can hold independent host sessions for multiple rooms at once.
+ */
+export function hostCookieName(roomId: string): string {
+  return roomId === DEFAULT_ROOM ? HOST_COOKIE : `${HOST_COOKIE}_${roomId}`;
+}
 
 /**
  * Dev-only fallback token. NEVER accepted in production (see resolveRoomToken)
@@ -39,12 +68,25 @@ export const DEV_FALLBACK_TOKEN = "cantai-dev-host";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 
 /**
- * The effective host token for a room. Until TICKET-9 introduces per-room
- * codes this ignores `roomId` and reads the single `HOST_TOKEN` env secret,
- * with a development-only fallback. Returns `null` when host controls are
- * locked (production with no token configured).
+ * The effective host SECRET for a room (async — see file header for precedence).
+ * For a created room this is its stored `hostCodeHash` — the raw code is never
+ * persisted (security MEDIUM-2), so the hash is the room's server-side secret:
+ * login hashes the submitted code before comparing (see `verifyHostToken`) and
+ * session values derive from the hash. The legacy `default` room (no record)
+ * falls back to env `HOST_TOKEN` then the dev token, compared RAW. Returns
+ * `null` when host controls are locked (production with nothing configured).
  */
-export function resolveRoomToken(_roomId: string): string | null {
+export async function resolveRoomToken(roomId: string): Promise<string | null> {
+  // 1. Per-room host-code hash (the multi-room identity). Only for real rooms —
+  //    the `default` room has no record and stays on the env-token path below.
+  if (roomId !== DEFAULT_ROOM) {
+    const room = await getRoom(roomId);
+    if (room?.hostCodeHash) return room.hostCodeHash;
+    // A non-default room id with no record is not a configured venue → locked,
+    // regardless of any global env token (which governs `default` only).
+    return null;
+  }
+  // 2/3/4. Legacy env token / dev fallback / locked — for the `default` room.
   const env = process.env.HOST_TOKEN?.trim();
   if (env) return env;
   if (process.env.NODE_ENV !== "production") return DEV_FALLBACK_TOKEN;
@@ -52,8 +94,8 @@ export function resolveRoomToken(_roomId: string): string | null {
 }
 
 /** Whether host controls are currently usable for this room. */
-export function isHostConfigured(roomId: string): boolean {
-  return resolveRoomToken(roomId) !== null;
+export async function isHostConfigured(roomId: string): Promise<boolean> {
+  return (await resolveRoomToken(roomId)) !== null;
 }
 
 /**
@@ -74,25 +116,29 @@ function timingSafeHexEqual(a: string, b: string): boolean {
 }
 
 /**
- * Verify a token submitted at login against the room's configured token.
- * Returns false when host controls are locked or the token is wrong/empty.
+ * Verify a token submitted at login against the room's configured secret.
+ * For real rooms the stored secret is the host-code HASH (MEDIUM-2), so the
+ * submitted raw code is hashed before comparison; the legacy `default` room's
+ * env token is stored nowhere and compared raw. Returns false when host
+ * controls are locked or the token is wrong/empty.
  */
-export function verifyHostToken(roomId: string, submitted: unknown): boolean {
-  const token = resolveRoomToken(roomId);
-  if (!token) return false;
+export async function verifyHostToken(roomId: string, submitted: unknown): Promise<boolean> {
+  const secret = await resolveRoomToken(roomId);
+  if (!secret) return false;
   if (typeof submitted !== "string" || submitted.length === 0) return false;
-  return timingSafeHexEqual(submitted, token);
+  const comparable = roomId === DEFAULT_ROOM ? submitted : hashHostCode(submitted);
+  return timingSafeHexEqual(comparable, secret);
 }
 
 /** Issue the session cookie value for a room, or null when locked. */
-export function issueSession(roomId: string): string | null {
-  const token = resolveRoomToken(roomId);
+export async function issueSession(roomId: string): Promise<string | null> {
+  const token = await resolveRoomToken(roomId);
   return token ? sessionValue(token) : null;
 }
 
 /** Verify a session cookie value against the room's configured token. */
-export function verifySessionValue(roomId: string, cookieValue: unknown): boolean {
-  const token = resolveRoomToken(roomId);
+export async function verifySessionValue(roomId: string, cookieValue: unknown): Promise<boolean> {
+  const token = await resolveRoomToken(roomId);
   if (!token) return false;
   if (typeof cookieValue !== "string" || cookieValue.length === 0) return false;
   return timingSafeHexEqual(cookieValue, sessionValue(token));
@@ -194,7 +240,19 @@ export function _clearLoginThrottle(): void {
  * Gate for host API routes. Reads the session cookie off the request and
  * verifies it. Every host route calls this first; on false, respond 401.
  */
-export function requireHost(req: NextRequest, roomId: string): boolean {
-  const cookie = req.cookies.get(HOST_COOKIE)?.value;
+export async function requireHost(req: NextRequest, roomId: string): Promise<boolean> {
+  const cookie = req.cookies.get(hostCookieName(roomId))?.value;
   return verifySessionValue(roomId, cookie);
+}
+
+/**
+ * Resolve the target room id for a host request from its `?room=` query param,
+ * defaulting to the legacy `default` room. Returns null when the param is
+ * present but malformed (routes reply 400) — never lets an unvalidated id reach
+ * a Redis key. An absent param is the back-compat `default` room, not an error.
+ */
+export function roomIdFromRequest(req: NextRequest): string | null {
+  const raw = req.nextUrl.searchParams.get("room");
+  if (raw == null || raw === "") return DEFAULT_ROOM;
+  return isValidRoomId(raw) ? raw : null;
 }

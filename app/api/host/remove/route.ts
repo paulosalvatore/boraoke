@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { store, DEFAULT_ROOM } from "@/lib/store";
-import { requireHost } from "@/lib/host-auth";
+import { store } from "@/lib/store";
+import { requireHost, roomIdFromRequest } from "@/lib/host-auth";
 
 const MAX_BODY_BYTES = 1024;
 
 /**
- * POST /api/host/remove — remove an entry by id from anywhere in the queue.
- * Body: { entryId: string }. Thin wrapper over the frozen store `removeEntry`
- * op. Token-guarded. Returns { ok, removed } — removed=false when the id was
- * not found (already gone), still a 200 (idempotent for the host UI).
+ * POST /api/host/remove?room=<id> — remove an entry by id from anywhere in the
+ * queue. Body: { entryId: string }. Thin wrapper over the frozen store
+ * `removeEntry` op. Token-guarded, room-scoped. Returns { ok, removed } —
+ * removed=false when the id was not found (already gone), still 200 (idempotent).
  */
 export async function POST(req: NextRequest) {
-  if (!requireHost(req, DEFAULT_ROOM)) {
+  const roomId = roomIdFromRequest(req);
+  if (roomId === null) {
+    return NextResponse.json({ error: "Invalid room id" }, { status: 400 });
+  }
+  if (!(await requireHost(req, roomId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -36,6 +40,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "entryId is required" }, { status: 400 });
   }
 
-  const removed = await store.removeEntry(DEFAULT_ROOM, entryId);
+  const removed = await store.removeEntry(roomId, entryId);
   return NextResponse.json({ ok: true, removed });
 }

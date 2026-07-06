@@ -27,7 +27,7 @@ const MOCK_RESULTS = [
 ];
 
 async function joinAs(page: Page, nick: string) {
-  await page.goto("/");
+  await page.goto("/default");
   await page.getByLabel("Your nickname").waitFor();
   await page.getByPlaceholder(/nickname|e\.g\. Maria/i).fill(nick);
   await page.getByRole("button", { name: /join queue/i }).click();

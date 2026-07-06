@@ -27,8 +27,11 @@ export function FeedbackWidget() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // AC7: no widget on the TV route (or any /tv/* sub-route).
-  if (pathname === "/tv" || pathname?.startsWith("/tv/")) return null;
+  // AC7: no widget on any TV screen. TICKET-9 moved the TV to the room-scoped
+  // route `/[room]/tv` (and kept legacy `/tv`), so exclude every path whose
+  // final segment is `tv` — `/tv`, `/tv/*`, and `/<room>/tv`.
+  const path = pathname ?? "";
+  if (path === "/tv" || path.startsWith("/tv/") || path.endsWith("/tv")) return null;
 
   return (
     <div className={styles.root}>

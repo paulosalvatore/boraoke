@@ -48,7 +48,7 @@ test.describe("/tv", () => {
     page.on("pageerror", (err) => pageErrors.push(err));
 
     await drainQueue(page);
-    await page.goto("/tv");
+    await page.goto("/default/tv");
 
     await expect(page.getByTestId("tv-idle")).toBeVisible();
     await expect(page.getByText("Escaneia e canta! 🎤")).toBeVisible();
@@ -64,7 +64,7 @@ test.describe("/tv", () => {
   test("playing state: hero scale, max-3 rail, nothing under 28px (AC1)", async ({ page }) => {
     await drainQueue(page);
     await seedShow(page);
-    await page.goto("/tv");
+    await page.goto("/default/tv");
 
     const hero = page.getByTestId("tv-hero");
     await expect(hero).toHaveText("Garota de Ipanema");
@@ -136,7 +136,7 @@ test.describe("/tv", () => {
     });
 
     await drainQueue(page);
-    await page.goto("/tv");
+    await page.goto("/default/tv");
 
     // Affordance is visible on load (chrome shown, re-shows after reloads)
     const btn = page.getByTestId("tv-fullscreen");
@@ -168,7 +168,7 @@ test.describe("/tv", () => {
 
   test("chrome auto-hides and the cursor goes with it", async ({ page }) => {
     await drainQueue(page);
-    await page.goto("/tv");
+    await page.goto("/default/tv");
 
     const chrome = page.getByTestId("tv-chrome");
     await expect(chrome).toBeVisible();

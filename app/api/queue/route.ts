@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { store, DEFAULT_ROOM, QUEUE_MAX, type Mode } from "@/lib/store";
+import { isValidRoomId } from "@/lib/rooms";
 import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
+
+/**
+ * Resolve the target room for a queue request. `room` comes from the `?room=`
+ * query param (GET) or the request body (POST). Absent = the legacy `default`
+ * room (back-compat). Returns null for a present-but-malformed id so the caller
+ * can 400 — an unvalidated id must never reach a Redis key.
+ */
+function resolveRoomId(raw: unknown): string | null {
+  if (raw == null || raw === "") return DEFAULT_ROOM;
+  return isValidRoomId(raw) ? raw : null;
+}
 
 // Input limits — this is an unauthenticated endpoint; reject oversized input with 400.
 const MAX_BODY_BYTES = 4096;
@@ -11,11 +23,15 @@ const MAX_TABLE = 10;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const roomId = resolveRoomId(req.nextUrl.searchParams.get("room"));
+  if (roomId === null) {
+    return NextResponse.json({ error: "Invalid room id" }, { status: 400 });
+  }
   const [items, current, paused] = await Promise.all([
-    store.getQueue(DEFAULT_ROOM),
-    store.nowPlaying(DEFAULT_ROOM),
-    store.isPaused(DEFAULT_ROOM),
+    store.getQueue(roomId),
+    store.nowPlaying(roomId),
+    store.isPaused(roomId),
   ]);
   // `paused` is additive (TICKET-7): host pause reflected on every polling view.
   // /tv consumes it to freeze playback; patron submits stay accepted while paused.
@@ -41,6 +57,7 @@ export async function POST(req: NextRequest) {
   }
 
   const {
+    room,
     youtubeUrl,
     videoId: rawVideoId,
     title,
@@ -49,6 +66,11 @@ export async function POST(req: NextRequest) {
     table,
     mode,
   } = body as Record<string, unknown>;
+
+  const roomId = resolveRoomId(room);
+  if (roomId === null) {
+    return NextResponse.json({ error: "Invalid room id" }, { status: 400 });
+  }
 
   // Resolve videoId — accept either a pre-parsed videoId or a full URL.
   // BOTH paths must produce a strictly-valid 11-char YouTube video ID.
@@ -112,7 +134,7 @@ export async function POST(req: NextRequest) {
 
   // Queue-depth cap — stop unauthenticated storage exhaustion. addEntry returns
   // false (without adding) when the room is at QUEUE_MAX.
-  const added = await store.addEntry(DEFAULT_ROOM, entry);
+  const added = await store.addEntry(roomId, entry);
   if (!added) {
     return NextResponse.json(
       { error: `Queue is full (max ${QUEUE_MAX} entries) — try again later` },
