@@ -147,3 +147,67 @@ All 3 findings from Cyber Security PASS-WITH-NOTES are fixed in commit `bf17cd7`
 Implementation matches the ticket and plan. All acceptance criteria met. 81/81 unit tests + 3/3 e2e pass (reviewer-verified). Build clean. Bundle safety confirmed. Security findings all addressed with test coverage. Code quality is high: rate limiter logic is correct, cache is correct, degraded contract is correct, state machine is clean.
 
 **Merge precondition:** TM must resolve the `.env.example` merge conflict before/during the GitHub merge (append TICKET-8's `YOUTUBE_API_KEY=` section to TICKET-6's Redis-vars content). Trivial two-line fix, not a code defect.
+
+---
+
+# Opus Second Pass (D-022 merge-counting judgment layer)
+
+**Reviewer:** claude (Reviewer agent, opus pass — `claude-opus-4-8[1m]`)
+**Date:** 2026-07-05
+**Verdict:** APPROVE — with ONE required, explicitly-recorded pre-key-provisioning condition (doc-only; does not block this code merge)
+
+This pass re-ran everything (81/81 unit, `next build` clean, bundle grep clean) and confirms the sonnet pass. It adds the judgment layer the cheaper pass did not carry: the **quota economics** of a money-adjacent, primary patron-facing flow.
+
+## 1. Quota economics — the load-bearing finding
+
+**Unit costs (YouTube Data API v3):** `search.list` = **100 units**, `videos.list?part=contentDetails` = **1 unit** → **101 units per successful search** (100 if a search returns zero ids and the `videos.list` call is skipped). Default project quota = **10,000 units/day** → **~99 searches/day TOTAL, shared across every venue on the single key.**
+
+**Debounce/cache reality:**
+- Debounce is 400ms / min 3 chars. Each typing *pause* > 400ms fires one search, so a patron naturally emits **~2–4 searches per song-add session** ("evi"→pause→search, "eviden"→pause→search, "evidencias"→search), not one.
+- The query cache is a **module-level `Map` with a 60s TTL — per-lambda**. On Vercel serverless, concurrent invocations each hold their own Map, so the **cross-instance hit rate ≈ 0**. Two patrons searching the same song 30s apart routinely land on different instances → both miss → both spend 101 units. The cache saves units only for a single patron re-issuing the identical query on the same warm instance inside 60s. **Effective fleet-wide savings ≈ negligible.**
+
+**Realistic busy-bar-night math:**
+
+| Scenario | patrons × songs × searches | searches | units | vs 10k/day |
+|---|---|---|---|---|
+| Modest venue | 20 × 2 × 2 | 80 | 8,080 | **~80% of the *global* daily quota from ONE venue** |
+| Busy venue | 40 × 4 × 3 | 480 | 48,480 | **~5× the daily quota — exhausted mid-night from ONE bar** |
+
+The hard ceiling is **~99 searches/day across ALL venues combined.** A single busy bar exhausts it partway through the first night; two venues on the same night guarantee it. **At any real venue scale the live search is economically dead on day one** and stays degraded (paste-link) until the next 24h quota reset.
+
+**Why this is APPROVE and not REQUEST-CHANGES:** the code is *correct* about this. When quota trips, `route.ts` maps `403 quotaExceeded → YouTubeQuotaError → 200 {degraded:true, reason:"quota"}` (never a 5xx), and the component (`SongSearch.tsx:63-66`) shows the fallback copy while the paste-link path (`parseYouTubeVideoId`, `:98-117`, zero API calls) keeps working. So the feature **degrades gracefully to the pre-TICKET-8 paste-link experience** rather than breaking. That is verified in code paths and the e2e degraded test, and it makes merging the *code* safe.
+
+**What must NOT merge silently — the required condition:** the Needs-user note (dev report + plan) currently reads, in effect, "provision a key and it works." That materially understates reality: on the **default** 10k quota the live search is non-functional past ~1 modest venue-night. **Before the live key is provisioned/shipped, the TM must:**
+
+1. Amend the Needs-user note to disclose the **~99-searches/day default-quota ceiling** and **recommend filing a YouTube Data API v3 quota-increase request** with Google (the only real fix; caching cannot rescue this at 100 units/search), OR commit a short `QUOTA-BUDGET.md` capturing this math.
+2. This is **doc-only and gates KEY PROVISIONING, not this merge** — the code can merge now; the key is not yet provisioned, so there is a natural gate before any real quota is spent.
+
+Posting this math publicly on the PR + recording the condition here is the "not silently" the mission requires.
+
+## 2. Serverless statefulness — acceptable + honestly documented; follow-up available
+
+The rate limiter (`hits`) and both caches are module-level `Map`s = **per-lambda**. An abuser hitting different warm instances multiplies the effective rate ceiling by the instance count, and cache misses across instances (see §1). The code is **honest** about this ("best-effort per instance", "per serverless instance; best-effort") and the security gate already rated + accepted it at MEDIUM for prototype tier. Acceptable to merge.
+
+**Follow-up worth a ticket (not blocking):** the now-merged TICKET-6 **Upstash store gives a shared cross-instance backing.** Moving the query cache (and ideally the rate-limit buckets) onto it would (a) make the cache actually reduce quota burn cross-venue — the single biggest lever on §1 short of a quota increase — and (b) make the rate limit non-bypassable across instances. Recommend filing this as a hardening ticket to be scheduled alongside the quota-increase request.
+
+## 3. UX under failure — PASS (verified in code paths, not just tests)
+
+Quota exhausted mid-night: `route.ts:103-104` → degraded/quota → `SongSearch.tsx:63-66` sets `degraded`, renders "Busca indisponível — cola o link do YouTube"; the paste path (`:98-117`) resolves locally with no API call and auto-selects, so a patron can still queue a song by pasting a link. Graceful, no crash, no 5xx. e2e `search.spec.ts › degraded search…` covers it.
+
+## 4. Response field pass-through — PASS
+
+`mapSearchResponse` (`youtube-search.ts:103-125`) emits ONLY `{videoId, title, channelTitle, duration, thumbnailUrl}`. No other Google payload field reaches the client; `decodeHtmlEntities` handles only the 5 safe entities and React re-escapes as text (no XSS path — concurs with the security gate).
+
+## 5. Rebase surface vs current main tip (TICKET-6 merged @ `8e51e9b`) — confirmed, nothing semantic missed
+
+- `app/api/search/**` is a **clean add** (main has no `api/search`).
+- `app/page.tsx` diff is scoped to the form section only; the queue-polling contract is preserved — main's GET returns `{items, nowPlaying}` and the page reads only `data.items`. `import type { QueueEntry, Mode } from "@/lib/store"` resolves against main's store. **No semantic conflict with the store refactor.**
+- `.env.example`: genuine **two-creation conflict** (TICKET-6 Redis vars vs TICKET-8 `YOUTUBE_API_KEY=`) → resolve by concatenation. `work/events/2026-07.jsonl` → keep all lines. Both are the known merge-surface items; `mergeable:CONFLICTING` reflects exactly these, not a code defect.
+
+## 6. Verification (opus-rerun)
+
+`npx jest` → **81/81** (5 suites). `npx next build` → compiled clean, `ƒ /api/search` dynamic, bundle grep for key/API clean. CI `gh pr checks 8` → Vercel pass (both required checks terminal-green).
+
+## Opus Verdict
+
+**APPROVE (merge-counting).** The code correctly and cleanly implements the ticket, all ACs hold, gates are green, and the failure mode degrades gracefully and honestly. The one substantive judgment finding — the feature is economically dead on the default quota at real venue scale — is **not a code defect** (the code handles it), so it does not block this merge; it is recorded as a **required doc-only condition on live-key provisioning** (disclose the ~99/day ceiling + recommend a quota-increase request) plus a recommended Upstash-shared-cache/rate-limit hardening follow-up. TM resolves the `.env.example`/events-jsonl conflict at merge.
