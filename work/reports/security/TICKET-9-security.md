@@ -1,9 +1,9 @@
 # TICKET-9 Security Report — multi-room + QR join + table capture
 
 **PR:** #13 · branch `ticket/9-rooms-qr`
-**Date:** 2026-07-06
+**Date:** 2026-07-06 (re-audit of security-fix delta `154e514` same day)
 **Agent:** Cyber Security (D-011)
-**Verdict:** **FAIL**
+**Verdict:** **PASS-WITH-NOTES** (was FAIL; HIGH-1 and MEDIUM-2 addressed — see Re-audit section at bottom)
 
 ---
 
@@ -130,3 +130,49 @@ Blocked on **HIGH-1** (no rate limiting on unauthenticated room creation). MEDIU
 **Recommended follow-ups (do not block merge once HIGH-1 is fixed):**
 - Global login throttle across rooms, Upstash-backed (#14 scope, MEDIUM-1).
 - Hash hostCode at rest before storing in Redis (MEDIUM-2, file a ticket).
+
+---
+
+## Re-audit — security-fix delta (commit `154e514`, tip `57d8a9f`)
+
+**CI:** `build-and-test` **pass** (run 28812827188). **Unit suite:** **233 passed / 15 suites** confirmed locally (adds `room-create-throttle.test.ts` + pass-the-hash coverage).
+
+### HIGH-1 — RESOLVED
+
+`lib/room-create-throttle.ts` (new) + `app/api/rooms/route.ts:18–26, 55–63, 91–99`:
+
+- **Per-IP creation throttle**: dual-bucket LRU pattern (same shape as the login throttle), default 3 creations/IP/hour, env-tunable via `ROOM_CREATE_LIMIT`. Checked before body parse; counts successful creations only.
+- **Dev-exempt gating verified safe**: `throttleEnforced()` returns true whenever `NODE_ENV !== "development"`. Production (`next build`/Vercel sets `production`) and jest (`test`) always enforce; the exemption can only activate under `next dev`, and even there `ROOM_CREATE_LIMIT` opts back in. No leak path to prod.
+- **Global ceiling**: `roomMax()` default 500 (`ROOM_MAX`), checked in `createRoom` (`lib/rooms.ts:228`) before any write; route replies 503 pt-BR. Upstash backend keeps a monotonic `rooms:count` INCR — over-counts only if rooms are ever deleted (none are), i.e., conservative in the safe direction.
+- **Ceiling failure mode — fail-closed**: if Upstash is unreachable, `count()` throws → the route 500s and no room is created. Correct direction for an abuse guard. Two marginal, accepted imperfections: (a) `count()`-then-`create()` is not atomic, so concurrent requests can overshoot ROOM_MAX by the concurrency width; (b) if `incr` fails after `set` succeeded, one room goes uncounted. Both bounded and negligible against a 500 ceiling — INFO only.
+- **XFF residual (unchanged INFO)**: per-IP throttle trusts the first XFF hop; spoofable only on a self-hosted deploy without a trusted proxy. On Vercel the platform overwrites XFF. Even under spoofing, ROOM_MAX still caps total damage.
+- **Room TTL deferred to #14 with a stated, valid reason** (meta expiry must coordinate with the frozen queue store's `room:<id>:{queue,paused}` keys, out of this ticket's write scope). Accepted.
+
+### MEDIUM-2 — RESOLVED (with a residual, see MEDIUM-3)
+
+`lib/rooms.ts:52–60, 213–241` + `lib/host-auth.ts:79–90, 119–131`:
+
+- Room records now store `hostCodeHash` (HMAC-SHA256); the raw code exists ONLY in the `createRoom` return value and the one-time 201 response. Grep across `lib/ app/ components/` confirms **no residual plaintext write path**.
+- `verifyHostToken` hashes the submitted raw code before constant-time comparison for non-default rooms; the legacy `default` env-token path is unchanged (compared raw, never stored).
+- **Pass-the-hash at login genuinely rejected**: submitting the stored hash gets hashed again and fails. Test-covered (`__tests__/host-auth.test.ts:80–81`).
+- Pre-existing room records with the old plaintext `hostCode` field (preview deployments only) resolve to `null` secret → room LOCKED. Fail-closed; no prod data exists yet.
+
+### MEDIUM-3 (NEW, non-blocking) — hash-at-rest does not stop session forgery under the same threat model
+
+**Files:** `lib/rooms.ts:58–60` (`hashHostCode`, hardcoded HMAC key `"cantai-hostcode-v1"`), `lib/host-auth.ts:102–104` (`sessionValue`)
+
+Two related residuals, both requiring the same precondition as MEDIUM-2 (leaked Upstash credentials):
+
+1. **Session forgery from the hash.** `sessionValue` derives deterministically from the stored hash with a message string that is public source (public repo). An attacker holding a leaked `hostCodeHash` computes `HMAC(hash, "cantai-host-session-v1")` themselves and sets it as the cookie — full host control of the room without ever knowing the raw code. Hash-at-rest therefore stops raw-code *disclosure* (codes a venue owner may reuse elsewhere) but not room *takeover*.
+2. **Offline crackability.** The HMAC key is hardcoded in a public repo, so a leaked hash is effectively an unsalted fast hash over a 40-bit space — offline-brute-forceable in minutes on GPU hardware.
+
+Not blocking: same precondition and same blast radius (queue control, no PII) as the original MEDIUM-2, prototype posture, and #14 replaces host codes with accounts. **Remediation direction for #14:** mix a server-side env secret (not in source) into the session derivation (e.g., `HMAC(env.SESSION_SECRET, hash)`), or move to server-side sessions; use a slow hash (bcrypt/scrypt) or a longer code if host codes survive #14.
+
+### Standing items (unchanged)
+
+- **MEDIUM-1** (login throttle rotates per room) — still open, correctly ticketed to #14.
+- **LOW-1** (cookie accumulation) — no action needed.
+
+## Final verdict
+
+**PASS-WITH-NOTES.** HIGH-1 resolved (throttle + ceiling, fail-closed, prod-enforced). MEDIUM-2 resolved as specified in the original remediation. MEDIUM-1 and the new MEDIUM-3 are recorded follow-ups for #14 — MEDIUM severity never blocks a merge by itself (D-011). CI green, 233/233 unit tests pass.
