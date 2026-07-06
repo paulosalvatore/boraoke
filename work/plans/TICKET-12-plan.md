@@ -3,6 +3,7 @@
 - **Date:** 2026-07-06 · **Product:** cantai · **Role:** Dev
 - **Branch:** `ticket/12-telemetry` (worktree `.worktrees/ticket-12`, port 3012)
 - **Plan gate:** pre-authorized by TM dispatch (full spec + delivery instructions provided at spawn; wave rules from TICKET-19 acknowledged). Recorded here for the record.
+- **APPROVED-BY:** auto-approved (TM dispatch pre-authorization; no plan-gate escalation) — validated downstream by gates + TL merge of PR #12
 
 ## Approach
 
