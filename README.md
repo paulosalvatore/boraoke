@@ -56,6 +56,16 @@ The Upstash driver uses [Upstash Redis](https://upstash.com/) via the Vercel Mar
 - **No YouTube search** — patrons paste a YouTube URL (full, short, shorts, embed formats all supported). YouTube Data API text search requires an API key (needs-user item for a future ticket).
 - **No auth / payments** — prototype phase. (Durable queue persistence is available via the `upstash` driver — see [Persistence](#persistence).)
 
+## Telemetry & privacy
+
+Cantai collects a small set of **anonymous** product events (song queued, song played, host actions, searches) to understand how venues actually use the product during free early access. In plain language:
+
+- **Anonymous by design.** Events carry only a random patron id (the same one the queue uses), a room id, and a timestamp. No names, no free text, no IP addresses, no cookies, no ad/tracking SDKs — there is nothing here a consent banner would need to gate, and the design is LGPD-friendly.
+- **No ads.** This data is never sold and never feeds an ad network; it only informs which features venues find valuable.
+- **Never in your way.** Telemetry is fire-and-forget: if it fails, the queue and playback carry on untouched. Operators can disable it entirely with `TELEMETRY_DISABLED=1`.
+
+The full schema and event list are documented in [`work/telemetry/README.md`](work/telemetry/README.md); a weekly human-readable rollup lives in `work/telemetry/rollups/`.
+
 ## Tech notes
 
 - YouTube playback uses the **official YouTube IFrame Player API** only (ToS-compliant). Media is never downloaded or proxied.
