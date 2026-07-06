@@ -36,3 +36,11 @@
 - Vercel preview verified GREEN pre-merge; production deploy of main auto-building; TICKET-2 verification agent dispatched (live URL + e2e + README record).
 - Wave 1 launched in parallel worktrees: TICKET-6 persistence (opus), TICKET-8 search (opus), TICKET-18 TV fullscreen (fable, design-system-bound).
 - API weather note: repeated agent stalls/drops this stretch; all recovered from disk state, one reviewer replaced with a fresh agent.
+
+## 2026-07-06 — PMF FEATURE SET COMPLETE
+
+- PR #14 (TICKET-10 rotation modes) merged — 14/14 PRs of the kickoff scope live at https://cantai-snowy.vercel.app: multi-room+QR, host controls, rotation modes (full/2-per-table/1-per-person + listen interleave + grace), search (degraded until key), feedback widget, telemetry (instrumented, CI-green), TV fullscreen, persistence (memory until Upstash), design system, roadmap/specs, rotation engine.
+- Gate-chain stats for the session: every code PR ran App Tester + Security + sonnet + opus; opus caught 5 substantive pre-merge issues across the session (peek≠play starvation, red Vercel deploy, CI node mismatch, room-creation flood, relay O(N)); security FAILed one PR outright (creation flood) and forced fix rounds on 5 others. No rubber stamps.
+- Filed HIGH follow-up: atomic store RMW (lost-submit window + host-op races). Other follow-ups on board.
+- All worktrees cleaned (ticket-10 last); repo at main + none.
+- Standing needs-user: 🔴 Upstash provisioning (durability), 🟡 HOST_TOKEN env, 🟡 YouTube key + quota increase, GitHub billing (only if repo goes private again).
