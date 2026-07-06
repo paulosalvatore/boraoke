@@ -1,6 +1,6 @@
 # cantai — Board
 
-_Last updated: 2026-07-06 (12 PRs merged — MULTI-ROOM LIVE; PR #12 final rebase)_
+_Last updated: 2026-07-06 (WAVE 2 COMPLETE — 13 PRs merged; wave 3 building; worktree cleanup running)_
 
 ## Needs user (TL)
 
@@ -33,7 +33,8 @@ _Last updated: 2026-07-06 (12 PRs merged — MULTI-ROOM LIVE; PR #12 final rebas
 | TICKET-6 | Durable persistence (wave 1) | DONE | PR #7 merged: full chain (Security+hardening, sonnet+opus APPROVE; opus verified real @upstash/redis semantics). Upstash activates on TL provisioning |
 | TICKET-7 | Host controls (wave 2) | DONE | PR #10 merged: full chain + FIRST real CI-green gate (190/190 local, Actions pass). Public-repo security recheck clean. Needs HOST_TOKEN env to go live |
 | TICKET-9 | Rooms + QR + table (wave 2) | DONE | PR #13 merged: full chain incl. Security FAIL→fix→PASS (creation flood), opus deploy-moment analysis clean. Root URL is now a landing page; legacy queue at /default |
-| TICKET-12 | Telemetry (wave 2) | FINAL REBASE | PR #12: sonnet APPROVE (+binding C1 single-source song_played); instrumentation landing post-#13; opus pass after |
+| TICKET-12 | Telemetry (wave 2) | DONE | PR #12 merged: full chain, C1 verified single-source, fail-open airtight by construction, CI green on merged tip (292/292). #16 follow-ups: patron_joined client beacon, noshow emitter |
+| TICKET-10 | Rotation modes UI (wave 3) | IN PROGRESS | Dev (opus), .worktrees/ticket-10, port 3010 — FINAL PMF feature; integrates packages/rotation-engine per A1-A6 table |
 | TICKET-11 | Feedback widget (wave 2) | DONE | PR #11 merged (151/151 on merged tree). Intake-contract condition + Upstash URGENT recorded |
 | TICKET-3 | Rotation/fairness engine lib | DONE | PR #3 merged: sonnet+opus APPROVE; opus caught real peek≠play starvation bug pre-merge; 47/47 tests |
 | TICKET-4 | Design language + mockups | DONE | PR #2 merged, TL-ratified |
