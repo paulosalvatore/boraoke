@@ -13,6 +13,7 @@ import {
 import {
   dayRange,
   telemetryKeys,
+  TELEMETRY_RETENTION_SECONDS,
   type TelemetryEvent,
 } from "@/lib/telemetry-types";
 
@@ -21,6 +22,13 @@ import {
 class FakeRedis implements TelemetryRedisLike {
   lists = new Map<string, unknown[]>();
   sets = new Map<string, Set<string>>();
+  /** key → seconds, recorded per expire() call (assert TTL behavior, M3). */
+  expireCalls: Array<[string, number]> = [];
+
+  async expire(key: string, seconds: number): Promise<unknown> {
+    this.expireCalls.push([key, seconds]);
+    return 1;
+  }
 
   async rpush(key: string, ...values: unknown[]): Promise<number> {
     const list = this.lists.get(key) ?? [];
@@ -151,6 +159,46 @@ describe.each(drivers)("TelemetryStore contract — %s", (_name, make) => {
     await store.append(ev("song_played", "2026-07-02T00:01:00.000Z"));
     expect(await store.listRange("2026-07-01", "2026-07-01")).toHaveLength(1);
     expect(await store.listRange("2026-07-02", "2026-07-02")).toHaveLength(1);
+  });
+});
+
+describe("Upstash driver — retention TTL (security M3)", () => {
+  it("sets the retention TTL on a day-key's FIRST write only", async () => {
+    const redis = new FakeRedis();
+    const store = new UpstashTelemetryStore(redis);
+    await store.append(ev("song_queued", "2026-07-01T21:00:00.000Z"));
+    await store.append(ev("song_played", "2026-07-01T22:00:00.000Z"));
+    expect(redis.expireCalls).toEqual([
+      [telemetryKeys.day("2026-07-01"), TELEMETRY_RETENTION_SECONDS],
+    ]);
+    // A new day gets its own TTL.
+    await store.append(ev("song_queued", "2026-07-02T21:00:00.000Z"));
+    expect(redis.expireCalls).toHaveLength(2);
+    expect(redis.expireCalls[1][0]).toBe(telemetryKeys.day("2026-07-02"));
+  });
+});
+
+describe("Memory driver — event cap (security L1)", () => {
+  it("drops the oldest events past the cap", async () => {
+    const store = new MemoryTelemetryStore(3);
+    await store.append(ev("song_queued", "2026-07-01T20:00:00.000Z"));
+    await store.append(ev("song_played", "2026-07-01T21:00:00.000Z"));
+    await store.append(ev("song_skipped", "2026-07-02T20:00:00.000Z"));
+    await store.append(ev("patron_joined", "2026-07-03T20:00:00.000Z"));
+    const events = await store.listRange("2026-07-01", "2026-07-03");
+    expect(events).toHaveLength(3);
+    expect(events.map((e) => e.event)).toEqual([
+      "song_played", // 07-01T20:00 was the oldest — dropped
+      "song_skipped",
+      "patron_joined",
+    ]);
+  });
+
+  it("removes an emptied day bucket from listDays", async () => {
+    const store = new MemoryTelemetryStore(1);
+    await store.append(ev("song_queued", "2026-07-01T20:00:00.000Z"));
+    await store.append(ev("song_played", "2026-07-02T20:00:00.000Z"));
+    expect(await store.listDays()).toEqual(["2026-07-02"]);
   });
 });
 

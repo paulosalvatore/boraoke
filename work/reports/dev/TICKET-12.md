@@ -56,3 +56,15 @@ Route paths above are the pre-#9 locations — re-resolve them against #9's rest
 ## Friction
 
 None blocking. Note: `ts-node` needs `--compilerOptions '{"module":"commonjs","moduleResolution":"node"}'` because the app tsconfig uses `bundler` resolution — encoded in the npm script so nobody rediscovers it.
+
+## Security gate follow-up (2026-07-06, PASS-WITH-NOTES findings folded in)
+
+All 3 MEDIUMs + 2 LOWs from `work/reports/security/TICKET-12-security.md` resolved on-branch:
+
+- **M1 (no rate limit on /api/t):** new `lib/telemetry-rate-limit.ts` — house dual-bucket sliding-window limiter (per session key 60/min + per IP 300/min via first `x-forwarded-for` hop, LRU-capped bucket map, standalone implementation of the TICKET-8 pattern). Over-limit → **silent 204 drop, nothing stored** — telemetry stays fail-open.
+- **M2 (stored markdown injection into rollups):** render-side `escapeCell()` in `lib/telemetry-rollup.ts` (escapes `|`, flattens newlines, strips leading markdown control chars — covers historical data) PLUS ingest tightening: `ROOM_ID_RE = [A-Za-z0-9._-]{1,64}` enforced at the beacon.
+- **M3 (no TTL):** `expire` added to `TelemetryRedisLike`; Upstash driver sets a 90-day TTL (`TELEMETRY_RETENTION_DAYS`, documented) on each day-key at first write (rpush len === 1). Retention noted in both privacy docs.
+- **L1 (unbounded memory driver):** `MemoryTelemetryStore` capped at 10k events (`MEMORY_MAX_EVENTS`, injectable for tests), drop-oldest.
+- **L2 (sessionKey shape):** `SESSION_KEY_RE = [A-Za-z0-9._-]{1,64}` enforced at the route (400 on mismatch).
+
+Verification after fixes: `npm test` — **Test Suites: 15 passed, Tests: 243 passed** (+10 new: rate-limit trip → silent 204 + IP-bucket rotation cap + session isolation; escaping golden test with `|`/newline payloads + escapeCell unit; TTL-on-first-write via FakeRedis expire recording; memory cap ×2; sessionKey/roomId charset rejections). `npm run build` — ✓.

@@ -209,10 +209,25 @@ export function computeRollup(
 
 // ── markdown rendering ───────────────────────────────────────────────────────
 
+/**
+ * Escape a user-influenced string for a GFM table cell (security M2, render
+ * side — covers historical/pre-fix stored data too): pipes would break the
+ * table, newlines would inject new markdown sections, and leading markdown
+ * control characters could fake headers/quotes/lists at line start.
+ */
+export function escapeCell(s: string): string {
+  const cleaned = s
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\|/g, "\\|")
+    .replace(/^[\s#>*+`~=-]+/, "")
+    .trim();
+  return cleaned || "(empty)";
+}
+
 function fmtCounts(map: Record<string, number>): string {
   const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
   return entries.length
-    ? entries.map(([k, v]) => `${k}: ${v}`).join(", ")
+    ? entries.map(([k, v]) => `${escapeCell(k)}: ${v}`).join(", ")
     : "—";
 }
 
@@ -232,7 +247,7 @@ export function renderRollupMarkdown(r: WeekRollup): string {
   lines.push("|---|---|---|---|---|");
   for (const room of r.rooms) {
     lines.push(
-      `| ${room.roomId} | ${room.activeDays}/7 | ${room.sessions} | ${room.sessionMinutes} | ${room.events} |`,
+      `| ${escapeCell(room.roomId)} | ${room.activeDays}/7 | ${room.sessions} | ${room.sessionMinutes} | ${room.events} |`,
     );
   }
   lines.push("");
@@ -244,7 +259,7 @@ export function renderRollupMarkdown(r: WeekRollup): string {
   lines.push("|---|---|---|---|---|---|---|---|");
   for (const room of r.rooms) {
     lines.push(
-      `| ${room.roomId} | ${room.uniquePatrons} | ${room.songsQueued} | ${room.songsPlayed} | ${room.songsSkipped} | ${room.submissionsPerPatron} | ${fmtCounts(room.queuedByKind)} | ${fmtCounts(room.queuedByMode)} |`,
+      `| ${escapeCell(room.roomId)} | ${room.uniquePatrons} | ${room.songsQueued} | ${room.songsPlayed} | ${room.songsSkipped} | ${room.submissionsPerPatron} | ${fmtCounts(room.queuedByKind)} | ${fmtCounts(room.queuedByMode)} |`,
     );
   }
   lines.push("");
@@ -253,7 +268,7 @@ export function renderRollupMarkdown(r: WeekRollup): string {
   lines.push("| Room | Host actions by type |");
   lines.push("|---|---|");
   for (const room of r.rooms) {
-    lines.push(`| ${room.roomId} | ${fmtCounts(room.hostActions)} |`);
+    lines.push(`| ${escapeCell(room.roomId)} | ${fmtCounts(room.hostActions)} |`);
   }
   lines.push("");
   lines.push("## Friction");
@@ -264,7 +279,7 @@ export function renderRollupMarkdown(r: WeekRollup): string {
   lines.push("|---|---|---|---|---|");
   for (const room of r.rooms) {
     lines.push(
-      `| ${room.roomId} | ${room.searches} | ${room.searchNoSubmit} | ${room.submitRejectedByCap} | ${room.noshowSkips} |`,
+      `| ${escapeCell(room.roomId)} | ${room.searches} | ${room.searchNoSubmit} | ${room.submitRejectedByCap} | ${room.noshowSkips} |`,
     );
   }
   lines.push("");

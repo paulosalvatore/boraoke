@@ -23,9 +23,15 @@ Derivable metrics (sessions/week, session duration, retention, submissions per p
 
 Telemetry can never block or slow a queue/playback action: `track()` never throws, storage outages are swallowed and counted (`lib/telemetry.ts`), and the `/api/t` beacon returns 202 even when the store is down. Kill switch: `TELEMETRY_DISABLED=1`.
 
-## Storage
+## Storage & retention
 
 Same store family as the queue (memory default, Upstash Redis by env — no extra provisioning). Keys: `telemetry:events:<YYYY-MM-DD>` append-only lists + a `telemetry:days` registry. No cursor/watermark contract — in-list order ≠ commit order under concurrent serverless writes; reads are whole-day ranges.
+
+Raw events are **not kept forever**: each Upstash day-key gets a **90-day TTL** at first write (`TELEMETRY_RETENTION_DAYS`), so raw events age out after the weekly rollups have captured the aggregates. The memory driver is capped at 10k events (drop-oldest).
+
+## Abuse guards on the beacon
+
+`POST /api/t` is dual-bucket rate-limited (per session key + per IP; generous beacon-grade limits) — over-limit events are **silently dropped with 204**, never an error, so telemetry stays out of the app's way. `roomId`/`sessionKey` are charset-allowlisted at ingest, and rollup rendering escapes every user-influenced markdown table cell (defense in depth for historical data).
 
 ## Weekly rollup
 

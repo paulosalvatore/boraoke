@@ -63,6 +63,7 @@ Cantai collects a small set of **anonymous** product events (song queued, song p
 - **Anonymous by design.** Events carry only a random patron id (the same one the queue uses), a room id, and a timestamp. No names, no free text, no IP addresses, no cookies, no ad/tracking SDKs — there is nothing here a consent banner would need to gate, and the design is LGPD-friendly.
 - **No ads.** This data is never sold and never feeds an ad network; it only informs which features venues find valuable.
 - **Never in your way.** Telemetry is fire-and-forget: if it fails, the queue and playback carry on untouched. Operators can disable it entirely with `TELEMETRY_DISABLED=1`.
+- **Not kept forever.** Raw events expire after 90 days; only aggregated weekly numbers (per-venue tables, no individual behavior) outlive them.
 
 The full schema and event list are documented in [`work/telemetry/README.md`](work/telemetry/README.md); a weekly human-readable rollup lives in `work/telemetry/rollups/`.
 

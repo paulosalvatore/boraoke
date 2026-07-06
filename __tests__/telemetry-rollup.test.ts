@@ -5,6 +5,7 @@
  */
 import {
   computeRollup,
+  escapeCell,
   isoWeekOf,
   isoWeekRange,
   renderRollupMarkdown,
@@ -153,5 +154,62 @@ describe("renderRollupMarkdown", () => {
     expect(md).toContain("## Host usage");
     expect(md).toContain("## Friction");
     expect(md).toContain("| bar-a |");
+  });
+
+  it("escapes user-influenced table cells (security M2 — historical data included)", () => {
+    // Malicious values built directly (bypassing today's ingest allowlist) to
+    // model pre-fix stored data: render-side escaping must still neutralize.
+    const events: TelemetryEvent[] = [
+      {
+        event: "patron_joined",
+        roomId: "evil|room\n## injected header",
+        ts: "2026-06-29T20:00:00Z",
+        appVersion: "test",
+        uuid: U1,
+      },
+      {
+        event: "host_action",
+        roomId: "evil|room\n## injected header",
+        ts: "2026-06-29T20:01:00Z",
+        appVersion: "test",
+        props: { action: "skip|drop" },
+      },
+      {
+        event: "song_queued",
+        roomId: "evil|room\n## injected header",
+        ts: "2026-06-29T20:02:00Z",
+        appVersion: "test",
+        uuid: U1,
+        props: { kind: "search\nfake", mode: "# sing" },
+      },
+    ];
+    const md = renderRollupMarkdown(computeRollup(events, "2026-W27"));
+    // No section injection: the payload may survive INSIDE a cell (harmless)
+    // but must never start a line, which is what makes it a markdown header.
+    expect(md).not.toMatch(/^## injected header/m);
+    expect(md.split("\n").filter((l) => l.startsWith("## "))).toHaveLength(4); // exactly the 4 real sections
+    expect(md).toContain("\\|"); // pipes escaped, not raw
+    expect(md).not.toMatch(/^\s*# sing/m); // no leading markdown control chars
+    // Table integrity: every row line still starts AND ends with a pipe.
+    const tableLines = md.split("\n").filter((l) => l.includes("evil"));
+    expect(tableLines.length).toBeGreaterThan(0);
+    for (const line of tableLines) {
+      expect(line.startsWith("| ")).toBe(true);
+      expect(line.endsWith(" |")).toBe(true);
+    }
+  });
+
+  describe("escapeCell", () => {
+    it("neutralizes pipes, newlines, and leading markdown control chars", () => {
+      expect(escapeCell("a|b")).toBe("a\\|b");
+      expect(escapeCell("a\r\nb")).toBe("a b");
+      expect(escapeCell("# header")).toBe("header");
+      expect(escapeCell("> quote")).toBe("quote");
+      expect(escapeCell("- list")).toBe("list");
+      expect(escapeCell("plain-room_1.x")).toBe("plain-room_1.x");
+      expect(escapeCell("")).toBe("(empty)");
+      expect(escapeCell("   ")).toBe("(empty)");
+      expect(escapeCell("###")).toBe("(empty)");
+    });
   });
 });

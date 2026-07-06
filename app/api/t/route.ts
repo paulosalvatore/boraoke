@@ -17,9 +17,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { track } from "@/lib/telemetry";
+import { beaconRateLimitOk } from "@/lib/telemetry-rate-limit";
 import {
   CLIENT_ALLOWED_EVENTS,
-  MAX_ROOM_ID,
+  ROOM_ID_RE,
+  SESSION_KEY_RE,
   UUID_RE,
   type TelemetryEventName,
 } from "@/lib/telemetry-types";
@@ -28,6 +30,20 @@ const MAX_BODY_BYTES = 2048;
 
 function badRequest(error: string) {
   return NextResponse.json({ error }, { status: 400 });
+}
+
+/**
+ * Caller IP for the rate-limit bucket (security M1). On Vercel the first hop
+ * of x-forwarded-for is the client IP (the platform sets/normalizes the
+ * header); x-real-ip is the fallback. "" when neither is present (unit tests).
+ */
+function clientIp(req: NextRequest): string {
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return req.headers.get("x-real-ip")?.trim() ?? "";
 }
 
 export async function POST(req: NextRequest) {
@@ -58,8 +74,10 @@ export async function POST(req: NextRequest) {
     return badRequest("Unknown or non-beaconable event");
   }
 
-  if (typeof roomId !== "string" || !roomId.trim()) {
-    return badRequest("roomId is required");
+  // roomId charset allowlist (security M2, ingest side): keeps markdown/
+  // control characters out of the store entirely.
+  if (typeof roomId !== "string" || !ROOM_ID_RE.test(roomId.trim())) {
+    return badRequest("roomId is required (letters, digits, . _ -; max 64)");
   }
 
   // uuid is optional, but when present it must look like an anonymous uuid —
@@ -72,15 +90,27 @@ export async function POST(req: NextRequest) {
     cleanUuid = uuid.trim();
   }
 
-  const cleanSessionKey =
-    typeof sessionKey === "string" && sessionKey.trim()
-      ? sessionKey.trim()
-      : undefined;
+  // sessionKey shape validation (security L2): opaque short token or absent.
+  let cleanSessionKey: string | undefined;
+  if (sessionKey != null && sessionKey !== "") {
+    if (typeof sessionKey !== "string" || !SESSION_KEY_RE.test(sessionKey.trim())) {
+      return badRequest("sessionKey must match [A-Za-z0-9._-]{1,64} when provided");
+    }
+    cleanSessionKey = sessionKey.trim();
+  }
+
+  // Rate limit (security M1): dual-bucket (session key + IP). Over-limit
+  // events are SILENTLY DROPPED (204, nothing stored) — never an error, the
+  // beacon stays fail-open for the app.
+  const rateKey = cleanUuid ?? cleanSessionKey ?? "";
+  if (!beaconRateLimitOk(rateKey, clientIp(req))) {
+    return new NextResponse(null, { status: 204 });
+  }
 
   // Fire-and-forget: track() never rejects (fail-open by contract), and
   // sanitizeProps inside it reduces `props` to a small scalar bag.
   await track(event as TelemetryEventName, {
-    roomId: roomId.trim().slice(0, MAX_ROOM_ID),
+    roomId: roomId.trim(),
     ...(cleanSessionKey ? { sessionKey: cleanSessionKey } : {}),
     ...(cleanUuid ? { uuid: cleanUuid } : {}),
     ...(props != null && typeof props === "object"

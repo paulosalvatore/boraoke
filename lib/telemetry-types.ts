@@ -77,6 +77,24 @@ export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * roomId charset allowlist (security M2, ingest side): letters, digits,
+ * `.` `_` `-` only — markdown/control characters never enter the store.
+ */
+export const ROOM_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
+/** sessionKey shape (security L2): opaque short token. */
+export const SESSION_KEY_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
+/**
+ * Raw-event retention (security M3): each `telemetry:events:<day>` Upstash
+ * key gets this TTL at first write, so raw events age out after the weekly
+ * rollups have captured them. 90 days ≫ the weekly rollup cadence.
+ */
+export const TELEMETRY_RETENTION_DAYS = 90;
+export const TELEMETRY_RETENTION_SECONDS =
+  TELEMETRY_RETENTION_DAYS * 24 * 60 * 60;
+
+/**
  * Reduce an arbitrary object to a safe props bag: at most MAX_PROP_KEYS keys,
  * scalar values only (string/number/boolean), strings truncated to
  * MAX_PROP_STRING. Objects/arrays/functions/nullish values are dropped.

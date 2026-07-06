@@ -33,8 +33,15 @@ import {
   dayOf,
   dayRange,
   telemetryKeys,
+  TELEMETRY_RETENTION_SECONDS,
   type TelemetryEvent,
 } from "./telemetry-types";
+
+/**
+ * Memory-driver event cap (security L1): the memory driver is dev/CI-only but
+ * still reachable from the public beacon — cap the heap, drop-oldest past it.
+ */
+export const MEMORY_MAX_EVENTS = 10_000;
 
 export interface ListRangeOptions {
   /** Hard cap on returned events (defense against unbounded reads). */
@@ -78,12 +85,24 @@ function sortByTs(events: TelemetryEvent[]): TelemetryEvent[] {
 
 export class MemoryTelemetryStore implements TelemetryStore {
   private buckets = new Map<string, TelemetryEvent[]>();
+  private total = 0;
+
+  constructor(private readonly maxEvents: number = MEMORY_MAX_EVENTS) {}
 
   async append(event: TelemetryEvent): Promise<void> {
     const day = dayOf(event.ts);
     const bucket = this.buckets.get(day) ?? [];
     bucket.push(event);
     this.buckets.set(day, bucket);
+    this.total += 1;
+    // Cap (security L1): drop the oldest event (earliest day bucket, head).
+    while (this.total > this.maxEvents) {
+      const earliestDay = [...this.buckets.keys()].sort()[0];
+      const earliest = this.buckets.get(earliestDay)!;
+      earliest.shift();
+      if (earliest.length === 0) this.buckets.delete(earliestDay);
+      this.total -= 1;
+    }
   }
 
   async listRange(
@@ -108,6 +127,7 @@ export class MemoryTelemetryStore implements TelemetryStore {
 
   async clear(): Promise<void> {
     this.buckets.clear();
+    this.total = 0;
   }
 }
 
@@ -122,6 +142,7 @@ export interface TelemetryRedisLike {
   sadd(key: string, ...members: string[]): Promise<number>;
   smembers(key: string): Promise<string[]>;
   del(...keys: string[]): Promise<number>;
+  expire(key: string, seconds: number): Promise<unknown>;
 }
 
 export class UpstashTelemetryStore implements TelemetryStore {
@@ -132,7 +153,16 @@ export class UpstashTelemetryStore implements TelemetryStore {
     // Event first, then registry — a crash between the two leaves an event in
     // an unregistered day (recoverable: keys are date-derivable), never a
     // registered-but-empty day surprise in `clear`.
-    await this.redis.rpush(telemetryKeys.day(day), event);
+    const len = await this.redis.rpush(telemetryKeys.day(day), event);
+    // Retention (security M3): TTL set at the day-key's FIRST write so raw
+    // events age out after rollups capture them (constant documented in
+    // telemetry-types). rpush returning 1 = the key was just created.
+    if (len === 1) {
+      await this.redis.expire(
+        telemetryKeys.day(day),
+        TELEMETRY_RETENTION_SECONDS,
+      );
+    }
     await this.redis.sadd(telemetryKeys.days, day);
   }
 
