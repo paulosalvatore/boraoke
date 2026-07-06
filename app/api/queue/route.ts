@@ -12,11 +12,14 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET() {
-  const [items, current] = await Promise.all([
+  const [items, current, paused] = await Promise.all([
     store.getQueue(DEFAULT_ROOM),
     store.nowPlaying(DEFAULT_ROOM),
+    store.isPaused(DEFAULT_ROOM),
   ]);
-  return NextResponse.json({ items, nowPlaying: current });
+  // `paused` is additive (TICKET-7): host pause reflected on every polling view.
+  // /tv consumes it to freeze playback; patron submits stay accepted while paused.
+  return NextResponse.json({ items, nowPlaying: current, paused });
 }
 
 export async function POST(req: NextRequest) {
