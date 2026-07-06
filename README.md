@@ -34,15 +34,30 @@ npm run test:e2e
 
 The Playwright e2e test automatically starts the dev server on port 3040 if not already running.
 
+## Persistence
+
+Queue state lives behind a single store interface (`lib/store.ts`) with two interchangeable drivers, selected by environment:
+
+| Driver | When | Durable / shared? |
+|---|---|---|
+| `memory` (default) | local dev & CI — no credentials needed | No — per-process, resets on restart, diverges across serverless instances |
+| `upstash` | production — set when Upstash Redis credentials are present | Yes — shared across all lambda instances, survives redeploys |
+
+Driver resolution:
+
+- `STORE_DRIVER=upstash` or `STORE_DRIVER=memory` forces a driver.
+- Unset: `upstash` when `UPSTASH_REDIS_REST_URL` is configured, otherwise `memory`.
+
+The Upstash driver uses [Upstash Redis](https://upstash.com/) via the Vercel Marketplace integration (HTTP-based, serverless-safe). Provision the database on the Vercel project, which sets `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` in the deployment env. Copy `.env.example` to `.env` to run the Upstash driver locally. All keys are room-scoped (`room:<roomId>:*`), ready for multi-room without a schema change.
+
 ## Prototype limitations
 
-- **Queue state is in-memory only — it can reset AND diverge.** Locally, the queue resets on server restart. On the hosted (Vercel) version, each serverless instance holds its own copy of the queue, so concurrent users may see *different* queues, and any queue can vanish when an instance is recycled. Persistent shared storage (database) is a later-ticket item; until it ships, treat hosted queues as best-effort.
 - **Single room** — one shared queue for the whole venue. Multi-room / venue codes are scope-out.
 - **No YouTube search** — patrons paste a YouTube URL (full, short, shorts, embed formats all supported). YouTube Data API text search requires an API key (needs-user item for a future ticket).
-- **No auth / persistence / payments** — prototype phase.
+- **No auth / payments** — prototype phase. (Durable queue persistence is available via the `upstash` driver — see [Persistence](#persistence).)
 
 ## Tech notes
 
 - YouTube playback uses the **official YouTube IFrame Player API** only (ToS-compliant). Media is never downloaded or proxied.
-- No API keys or secrets required for this prototype.
+- No secrets are required to run the default (memory) driver locally or in CI. Durable persistence (the `upstash` driver) needs Upstash Redis credentials — see [Persistence](#persistence).
 - Port 3040 is dedicated to cantai in the agentic software house fleet.

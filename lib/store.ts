@@ -1,65 +1,39 @@
 /**
- * In-memory queue store — module-level singleton.
+ * Queue store — the SINGLE import point (TICKET-6).
  *
- * PROTOTYPE LIMITATION: state is per-process and per-instance.
- * - Locally: the queue is lost on server restart.
- * - On serverless hosting (Vercel): each lambda instance holds its OWN copy of this
- *   module, so concurrent requests routed to different instances see DIVERGING queues,
- *   and any instance recycle silently drops its queue.
- * Persistent shared storage (database / Redis) is a later-ticket concern.
+ * Nothing outside `lib/store*` imports a driver directly; everyone imports the
+ * `store` singleton and the shared types from here. The implementation swaps
+ * behind this module by env:
  *
- * Single default room for v0 (room concept is reserved for future multi-venue support).
+ *   STORE_DRIVER=upstash            → durable Upstash Redis (production)
+ *   STORE_DRIVER=memory             → in-process memory (local dev / CI)
+ *   (unset) + UPSTASH_REDIS_REST_URL present → upstash
+ *   (unset) + no Upstash creds      → memory  (default; boots with zero secrets)
+ *
+ * All ops are room-scoped and async. Callers pass a roomId — until TICKET-9
+ * introduces multi-room, that is the exported DEFAULT_ROOM.
  */
 
-export type Mode = "sing" | "listen-dance";
+import "server-only";
 
-export interface QueueEntry {
-  id: string; // UUID v4
-  videoId: string;
-  title?: string; // optional free-text title supplied by patron
-  nickname: string;
-  patronUuid: string;
-  table?: string;
-  mode: Mode;
-  submittedAt: string; // ISO 8601
+import { MemoryStore } from "./store/memory";
+import { createUpstashStore } from "./store/upstash";
+import type { QueueStore } from "./store/types";
+
+export type { QueueStore } from "./store/types";
+export { QUEUE_MAX, DEFAULT_ROOM, keys } from "./store/types";
+export type { QueueEntry, Mode } from "./store/types";
+
+function resolveDriver(): "memory" | "upstash" {
+  const explicit = process.env.STORE_DRIVER?.toLowerCase();
+  if (explicit === "upstash" || explicit === "memory") return explicit;
+  // Auto: use Upstash when its REST URL is configured, else memory.
+  return process.env.UPSTASH_REDIS_REST_URL ? "upstash" : "memory";
 }
 
-/** Maximum queue depth — caps unauthenticated memory growth (security MEDIUM #3). */
-export const QUEUE_MAX = 200;
-
-/** Module-level array = the shared queue (one default room). */
-let queue: QueueEntry[] = [];
-
-export function getQueue(): QueueEntry[] {
-  return queue;
+function createStore(): QueueStore {
+  return resolveDriver() === "upstash" ? createUpstashStore() : new MemoryStore();
 }
 
-export function isQueueFull(): boolean {
-  return queue.length >= QUEUE_MAX;
-}
-
-/**
- * Add an entry to the queue.
- * Returns false (and does NOT add) when the queue is at QUEUE_MAX capacity.
- */
-export function addToQueue(entry: QueueEntry): boolean {
-  if (isQueueFull()) return false;
-  queue.push(entry);
-  return true;
-}
-
-/** Advance (skip) the current head of the queue. Returns the new head, or null if empty. */
-export function advanceQueue(): QueueEntry | null {
-  queue.shift();
-  return queue[0] ?? null;
-}
-
-/** Current (now-playing) entry — index 0. */
-export function nowPlaying(): QueueEntry | null {
-  return queue[0] ?? null;
-}
-
-/** Clear queue — test helper only. */
-export function clearQueue(): void {
-  queue = [];
-}
+/** The process-wide store singleton. */
+export const store: QueueStore = createStore();
