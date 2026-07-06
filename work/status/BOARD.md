@@ -1,6 +1,6 @@
 # cantai — Board
 
-_Last updated: 2026-07-06 (WAVE 1 COMPLETE — 9 PRs merged; wave 2 building)_
+_Last updated: 2026-07-06 (10 PRs merged; feedback widget LIVE; PR #10 in review)_
 
 ## Needs user (TL)
 
@@ -30,8 +30,8 @@ _Last updated: 2026-07-06 (WAVE 1 COMPLETE — 9 PRs merged; wave 2 building)_
 | TICKET-0 | Bootstrap | DONE | Repo created 2026-07-05; definition in work/tickets/TICKET-0-bootstrap.md |
 | TICKET-1 | Walking skeleton / prototype core | DONE | PR #4 merged: full gate chain (App Tester PASS, Security MEDIUMs fixed, sonnet+opus APPROVE); CI billing exception recorded |
 | TICKET-6 | Durable persistence (wave 1) | DONE | PR #7 merged: full chain (Security+hardening, sonnet+opus APPROVE; opus verified real @upstash/redis semantics). Upstash activates on TL provisioning |
-| TICKET-7 | Host controls (wave 2) | IN PROGRESS | Dev (opus), .worktrees/ticket-7, port 3007 |
-| TICKET-11 | Feedback widget (wave 2) | IN PROGRESS | Dev (opus), .worktrees/ticket-11, port 3011; sole owner app/layout.tsx |
+| TICKET-7 | Host controls (wave 2) | IN REVIEW | PR #10: App Tester PASS, Security folded (117/117); sonnet review running |
+| TICKET-11 | Feedback widget (wave 2) | DONE | PR #11 merged (151/151 on merged tree). Intake-contract condition + Upstash URGENT recorded |
 | TICKET-3 | Rotation/fairness engine lib | DONE | PR #3 merged: sonnet+opus APPROVE; opus caught real peek≠play starvation bug pre-merge; 47/47 tests |
 | TICKET-4 | Design language + mockups | DONE | PR #2 merged, TL-ratified |
 | TICKET-5 | Roadmap + specs (modes/feedback/monetization) | DONE | PR #1 merged (Reviewer APPROVE after B1/B2 fixes; opus-skip recorded, docs-only) |
