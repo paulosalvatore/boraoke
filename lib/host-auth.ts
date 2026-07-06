@@ -40,7 +40,7 @@ import "server-only";
 
 import { createHmac, timingSafeEqual } from "crypto";
 import type { NextRequest } from "next/server";
-import { DEFAULT_ROOM, getRoom, isValidRoomId } from "./rooms";
+import { DEFAULT_ROOM, getRoom, hashHostCode, isValidRoomId } from "./rooms";
 
 /**
  * Base cookie name (legacy `default` room). Per-room cookies append the room id
@@ -68,17 +68,20 @@ export const DEV_FALLBACK_TOKEN = "cantai-dev-host";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 
 /**
- * The effective host token for a room (async — see file header for precedence).
- * A created room authenticates with its own `hostCode`; the legacy `default`
- * room (no record) falls back to env `HOST_TOKEN` then the dev token. Returns
+ * The effective host SECRET for a room (async — see file header for precedence).
+ * For a created room this is its stored `hostCodeHash` — the raw code is never
+ * persisted (security MEDIUM-2), so the hash is the room's server-side secret:
+ * login hashes the submitted code before comparing (see `verifyHostToken`) and
+ * session values derive from the hash. The legacy `default` room (no record)
+ * falls back to env `HOST_TOKEN` then the dev token, compared RAW. Returns
  * `null` when host controls are locked (production with nothing configured).
  */
 export async function resolveRoomToken(roomId: string): Promise<string | null> {
-  // 1. Per-room host code (the multi-room identity). Only for real rooms — the
-  //    `default` room has no record and stays on the env-token path below.
+  // 1. Per-room host-code hash (the multi-room identity). Only for real rooms —
+  //    the `default` room has no record and stays on the env-token path below.
   if (roomId !== DEFAULT_ROOM) {
     const room = await getRoom(roomId);
-    if (room?.hostCode) return room.hostCode;
+    if (room?.hostCodeHash) return room.hostCodeHash;
     // A non-default room id with no record is not a configured venue → locked,
     // regardless of any global env token (which governs `default` only).
     return null;
@@ -113,14 +116,18 @@ function timingSafeHexEqual(a: string, b: string): boolean {
 }
 
 /**
- * Verify a token submitted at login against the room's configured token.
- * Returns false when host controls are locked or the token is wrong/empty.
+ * Verify a token submitted at login against the room's configured secret.
+ * For real rooms the stored secret is the host-code HASH (MEDIUM-2), so the
+ * submitted raw code is hashed before comparison; the legacy `default` room's
+ * env token is stored nowhere and compared raw. Returns false when host
+ * controls are locked or the token is wrong/empty.
  */
 export async function verifyHostToken(roomId: string, submitted: unknown): Promise<boolean> {
-  const token = await resolveRoomToken(roomId);
-  if (!token) return false;
+  const secret = await resolveRoomToken(roomId);
+  if (!secret) return false;
   if (typeof submitted !== "string" || submitted.length === 0) return false;
-  return timingSafeHexEqual(submitted, token);
+  const comparable = roomId === DEFAULT_ROOM ? submitted : hashHostCode(submitted);
+  return timingSafeHexEqual(comparable, secret);
 }
 
 /** Issue the session cookie value for a room, or null when locked. */

@@ -1,8 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRoom, getPublicRoom, isValidRoomId } from "@/lib/rooms";
+import { clientIpFrom } from "@/lib/host-auth";
+import {
+  isRoomCreateThrottled,
+  registerRoomCreation,
+} from "@/lib/room-create-throttle";
 
 const MAX_BODY_BYTES = 1024;
 const MAX_NAME = 60;
+
+/**
+ * Whether the per-IP creation throttle is enforced. Always in production/test;
+ * skipped in `next dev` UNLESS ROOM_CREATE_LIMIT is explicitly set — local
+ * dev/e2e create rooms freely (mirrors the zero-config dev posture of the
+ * store and host auth), while the env var lets a dev session opt in.
+ */
+function throttleEnforced(): boolean {
+  return (
+    process.env.NODE_ENV !== "development" ||
+    Boolean(process.env.ROOM_CREATE_LIMIT)
+  );
+}
 
 /**
  * GET /api/rooms?id=<roomId> — fetch a client-safe room view (id, name,
@@ -26,8 +44,23 @@ export async function GET(req: NextRequest) {
  * Body: { name: string }. Returns { id, name, hostCode, joinPath }. The
  * hostCode is returned EXACTLY ONCE here (the creation moment) and never again
  * by any endpoint — possession of it is venue identity until accounts (#14).
+ * Only the code's hash is stored (security MEDIUM-2).
+ *
+ * Abuse guards (security HIGH-1) — this is an unauthenticated write:
+ *   429 — per-IP creation throttle (default 3/hour, env ROOM_CREATE_LIMIT).
+ *   503 — global ROOM_MAX ceiling reached ("estamos lotados").
  */
 export async function POST(req: NextRequest) {
+  // Per-IP creation throttle — checked before parsing so throttled callers are
+  // rejected cheaply.
+  const ip = clientIpFrom(req);
+  if (throttleEnforced() && isRoomCreateThrottled(ip)) {
+    return NextResponse.json(
+      { error: "Muitas salas criadas — tente de novo em uma hora." },
+      { status: 429 },
+    );
+  }
+
   const raw = await req.text();
   if (raw.length > MAX_BODY_BYTES) {
     return NextResponse.json({ error: "Request body too large" }, { status: 400 });
@@ -55,13 +88,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const room = await createRoom(name);
+  const created = await createRoom(name);
+  if (!created) {
+    // Global ROOM_MAX ceiling reached (HIGH-1) — polite, non-technical copy.
+    return NextResponse.json(
+      { error: "Estamos lotados por enquanto — tente de novo mais tarde." },
+      { status: 503 },
+    );
+  }
+  registerRoomCreation(ip);
+
   return NextResponse.json(
     {
-      id: room.id,
-      name: room.name,
-      hostCode: room.hostCode,
-      joinPath: `/${room.id}`,
+      id: created.room.id,
+      name: created.room.name,
+      hostCode: created.hostCode,
+      joinPath: `/${created.room.id}`,
     },
     { status: 201 },
   );

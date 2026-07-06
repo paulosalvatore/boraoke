@@ -1,6 +1,14 @@
 # TICKET-9 — Dev Report (multi-room + QR join + table capture)
 
-- **Status:** implemented; build + full unit suite (220) + full e2e (14) green locally; evidence captured. Draft PR #13 open; awaiting CI-green confirmation before requesting the App Tester gate.
+- **Status:** security-gate fixes landed (FAIL → re-verdict requested): HIGH-1 (creation throttle + ROOM_MAX ceiling) fixed, MEDIUM-2 (hash hostCode at rest) fixed. Build + unit (233) + e2e (14) green locally. App Tester PASSED earlier; CI was green pre-fix — re-confirming on the tip.
+
+## Security-gate fixes (2026-07-06, second pass)
+
+- **HIGH-1 (BLOCKING — fixed):** `POST /api/rooms` now has (a) a per-IP creation throttle — `lib/room-create-throttle.ts` (new), house dual-bucket/LRU pattern, default **3 rooms/hour/IP** (env `ROOM_CREATE_LIMIT`), counting successful creations only, 429 with pt-BR copy; skipped in `next dev` unless the env var is set (zero-config local dev/e2e, enforced in prod + jest); and (b) a **global ROOM_MAX ceiling** (default 500, env-tunable) — `createRoom` returns null at the ceiling → 503 "Estamos lotados por enquanto…". Counter: memory = map size; Upstash = monotonic `rooms:count` INCR. (c) Room TTL/idle-expiry documented as a **#14 follow-up** — NOT cheap now because expiring `room:<id>:meta` must be coordinated with the frozen queue store's `room:<id>:{queue,paused}` keys, which this ticket must not touch.
+- **MEDIUM-2 (fixed):** hostCode is no longer stored plaintext. `Room.hostCode` → `Room.hostCodeHash` (HMAC-SHA256, `hashHostCode` in `lib/rooms.ts`); `createRoom` returns `{ room, hostCode }` — the raw code exists only in the one-time 201 response. `resolveRoomToken` returns the stored hash as the room secret; `verifyHostToken` hashes the submitted raw code before the constant-time compare (default room's env token still compared raw). Session values derive from the hash. Pass-the-hash is rejected (test-covered). Ripple stayed inside `lib/rooms.ts` + `lib/host-auth.ts` + tests.
+- **MEDIUM-1 / LOW-1:** no action per the gate — MEDIUM-1 (per-room throttle budget rotation) already ticketed to #14; LOW-1 accepted.
+- New tests: `__tests__/room-create-throttle.test.ts` (limit/expiry/LRU), api-rooms abuse-guard suite (429 at limit, per-IP isolation, explicit limit, 400s don't consume budget, 503 at ceiling), rooms hash-at-rest + ceiling + `roomMax` tests, host-auth hash-verify + pass-the-hash rejection. Suite: **233 passed / 15 suites**; e2e **14/14**; build green.
+- `.env.example`: appended `ROOM_CREATE_LIMIT` / `ROOM_MAX` (append-only per wave rule).
 - **Branch:** `ticket/9-rooms-qr` · worktree `.worktrees/ticket-9` · app port **3013**.
 - **Product:** cantai (public repo).
 

@@ -4,11 +4,25 @@
 import {
   slugify,
   generateHostCode,
+  hashHostCode,
   isValidRoomId,
   createRoom,
   getRoom,
   getPublicRoom,
+  roomMax,
 } from "@/lib/rooms";
+
+const ORIGINAL_ENV = { ...process.env };
+afterEach(() => {
+  process.env = { ...ORIGINAL_ENV };
+});
+
+/** Create a room in tests, asserting the ROOM_MAX ceiling didn't reject it. */
+async function mustCreateRoom(name: string) {
+  const created = await createRoom(name);
+  if (!created) throw new Error("room ceiling hit in test");
+  return created;
+}
 
 describe("isValidRoomId", () => {
   it("accepts lowercase alnum + hyphen ids", () => {
@@ -65,29 +79,60 @@ describe("generateHostCode", () => {
 });
 
 describe("createRoom / getRoom / getPublicRoom", () => {
-  it("creates and reads back a room record", async () => {
-    const room = await createRoom("Bar do Zé");
+  it("creates and reads back a room record (hash at rest, raw code returned once)", async () => {
+    const { room, hostCode } = await mustCreateRoom("Bar do Zé");
     expect(isValidRoomId(room.id)).toBe(true);
     expect(room.name).toBe("Bar do Zé");
-    expect(room.hostCode).toMatch(/^[0-9a-hjkmnp-tv-z]{8}$/);
+    expect(hostCode).toMatch(/^[0-9a-hjkmnp-tv-z]{8}$/);
     expect(room.settings.mode).toBe("full");
 
     const fetched = await getRoom(room.id);
     expect(fetched?.id).toBe(room.id);
-    expect(fetched?.hostCode).toBe(room.hostCode);
+    // Security MEDIUM-2: only the HASH is persisted — the raw code appears
+    // nowhere in the stored record.
+    expect(fetched?.hostCodeHash).toBe(hashHostCode(hostCode));
+    expect(JSON.stringify(fetched)).not.toContain(hostCode);
   });
 
-  it("getPublicRoom never leaks the host code", async () => {
-    const room = await createRoom("Bar Público");
+  it("getPublicRoom never leaks host-code material", async () => {
+    const { room, hostCode } = await mustCreateRoom("Bar Público");
     const pub = await getPublicRoom(room.id);
     expect(pub).toBeTruthy();
     expect(pub).not.toHaveProperty("hostCode");
-    expect(JSON.stringify(pub)).not.toContain(room.hostCode);
+    expect(pub).not.toHaveProperty("hostCodeHash");
+    expect(JSON.stringify(pub)).not.toContain(hostCode);
+    expect(JSON.stringify(pub)).not.toContain(room.hostCodeHash);
   });
 
   it("returns null for unknown / invalid ids", async () => {
     expect(await getRoom("no-such-room")).toBeNull();
     expect(await getRoom("bad id!")).toBeNull();
     expect(await getPublicRoom("no-such-room")).toBeNull();
+  });
+});
+
+describe("global room ceiling (security HIGH-1)", () => {
+  it("roomMax defaults to 500 and honors ROOM_MAX", () => {
+    delete process.env.ROOM_MAX;
+    expect(roomMax()).toBe(500);
+    process.env.ROOM_MAX = "42";
+    expect(roomMax()).toBe(42);
+    process.env.ROOM_MAX = "not-a-number";
+    expect(roomMax()).toBe(500);
+  });
+
+  it("createRoom returns null at the ceiling", async () => {
+    process.env.ROOM_MAX = "0"; // ceiling already reached
+    expect(await createRoom("Bar Lotado")).toBeNull();
+  });
+});
+
+describe("hashHostCode", () => {
+  it("is deterministic, hex, and never equals the raw code", () => {
+    const h = hashHostCode("27pxsz4a");
+    expect(h).toBe(hashHostCode("27pxsz4a"));
+    expect(h).toMatch(/^[0-9a-f]{64}$/);
+    expect(h).not.toBe("27pxsz4a");
+    expect(hashHostCode("different")).not.toBe(h);
   });
 });

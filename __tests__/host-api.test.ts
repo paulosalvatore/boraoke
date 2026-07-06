@@ -226,7 +226,9 @@ describe("per-room scoping (TICKET-9)", () => {
   });
 
   it("logs into a created room with its host code and acts only on that room", async () => {
-    const room = await createRoom("Bar Isolado");
+    const created = await createRoom("Bar Isolado");
+    if (!created) throw new Error("room ceiling hit in test");
+    const { room, hostCode } = created;
     // Wrong code → 401.
     const bad = await login(
       new NextRequest(`http://127.0.0.1:3040/api/host/login?room=${room.id}`, {
@@ -242,7 +244,7 @@ describe("per-room scoping (TICKET-9)", () => {
       new NextRequest(`http://127.0.0.1:3040/api/host/login?room=${room.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: room.hostCode }),
+        body: JSON.stringify({ token: hostCode }),
       }),
     );
     expect(ok.status).toBe(200);

@@ -1,15 +1,26 @@
 /**
- * API tests for /api/rooms (TICKET-9) — create + fetch, and the guarantee that
- * the host code is returned ONLY at creation, never by GET.
+ * API tests for /api/rooms (TICKET-9) — create + fetch, the guarantee that the
+ * host code is returned ONLY at creation (never by GET), and the HIGH-1 abuse
+ * guards (per-IP creation throttle + global ROOM_MAX ceiling).
  */
 import { NextRequest } from "next/server";
 import { POST, GET } from "@/app/api/rooms/route";
 import { isValidRoomId } from "@/lib/rooms";
+import { _clearRoomCreateThrottle } from "@/lib/room-create-throttle";
 
-function postReq(body: unknown): NextRequest {
+const ORIGINAL_ENV = { ...process.env };
+
+beforeEach(() => _clearRoomCreateThrottle());
+afterEach(() => {
+  process.env = { ...ORIGINAL_ENV };
+});
+
+function postReq(body: unknown, ip?: string): NextRequest {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (ip) headers["x-forwarded-for"] = ip;
   return new NextRequest("http://127.0.0.1:3040/api/rooms", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 }
@@ -45,6 +56,53 @@ describe("POST /api/rooms", () => {
   it("400s on invalid JSON", async () => {
     const res = await POST(postReq("{not json"));
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/rooms abuse guards (security HIGH-1)", () => {
+  const IP = "203.0.113.77";
+
+  it("429s after the per-IP creation limit (default 3/hour)", async () => {
+    for (let i = 0; i < 3; i++) {
+      const res = await POST(postReq({ name: `Bar Limite ${i}` }, IP));
+      expect(res.status).toBe(201);
+    }
+    const throttled = await POST(postReq({ name: "Bar Limite 4" }, IP));
+    expect(throttled.status).toBe(429);
+    const body = await throttled.json();
+    expect(body.error).toMatch(/muitas salas/i);
+  });
+
+  it("does not throttle a different IP", async () => {
+    for (let i = 0; i < 3; i++) {
+      await POST(postReq({ name: `Bar Cheio ${i}` }, IP));
+    }
+    const other = await POST(postReq({ name: "Bar Vizinho" }, "198.51.100.42"));
+    expect(other.status).toBe(201);
+  });
+
+  it("honors an explicit ROOM_CREATE_LIMIT", async () => {
+    process.env.ROOM_CREATE_LIMIT = "1";
+    const first = await POST(postReq({ name: "Bar Um" }, "203.0.113.88"));
+    expect(first.status).toBe(201);
+    const second = await POST(postReq({ name: "Bar Dois" }, "203.0.113.88"));
+    expect(second.status).toBe(429);
+  });
+
+  it("failed creations (validation 400s) do not consume the budget", async () => {
+    for (let i = 0; i < 10; i++) {
+      await POST(postReq({ name: "" }, IP)); // 400 — not counted
+    }
+    const ok = await POST(postReq({ name: "Bar Válido" }, IP));
+    expect(ok.status).toBe(201);
+  });
+
+  it("503s with a polite pt-BR message at the global ROOM_MAX ceiling", async () => {
+    process.env.ROOM_MAX = "0"; // ceiling already reached
+    const res = await POST(postReq({ name: "Bar Lotado" }, "203.0.113.99"));
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toMatch(/lotados/i);
   });
 });
 

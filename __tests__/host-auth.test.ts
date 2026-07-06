@@ -19,7 +19,14 @@ import {
   resetLoginThrottle,
   _clearLoginThrottle,
 } from "@/lib/host-auth";
-import { createRoom } from "@/lib/rooms";
+import { createRoom, hashHostCode } from "@/lib/rooms";
+
+/** Create a room in tests, asserting the ROOM_MAX ceiling didn't reject it. */
+async function mustCreateRoom(name: string) {
+  const created = await createRoom(name);
+  if (!created) throw new Error("room ceiling hit in test");
+  return created;
+}
 
 const ROOM = "default";
 const ORIGINAL_ENV = { ...process.env };
@@ -57,11 +64,21 @@ describe("resolveRoomToken — legacy default room (env token)", () => {
 });
 
 describe("resolveRoomToken — per-room host codes (TICKET-9)", () => {
-  it("resolves a created room to its own hostCode, ignoring env HOST_TOKEN", async () => {
+  it("resolves a created room to its host-code HASH, ignoring env HOST_TOKEN", async () => {
     process.env.HOST_TOKEN = "global-env-token";
-    const room = await createRoom("Bar Teste");
-    expect(await resolveRoomToken(room.id)).toBe(room.hostCode);
-    expect(room.hostCode).not.toBe("global-env-token");
+    const { room, hostCode } = await mustCreateRoom("Bar Teste");
+    // Stored secret is the hash — never the raw code (security MEDIUM-2).
+    expect(await resolveRoomToken(room.id)).toBe(hashHostCode(hostCode));
+    expect(await resolveRoomToken(room.id)).not.toBe(hostCode);
+    expect(hostCode).not.toBe("global-env-token");
+  });
+
+  it("verifies the RAW submitted host code against the stored hash", async () => {
+    const { room, hostCode } = await mustCreateRoom("Bar Hash");
+    expect(await verifyHostToken(room.id, hostCode)).toBe(true);
+    expect(await verifyHostToken(room.id, "wrong-code")).toBe(false);
+    // The hash itself must NOT work as a login token (no pass-the-hash).
+    expect(await verifyHostToken(room.id, hashHostCode(hostCode))).toBe(false);
   });
 
   it("LOCKS an unknown non-default room even with a global env token set", async () => {
@@ -71,8 +88,8 @@ describe("resolveRoomToken — per-room host codes (TICKET-9)", () => {
   });
 
   it("a session for room A does not verify for room B", async () => {
-    const a = await createRoom("Bar A");
-    const b = await createRoom("Bar B");
+    const { room: a } = await mustCreateRoom("Bar A");
+    const { room: b } = await mustCreateRoom("Bar B");
     const sessionA = await issueSession(a.id);
     expect(sessionA).toBeTruthy();
     expect(await verifySessionValue(a.id, sessionA)).toBe(true);

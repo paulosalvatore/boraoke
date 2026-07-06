@@ -20,7 +20,7 @@
 
 import "server-only";
 
-import { randomBytes as nodeRandomBytes } from "crypto";
+import { createHmac, randomBytes as nodeRandomBytes } from "crypto";
 import { Redis } from "@upstash/redis";
 import { DEFAULT_ROOM, type Mode } from "./store";
 
@@ -31,15 +31,31 @@ export interface RoomSettings {
 export interface Room {
   id: string;
   name: string;
-  hostCode: string;
+  /**
+   * HMAC-SHA256 of the host code — the raw code is NEVER stored (security
+   * MEDIUM-2): a Redis credential leak yields hashes, not usable codes. The raw
+   * code exists only in the `createRoom` return value (shown once at /new) and
+   * on the submitted side of a login, where it is hashed before comparison.
+   */
+  hostCodeHash: string;
   createdAt: string; // ISO 8601
   settings: RoomSettings;
 }
 
-/** Client-safe room view — never leaks the host code. */
+/** Client-safe room view — never leaks the host-code hash. */
 export type PublicRoom = Pick<Room, "id" | "name" | "createdAt"> & {
   settings: RoomSettings;
 };
+
+/**
+ * Hash a raw host code for storage / comparison. Deterministic keyed HMAC (not
+ * a per-value salt) so the stored hash doubles as the room's session-derivation
+ * secret in `lib/host-auth.ts`. Fine for a 40-bit shown-once prototype secret;
+ * #14's accounts replace host codes entirely.
+ */
+export function hashHostCode(code: string): string {
+  return createHmac("sha256", "cantai-hostcode-v1").update(code).digest("hex");
+}
 
 /** Redis key for a room's metadata record (sits beside `room:<id>:queue`). */
 export const roomKey = (roomId: string) => `room:${roomId}:meta`;
@@ -93,7 +109,10 @@ export function generateHostCode(): string {
 
 interface RoomBackend {
   get(id: string): Promise<Room | null>;
-  set(room: Room): Promise<void>;
+  /** Persist a NEW room record (also advances the creation counter). */
+  create(room: Room): Promise<void>;
+  /** Total rooms ever created (ceiling input — see ROOM_MAX). */
+  count(): Promise<number>;
 }
 
 class MemoryRoomBackend implements RoomBackend {
@@ -101,8 +120,11 @@ class MemoryRoomBackend implements RoomBackend {
   async get(id: string): Promise<Room | null> {
     return this.rooms.get(id) ?? null;
   }
-  async set(room: Room): Promise<void> {
+  async create(room: Room): Promise<void> {
     this.rooms.set(room.id, room);
+  }
+  async count(): Promise<number> {
+    return this.rooms.size;
   }
 }
 
@@ -111,10 +133,23 @@ class UpstashRoomBackend implements RoomBackend {
   async get(id: string): Promise<Room | null> {
     return (await this.redis.get<Room>(roomKey(id))) ?? null;
   }
-  async set(room: Room): Promise<void> {
+  async create(room: Room): Promise<void> {
     await this.redis.set(roomKey(room.id), room);
+    // Monotonic creation counter — the ceiling input. Cheaper and simpler than
+    // SCANning the keyspace; slightly over-counts if rooms are ever deleted
+    // (none are yet — expiry is a #14 follow-up), which only makes the ceiling
+    // MORE conservative, never less.
+    await this.redis.incr(ROOMS_COUNT_KEY);
+  }
+  async count(): Promise<number> {
+    const v = await this.redis.get<number | string>(ROOMS_COUNT_KEY);
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) ? n : 0;
   }
 }
+
+/** Redis key holding the global room-creation counter. */
+export const ROOMS_COUNT_KEY = "rooms:count";
 
 function resolveDriver(): "memory" | "upstash" {
   const explicit = process.env.STORE_DRIVER?.toLowerCase();
@@ -141,13 +176,13 @@ export const roomBackend: RoomBackend = createBackend();
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-/** Fetch a room record (server-side; includes the host code). */
+/** Fetch a room record (server-side; includes the host-code hash). */
 export async function getRoom(roomId: string): Promise<Room | null> {
   if (!isValidRoomId(roomId)) return null;
   return roomBackend.get(roomId);
 }
 
-/** Fetch a client-safe room view (no host code). */
+/** Fetch a client-safe room view (no host-code material). */
 export async function getPublicRoom(roomId: string): Promise<PublicRoom | null> {
   const room = await getRoom(roomId);
   if (!room) return null;
@@ -160,26 +195,49 @@ export async function getPublicRoom(roomId: string): Promise<PublicRoom | null> 
 }
 
 /**
- * Create a room from a venue name. Generates a unique slug (retrying on the
- * rare suffix collision) and a one-time host code. Returns the FULL record —
- * the host code is shown exactly once at the call site and never again.
+ * Global active-room ceiling (security HIGH-1) — the hard cap an IP-rotating
+ * attacker hits after the per-IP throttle. Env-tunable; default 500. Rooms are
+ * never deleted yet, so the counter is monotonic — a room TTL/idle-expiry
+ * (e.g. 7 idle days) is a recorded #14 follow-up: it is NOT cheap today because
+ * expiring `room:<id>:meta` must be coordinated with the frozen queue store's
+ * `room:<id>:{queue,paused}` keys, which this ticket must not touch.
  */
-export async function createRoom(name: string): Promise<Room> {
+export function roomMax(): number {
+  const raw = Number(process.env.ROOM_MAX);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 500;
+}
+
+/** Result of a successful creation — the ONLY place the raw host code exists. */
+export interface CreatedRoom {
+  room: Room;
+  /** Raw one-time host code. Shown once at /new; only its hash is stored. */
+  hostCode: string;
+}
+
+/**
+ * Create a room from a venue name. Generates a unique slug (retrying on the
+ * rare suffix collision) and a one-time host code, storing only the code's
+ * hash (MEDIUM-2). Returns `null` when the global ROOM_MAX ceiling is reached
+ * (HIGH-1) — callers reply 503 "estamos lotados".
+ */
+export async function createRoom(name: string): Promise<CreatedRoom | null> {
+  if ((await roomBackend.count()) >= roomMax()) return null;
   const trimmed = name.trim().slice(0, 60);
   let id = slugify(trimmed);
   // Extremely unlikely 4-char suffix collision — retry a few times.
   for (let attempt = 0; attempt < 5 && (await roomBackend.get(id)); attempt++) {
     id = slugify(trimmed);
   }
+  const hostCode = generateHostCode();
   const room: Room = {
     id,
     name: trimmed || "sala",
-    hostCode: generateHostCode(),
+    hostCodeHash: hashHostCode(hostCode),
     createdAt: new Date().toISOString(),
     settings: { mode: "full" },
   };
-  await roomBackend.set(room);
-  return room;
+  await roomBackend.create(room);
+  return { room, hostCode };
 }
 
 /** The legacy single-queue room id (pre-multi-room prototype). */
