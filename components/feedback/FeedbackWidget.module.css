@@ -1,0 +1,270 @@
+/*
+ * Feedback widget — scoped styles (TICKET-11).
+ * Palette from the TICKET-4 design system (plum / neon-pink / amber). Scoped as
+ * a CSS module so it never collides with the shared globals.css that page.tsx
+ * (#8) and the TV view (#9) consume. No new design language.
+ */
+
+.root {
+  /* design-system tokens, scoped locally */
+  --c-bg: #0d0a14;
+  --c-surface: #1a1424;
+  --c-surface-2: #251c33;
+  --c-border: #372b4a;
+  --c-pink: #ff3d71;
+  --c-pink-deep: #c4285a;
+  --c-amber: #ffc24b;
+  --c-mint: #2ee6a8;
+  --c-text: #f7f3fc;
+  --c-text-muted: #a79bc0;
+  --g-stage: linear-gradient(135deg, #ff3d71, #ffc24b);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+}
+
+/* ── Floating action button ── */
+.fab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--g-stage);
+  color: #1a1424;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(255, 61, 113, 0.35);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.fab:hover {
+  transform: translateY(-1px);
+}
+.fab:active {
+  transform: translateY(0);
+}
+.fabIcon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ── Overlay + sheet ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 0;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 460px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  padding: 20px 20px 28px;
+  color: var(--c-text);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+}
+@media (min-width: 520px) {
+  .overlay {
+    align-items: center;
+  }
+  .sheet {
+    border-radius: 16px;
+    border-bottom: 1px solid var(--c-border);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0;
+}
+.subtitle {
+  font-size: 13px;
+  color: var(--c-text-muted);
+  margin: 2px 0 16px;
+}
+.close {
+  background: none;
+  border: none;
+  color: var(--c-text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* ── Sentiment row (the tap that submits) ── */
+.sentiments {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.sentiment {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 4px;
+  min-height: 72px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-surface-2);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    transform 0.12s ease;
+}
+.sentiment:hover:not(:disabled) {
+  border-color: var(--c-pink);
+}
+.sentiment:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.sentiment:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.sentimentEmoji {
+  font-size: 28px;
+  line-height: 1;
+}
+.sentimentLabel {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ── Optional text ── */
+.textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: 16px; /* 16px prevents iOS zoom */
+  padding: 10px 12px;
+  outline: none;
+  margin-bottom: 12px;
+}
+.textarea:focus {
+  border-color: var(--c-pink);
+}
+
+/* ── Optional category chips ── */
+.chipsLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c-text-muted);
+  margin-bottom: 8px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.chip {
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-surface-2);
+  color: var(--c-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.chip:hover {
+  border-color: var(--c-pink);
+}
+.chipActive {
+  border-color: var(--c-pink);
+  background: rgba(255, 61, 113, 0.16);
+  color: var(--c-text);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--c-text-muted);
+  margin-top: 14px;
+  text-align: center;
+}
+
+/* ── Confirmation / error states ── */
+.confirm {
+  text-align: center;
+  padding: 12px 4px 4px;
+}
+.confirmEmoji {
+  font-size: 40px;
+}
+.confirmTitle {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 8px 0 6px;
+}
+.confirmBody {
+  font-size: 14px;
+  color: var(--c-text-muted);
+  line-height: 1.5;
+  margin: 0 auto 16px;
+  max-width: 320px;
+}
+.confirmBtn {
+  border: none;
+  border-radius: 999px;
+  background: var(--g-stage);
+  color: #1a1424;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px 28px;
+  cursor: pointer;
+}
+.error {
+  color: var(--c-amber);
+  font-size: 13px;
+  text-align: center;
+  margin-top: 12px;
+}
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(247, 243, 252, 0.3);
+  border-top-color: var(--c-text);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
