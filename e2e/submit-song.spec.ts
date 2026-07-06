@@ -11,8 +11,9 @@ test("patron submits a song and it appears in the queue", async ({ page }) => {
   // Clear the queue first via API to start clean
   await page.request.post("/api/queue/advance").catch(() => {});
 
-  // Navigate to patron page
-  await page.goto("/");
+  // Navigate to the (default room) patron page — the global flow moved to
+  // /[room] in TICKET-9; `/` is now the landing.
+  await page.goto("/default");
 
   // Nickname gate — enter nickname and join
   await page.getByLabel("Your nickname").waitFor();

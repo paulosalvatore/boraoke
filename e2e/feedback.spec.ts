@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
  */
 
 test("feedback button is present on the patron page and submits in 2 taps", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/default");
 
   // The app mints a device uuid on boot; the widget reads it at send time.
   const fab = page.getByRole("button", { name: /enviar feedback/i });
@@ -27,7 +27,7 @@ test("feedback button is present on the patron page and submits in 2 taps", asyn
 });
 
 test("feedback button does NOT render on /tv", async ({ page }) => {
-  await page.goto("/tv");
+  await page.goto("/default/tv");
   // Give the client component a beat to mount.
   await page.waitForTimeout(500);
   await expect(page.getByRole("button", { name: /enviar feedback/i })).toHaveCount(0);

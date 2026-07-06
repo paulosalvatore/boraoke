@@ -27,8 +27,8 @@ async function warmUp(page: import("@playwright/test").Page, request: APIRequest
   await request.post("/api/host/reorder", { data: { entryId: "warmup", newIndex: 0 } });
   await request.get("/api/queue");
   // Compile the /admin bundle + its client chunks once.
-  await page.goto("/admin");
-  await page.getByLabel("Token do host").waitFor();
+  await page.goto("/default/admin");
+  await page.getByLabel("Código do host").waitFor();
 }
 
 async function drain(request: APIRequestContext) {
@@ -63,8 +63,8 @@ test("host logs in, removes, reorders, and pauses", async ({ page, request }) =>
   await seed(request, "Charlie", "3");
 
   // ── Login gate ──────────────────────────────────────────────────────────
-  await page.goto("/admin");
-  const tokenInput = page.getByLabel("Token do host");
+  await page.goto("/default/admin");
+  const tokenInput = page.getByLabel("Código do host");
   await tokenInput.waitFor();
   await tokenInput.fill(DEV_TOKEN);
   await page.getByRole("button", { name: /entrar/i }).click();

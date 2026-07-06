@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { store, DEFAULT_ROOM } from "@/lib/store";
-import { requireHost } from "@/lib/host-auth";
+import { store } from "@/lib/store";
+import { requireHost, roomIdFromRequest } from "@/lib/host-auth";
 
 const MAX_BODY_BYTES = 1024;
 
 /**
- * POST /api/host/reorder — move an entry to a new index.
+ * POST /api/host/reorder?room=<id> — move an entry to a new index.
  * Body: { entryId: string, newIndex: number }. Thin wrapper over the frozen
- * store `reorder` op (which clamps the index). Token-guarded.
+ * store `reorder` op (which clamps the index). Token-guarded, room-scoped.
  */
 export async function POST(req: NextRequest) {
-  if (!requireHost(req, DEFAULT_ROOM)) {
+  const roomId = roomIdFromRequest(req);
+  if (roomId === null) {
+    return NextResponse.json({ error: "Invalid room id" }, { status: 400 });
+  }
+  if (!(await requireHost(req, roomId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -37,6 +41,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "newIndex must be an integer" }, { status: 400 });
   }
 
-  const moved = await store.reorder(DEFAULT_ROOM, entryId, newIndex);
+  const moved = await store.reorder(roomId, entryId, newIndex);
   return NextResponse.json({ ok: true, moved });
 }

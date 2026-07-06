@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { store, DEFAULT_ROOM } from "@/lib/store";
-import { requireHost } from "@/lib/host-auth";
+import { store } from "@/lib/store";
+import { requireHost, roomIdFromRequest } from "@/lib/host-auth";
 
 const MAX_BODY_BYTES = 1024;
 
 /**
- * POST /api/host/pause — set the room's paused flag.
+ * POST /api/host/pause?room=<id> — set the room's paused flag.
  * Body: { paused: boolean }. Thin wrapper over the frozen store `setPaused` op.
  * /tv reads the flag via the public queue poll and freezes playback; patron
  * submits keep working while paused (paused only gates playback, not intake).
- * Token-guarded.
+ * Token-guarded, room-scoped.
  */
 export async function POST(req: NextRequest) {
-  if (!requireHost(req, DEFAULT_ROOM)) {
+  const roomId = roomIdFromRequest(req);
+  if (roomId === null) {
+    return NextResponse.json({ error: "Invalid room id" }, { status: 400 });
+  }
+  if (!(await requireHost(req, roomId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -37,6 +41,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "paused must be a boolean" }, { status: 400 });
   }
 
-  await store.setPaused(DEFAULT_ROOM, paused);
+  await store.setPaused(roomId, paused);
   return NextResponse.json({ ok: true, paused });
 }

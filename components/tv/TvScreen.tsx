@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { QueueEntry } from "@/lib/store";
+import QrCode from "@/components/QrCode";
 import styles from "./tv.module.css";
 
 declare global {
@@ -47,8 +48,14 @@ const CHROME_HIDE_MS = 4000;
 
 export default function TvScreen({
   poweredByFooter,
+  roomId,
+  venueName,
 }: {
   poweredByFooter: boolean;
+  /** Room whose queue this screen plays. Omitted = legacy `default` room. */
+  roomId?: string;
+  /** Venue display name for the top bar (falls back to a generic label). */
+  venueName?: string;
 }) {
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [ytReady, setYtReady] = useState(false);
@@ -56,15 +63,25 @@ export default function TvScreen({
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [joinHost, setJoinHost] = useState("");
+  const [joinUrl, setJoinUrl] = useState("");
   const playerRef = useRef<YTPlayer | null>(null);
   const playerDivRef = useRef<HTMLDivElement>(null);
   const currentVideoIdRef = useRef<string | null>(null);
   const chromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ---- join URL (client-only to avoid hydration mismatch) ----
+  // Query suffix so every queue call targets this room (absent = default room).
+  const roomQuery = roomId ? `?room=${encodeURIComponent(roomId)}` : "";
+
+  // ---- join URL + QR target (client-only to avoid hydration mismatch) ----
   useEffect(() => {
     setJoinHost(window.location.host);
-  }, []);
+    // The QR (and printed URL) point at THIS room's patron join page.
+    const path = roomId ? `/${roomId}` : "/";
+    setJoinUrl(`${window.location.origin}${path}`);
+  }, [roomId]);
+
+  // Human-facing short URL (host + room path) for the printed line under the QR.
+  const joinLabel = joinHost ? `${joinHost}${roomId ? `/${roomId}` : ""}` : "cantai";
 
   // ---- Load YouTube IFrame API ----
   useEffect(() => {
@@ -90,14 +107,14 @@ export default function TvScreen({
   // ---- Poll queue ----
   const fetchQueue = useCallback(async () => {
     try {
-      const res = await fetch("/api/queue");
+      const res = await fetch(`/api/queue${roomQuery}`);
       if (!res.ok) return;
       const data = await res.json();
       setQueue(data.items ?? []);
     } catch {
       // network hiccup — retry on next poll
     }
-  }, []);
+  }, [roomQuery]);
 
   useEffect(() => {
     fetchQueue();
@@ -108,8 +125,8 @@ export default function TvScreen({
   // ---- Advance queue on the server and tell player to load the next video ----
   const advance = useCallback(async () => {
     try {
-      await fetch("/api/queue/advance", { method: "POST" });
-      const res = await fetch("/api/queue");
+      await fetch(`/api/queue/advance${roomQuery}`, { method: "POST" });
+      const res = await fetch(`/api/queue${roomQuery}`);
       if (!res.ok) return;
       const data = await res.json();
       const items: QueueEntry[] = data.items ?? [];
@@ -118,7 +135,7 @@ export default function TvScreen({
     } catch {
       return null;
     }
-  }, []);
+  }, [roomQuery]);
 
   // ---- Create/update YT player when ytReady and queue changes ----
   useEffect(() => {
@@ -290,7 +307,7 @@ export default function TvScreen({
       {/* top bar */}
       <div className={styles.topBar}>
         <span className={styles.wordmark}>cantai</span>
-        <span className={styles.venue}>noite de karaokê</span>
+        <span className={styles.venue}>{venueName || "noite de karaokê"}</span>
       </div>
 
       {nowPlaying ? (
@@ -337,10 +354,15 @@ export default function TvScreen({
             )}
             {poweredByFooter && (
               <div className={styles.join} data-testid="tv-powered-by">
-                <div className={styles.qr} aria-label="QR code (placeholder)" />
+                <QrCode
+                  className={styles.qr}
+                  value={joinUrl}
+                  size={120}
+                  title="Escaneia para entrar na fila"
+                />
                 <div>
                   <div className={styles.cta}>Escaneia e canta!</div>
-                  <div className={styles.url}>{joinHost || "cantai"}</div>
+                  <div className={styles.url}>{joinLabel}</div>
                   <div className={styles.poweredBy}>
                     powered by <span className={styles.pbMark}>cantai</span>
                   </div>
@@ -354,8 +376,13 @@ export default function TvScreen({
         <div className={styles.idle} data-testid="tv-idle">
           <span className={styles.wordmark}>cantai</span>
           <div className={styles.idleCta}>Escaneia e canta! 🎤</div>
-          <div className={styles.idleQr} aria-label="QR code (placeholder)" />
-          <div className={styles.idleUrl}>{joinHost || "cantai"}</div>
+          <QrCode
+            className={styles.idleQr}
+            value={joinUrl}
+            size={280}
+            title="Escaneia para entrar na fila"
+          />
+          <div className={styles.idleUrl}>{joinLabel}</div>
           {poweredByFooter && (
             <div className={styles.poweredBy} data-testid="tv-powered-by">
               powered by <span className={styles.pbMark}>cantai</span>

@@ -1,24 +1,19 @@
-import TvScreen from "@/components/tv/TvScreen";
-import { resolvePoweredByFooter } from "@/components/tv/config";
+import { redirect } from "next/navigation";
+import { isValidRoomId, DEFAULT_ROOM } from "@/lib/rooms";
 
 /**
- * /tv — venue screen (TICKET-18).
+ * Legacy /tv → /[room]/tv (TICKET-9).
  *
- * Thin server component: resolves the POWERED_BY_FOOTER flag from the
- * environment at REQUEST time (force-dynamic) so the footer can be disabled
- * without a rebuild (monetization spec AC4), then hands off to the client
- * TvScreen which owns playback, polling, fullscreen and wake lock.
+ * The venue screen is now room-scoped. `/tv?room=<id>` redirects to that room's
+ * screen; a bare `/tv` (or a malformed room param) falls back to the `default`
+ * room so the pre-multi-room prototype screen keeps working. No dead links.
  */
-export const dynamic = "force-dynamic";
-
-export const metadata = {
-  title: "cantai — tv",
-};
-
-export default function TvPage() {
-  return (
-    <TvScreen
-      poweredByFooter={resolvePoweredByFooter(process.env.POWERED_BY_FOOTER)}
-    />
-  );
+export default async function LegacyTvRedirect({
+  searchParams,
+}: {
+  searchParams: Promise<{ room?: string }>;
+}) {
+  const { room } = await searchParams;
+  const target = room && isValidRoomId(room) ? room : DEFAULT_ROOM;
+  redirect(`/${target}/tv`);
 }

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEFAULT_ROOM } from "@/lib/store";
 import {
-  HOST_COOKIE,
+  hostCookieName,
   hostCookieOptions,
   issueSession,
   verifyHostToken,
   isHostConfigured,
+  roomIdFromRequest,
   clientIpFrom,
   isLoginThrottled,
   registerLoginFailure,
@@ -15,14 +15,20 @@ import {
 const MAX_BODY_BYTES = 1024;
 
 /**
- * POST /api/host/login — exchange the host token for an httpOnly session cookie.
- * Body: { token: string }. Returns 200 on success, 401 on a bad/absent token,
- * 429 when the caller's IP exhausted its failure budget (security M-1 throttle),
- * 503 when host controls are not configured (production without HOST_TOKEN).
- * The token is never logged and never returned to the client.
+ * POST /api/host/login?room=<id> — exchange the host code for an httpOnly
+ * session cookie scoped to that room (per-room cookie name, TICKET-9).
+ * Body: { token: string }. 200 on success, 400 on a malformed room id, 401 on a
+ * bad/absent token, 429 when the caller's IP exhausted its failure budget,
+ * 503 when host controls are not configured for the room. The token is never
+ * logged and never returned to the client.
  */
 export async function POST(req: NextRequest) {
-  if (!isHostConfigured(DEFAULT_ROOM)) {
+  const roomId = roomIdFromRequest(req);
+  if (roomId === null) {
+    return NextResponse.json({ error: "Invalid room id" }, { status: 400 });
+  }
+
+  if (!(await isHostConfigured(roomId))) {
     return NextResponse.json(
       { error: "Host controls are not configured for this venue." },
       { status: 503 },
@@ -56,13 +62,13 @@ export async function POST(req: NextRequest) {
       ? (body as Record<string, unknown>).token
       : undefined;
 
-  if (!verifyHostToken(DEFAULT_ROOM, token)) {
+  if (!(await verifyHostToken(roomId, token))) {
     registerLoginFailure(ip);
     return NextResponse.json({ error: "Invalid host token" }, { status: 401 });
   }
   resetLoginThrottle(ip);
 
-  const session = issueSession(DEFAULT_ROOM);
+  const session = await issueSession(roomId);
   if (!session) {
     return NextResponse.json(
       { error: "Host controls are not configured for this venue." },
@@ -71,6 +77,6 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(HOST_COOKIE, session, hostCookieOptions());
+  res.cookies.set(hostCookieName(roomId), session, hostCookieOptions());
   return res;
 }
