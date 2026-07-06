@@ -6,6 +6,10 @@ import {
   issueSession,
   verifyHostToken,
   isHostConfigured,
+  clientIpFrom,
+  isLoginThrottled,
+  registerLoginFailure,
+  resetLoginThrottle,
 } from "@/lib/host-auth";
 
 const MAX_BODY_BYTES = 1024;
@@ -13,6 +17,7 @@ const MAX_BODY_BYTES = 1024;
 /**
  * POST /api/host/login — exchange the host token for an httpOnly session cookie.
  * Body: { token: string }. Returns 200 on success, 401 on a bad/absent token,
+ * 429 when the caller's IP exhausted its failure budget (security M-1 throttle),
  * 503 when host controls are not configured (production without HOST_TOKEN).
  * The token is never logged and never returned to the client.
  */
@@ -21,6 +26,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "Host controls are not configured for this venue." },
       { status: 503 },
+    );
+  }
+
+  // Per-IP failure throttle (security M-1) — blocks unlimited online token
+  // guessing. Checked before parsing so throttled callers are rejected cheaply.
+  const ip = clientIpFrom(req);
+  if (isLoginThrottled(ip)) {
+    return NextResponse.json(
+      { error: "Too many failed attempts — try again in a minute." },
+      { status: 429 },
     );
   }
 
@@ -42,8 +57,10 @@ export async function POST(req: NextRequest) {
       : undefined;
 
   if (!verifyHostToken(DEFAULT_ROOM, token)) {
+    registerLoginFailure(ip);
     return NextResponse.json({ error: "Invalid host token" }, { status: 401 });
   }
+  resetLoginThrottle(ip);
 
   const session = issueSession(DEFAULT_ROOM);
   if (!session) {

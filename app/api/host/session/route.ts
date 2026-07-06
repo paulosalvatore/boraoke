@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_ROOM } from "@/lib/store";
-import { requireHost, isHostConfigured } from "@/lib/host-auth";
+import {
+  requireHost,
+  isHostConfigured,
+  HOST_COOKIE,
+  HOST_COOKIE_PATH,
+} from "@/lib/host-auth";
 
 /**
  * GET /api/host/session — cheap auth probe the admin page calls on load to
@@ -21,6 +26,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST() {
   const res = NextResponse.json({ ok: true });
-  res.cookies.set("cantai_host", "", { path: "/", maxAge: 0 });
+  // Path must match the set-path (HOST_COOKIE_PATH) or the browser won't clear it.
+  res.cookies.set(HOST_COOKIE, "", { path: HOST_COOKIE_PATH, maxAge: 0 });
   return res;
 }

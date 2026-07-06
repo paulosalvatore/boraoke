@@ -1,6 +1,6 @@
 # TICKET-7 — Host controls — Dev Report
 
-- **Status:** IMPLEMENTED — build green, 109 unit tests pass, 3 e2e pass locally. Draft PR opened; ready for testing gate.
+- **Status:** IMPLEMENTED + security-gate PASS-WITH-NOTES items folded — build green, **117 unit tests** pass, 3 e2e pass locally. Draft PR #10 open.
 - **Branch:** `ticket/7-host-controls` · **Worktree:** `.worktrees/ticket-7` · **Base:** `main` (built on merged TICKET-6 persistence)
 
 ## What shipped
@@ -30,6 +30,17 @@ Login gate → dashboard: inert "em breve" mode-switcher placeholder (verbatim d
 ## Deferred (coordination — needs #9)
 
 `/tv` **player-pause consumption** of the new `paused` flag is the one-line follow-up the ticket anticipated ("land pause-consumption after #18 merges"). `app/tv/**` is owned by the in-gate TV PR (#9); editing it here would collide. Backend + public `paused` flag are shipped and e2e-verified. The remaining TV edit (freeze the YT player + show a "pausado" overlay when `data.paused`) lands after #9 merges. AC #4's "submits keep working while paused" is already satisfied (pause gates playback only, not intake) and is asserted in e2e.
+
+## Security gate PASS-WITH-NOTES — items folded (2026-07-05)
+
+Cyber Security passed with notes (report on branch; comment on PR #10). Both cheap items addressed in-branch:
+
+- **M-1 — login rate limiting.** `POST /api/host/login` now carries a per-IP failure throttle (in `lib/host-auth.ts`, standalone — deliberately not importing TICKET-8's limiter per wave file-ownership): 10 failed attempts per 60s window keyed on first-hop `x-forwarded-for` (`x-real-ip` fallback, shared "unknown" bucket) → 429; a successful login resets the bucket; tracked IPs capped at 1000 with oldest-entry eviction so a spoofed-IP flood can't grow memory. **Honest caveat:** in-memory and per-process — on serverless each lambda instance keeps its own buckets, so this is a big attack-surface reduction, not a hard global cap; an edge/Upstash-backed throttle stays a follow-up. Verified live: 10×401 then 429 on the 11th attempt (even with the correct token).
+- **LOW-1 — cookie path least-privilege.** Session cookie narrowed from `path: "/"` to `path: "/api/host"` (`HOST_COOKIE_PATH`). Safe because only `/api/host/*` routes ever read the cookie — the `/admin` page is a public client bundle whose auth state comes from `GET /api/host/session` (itself under the path). The logout clear in `app/api/host/session/route.ts` was updated to the same path (a mismatched clear-path silently fails) and now uses the `HOST_COOKIE` constant instead of a string literal. Verified live: `Set-Cookie: … Path=/api/host; HttpOnly; SameSite=lax`, session probe 200 with the scoped cookie, full browser e2e login flow green.
+
+New tests (+8, 109 → 117): throttle trips at 11th failure / different IP unaffected / success resets / first-hop XFF keying (host-api); helper-level cap+reset, 60s window expiry via fake timers, LRU-eviction bound (host-auth); cookie `path` + `httpOnly` assertion (host-api).
+
+Re-verified after folding: `npm run build` ✓; `npx jest` → 6 suites / **117 passed**; `npx playwright test` → **3 passed** (run on a dedicated port — 3040/3007 were held by parallel wave agents — via an untracked local config, removed after; server stopped).
 
 ## Self-verification (local — CI billing-broken, known needs-user)
 

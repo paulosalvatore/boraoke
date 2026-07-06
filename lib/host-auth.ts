@@ -98,15 +98,96 @@ export function verifySessionValue(roomId: string, cookieValue: unknown): boolea
   return timingSafeHexEqual(cookieValue, sessionValue(token));
 }
 
+/**
+ * Path the session cookie is scoped to (least privilege, security LOW-1):
+ * only the `/api/host/*` routes ever read it — the /admin page itself is a
+ * public client bundle whose auth state comes from `GET /api/host/session`,
+ * which lives under this path.
+ */
+export const HOST_COOKIE_PATH = "/api/host";
+
 /** Cookie options for the host session cookie (httpOnly, prod-secure). */
 export function hostCookieOptions() {
   return {
     httpOnly: true as const,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
-    path: "/",
+    path: HOST_COOKIE_PATH,
     maxAge: SESSION_MAX_AGE_SECONDS,
   };
+}
+
+// ─── Login-failure throttle (security M-1) ───────────────────────────────────
+//
+// Per-IP failure throttle for POST /api/host/login: without it the token is
+// open to unlimited online guessing. In-memory, per-process — on serverless
+// hosting each lambda instance keeps its own buckets, so this is a strong
+// attack-surface reduction, NOT a hard global cap (an edge/Upstash-backed
+// throttle is a recorded follow-up). Same standalone pattern as TICKET-8's
+// search limiter (deliberately not imported — parallel-wave file ownership).
+
+const THROTTLE_MAX_FAILURES = 10;
+const THROTTLE_WINDOW_MS = 60_000;
+/** Cap tracked IPs so a spoofed-IP flood can't grow memory unbounded (LRU). */
+const THROTTLE_MAX_TRACKED_IPS = 1000;
+
+interface FailureBucket {
+  count: number;
+  windowStart: number;
+}
+
+const loginFailures = new Map<string, FailureBucket>();
+
+/**
+ * Best-effort client IP: first hop of x-forwarded-for (set by the platform
+ * proxy on Vercel), x-real-ip fallback, then a shared "unknown" bucket.
+ */
+export function clientIpFrom(req: NextRequest): string {
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return req.headers.get("x-real-ip")?.trim() || "unknown";
+}
+
+/** True when this IP has exhausted its failure budget for the current window. */
+export function isLoginThrottled(ip: string): boolean {
+  const bucket = loginFailures.get(ip);
+  if (!bucket) return false;
+  if (Date.now() - bucket.windowStart >= THROTTLE_WINDOW_MS) {
+    loginFailures.delete(ip); // stale window — expired
+    return false;
+  }
+  return bucket.count >= THROTTLE_MAX_FAILURES;
+}
+
+/** Record one failed login attempt for this IP. */
+export function registerLoginFailure(ip: string): void {
+  const now = Date.now();
+  const bucket = loginFailures.get(ip);
+  if (!bucket || now - bucket.windowStart >= THROTTLE_WINDOW_MS) {
+    // New or expired window. Evict the oldest-inserted entry when at capacity
+    // (Map preserves insertion order — cheap LRU-ish bound).
+    if (!loginFailures.has(ip) && loginFailures.size >= THROTTLE_MAX_TRACKED_IPS) {
+      const oldest = loginFailures.keys().next().value;
+      if (oldest !== undefined) loginFailures.delete(oldest);
+    }
+    loginFailures.delete(ip); // re-insert to refresh insertion order
+    loginFailures.set(ip, { count: 1, windowStart: now });
+    return;
+  }
+  bucket.count += 1;
+}
+
+/** Clear the failure bucket for this IP (successful login). */
+export function resetLoginThrottle(ip: string): void {
+  loginFailures.delete(ip);
+}
+
+/** Test-only helper: wipe all throttle state. */
+export function _clearLoginThrottle(): void {
+  loginFailures.clear();
 }
 
 /**

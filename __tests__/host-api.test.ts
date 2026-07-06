@@ -5,7 +5,12 @@
  */
 import { NextRequest } from "next/server";
 import { store, DEFAULT_ROOM, type QueueEntry } from "@/lib/store";
-import { HOST_COOKIE, issueSession } from "@/lib/host-auth";
+import {
+  HOST_COOKIE,
+  HOST_COOKIE_PATH,
+  issueSession,
+  _clearLoginThrottle,
+} from "@/lib/host-auth";
 
 import { POST as login } from "@/app/api/host/login/route";
 import { POST as skip } from "@/app/api/host/skip/route";
@@ -28,9 +33,13 @@ function seed(...ids: string[]): QueueEntry[] {
 }
 
 /** Build a NextRequest, optionally carrying a valid host session cookie. */
-function req(url: string, opts: { body?: unknown; authed?: boolean } = {}): NextRequest {
+function req(
+  url: string,
+  opts: { body?: unknown; authed?: boolean; ip?: string } = {},
+): NextRequest {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (opts.authed) headers.cookie = `${HOST_COOKIE}=${issueSession(DEFAULT_ROOM)}`;
+  if (opts.ip) headers["x-forwarded-for"] = opts.ip;
   return new NextRequest(`http://127.0.0.1:3040${url}`, {
     method: "POST",
     headers,
@@ -40,6 +49,7 @@ function req(url: string, opts: { body?: unknown; authed?: boolean } = {}): Next
 
 beforeEach(async () => {
   process.env.HOST_TOKEN = TOKEN;
+  _clearLoginThrottle();
   await store.clear(DEFAULT_ROOM);
 });
 afterEach(() => {
@@ -57,6 +67,72 @@ describe("POST /api/host/login", () => {
     const res = await login(req("/api/host/login", { body: { token: "nope" } }));
     expect(res.status).toBe(401);
     expect(res.cookies.get(HOST_COOKIE)?.value).toBeFalsy();
+  });
+
+  it("scopes the session cookie to /api/host, httpOnly (LOW-1)", async () => {
+    const res = await login(req("/api/host/login", { body: { token: TOKEN } }));
+    expect(res.status).toBe(200);
+    const cookie = res.cookies.get(HOST_COOKIE);
+    expect(cookie?.path).toBe(HOST_COOKIE_PATH);
+    expect(cookie?.path).toBe("/api/host");
+    expect(cookie?.httpOnly).toBe(true);
+  });
+});
+
+describe("login failure throttle (security M-1)", () => {
+  const IP = "203.0.113.7";
+
+  it("429s on the 11th attempt after 10 failures from the same IP", async () => {
+    for (let i = 0; i < 10; i++) {
+      const res = await login(
+        req("/api/host/login", { body: { token: "wrong" }, ip: IP }),
+      );
+      expect(res.status).toBe(401);
+    }
+    // 11th attempt is throttled — even with the CORRECT token.
+    const throttled = await login(
+      req("/api/host/login", { body: { token: TOKEN }, ip: IP }),
+    );
+    expect(throttled.status).toBe(429);
+  });
+
+  it("does not throttle a different IP", async () => {
+    for (let i = 0; i < 10; i++) {
+      await login(req("/api/host/login", { body: { token: "wrong" }, ip: IP }));
+    }
+    const other = await login(
+      req("/api/host/login", { body: { token: TOKEN }, ip: "198.51.100.9" }),
+    );
+    expect(other.status).toBe(200);
+  });
+
+  it("resets the failure bucket on a successful login", async () => {
+    for (let i = 0; i < 9; i++) {
+      await login(req("/api/host/login", { body: { token: "wrong" }, ip: IP }));
+    }
+    // Success at attempt 10 (still under the cap) resets the bucket…
+    const ok = await login(req("/api/host/login", { body: { token: TOKEN }, ip: IP }));
+    expect(ok.status).toBe(200);
+    // …so a subsequent failure is a fresh 401, not a 429.
+    const after = await login(
+      req("/api/host/login", { body: { token: "wrong" }, ip: IP }),
+    );
+    expect(after.status).toBe(401);
+  });
+
+  it("uses first-hop x-forwarded-for; unknown callers share one bucket", async () => {
+    for (let i = 0; i < 10; i++) {
+      await login(
+        req("/api/host/login", {
+          body: { token: "wrong" },
+          ip: `${IP}, 10.0.0.1`, // first hop is the client
+        }),
+      );
+    }
+    const sameFirstHop = await login(
+      req("/api/host/login", { body: { token: TOKEN }, ip: `${IP}, 10.9.9.9` }),
+    );
+    expect(sameFirstHop.status).toBe(429);
   });
 });
 
