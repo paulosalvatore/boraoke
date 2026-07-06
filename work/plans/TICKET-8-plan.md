@@ -3,6 +3,7 @@
 - **Date:** 2026-07-05 · **Product:** cantai · **Role:** Dev (wave-1 parallel)
 - **Branch:** `ticket/8-youtube-search` · **Worktree:** `.worktrees/ticket-8` · **App port:** 3008 (e2e override; base config is 3040)
 - **Status:** self-approved under wave-1 autonomy (fully-specified ticket; TM-spawned delivery). Plan recorded for the durable record.
+- **APPROVED-BY:** auto-approved (no plan-gate escalation) — validated downstream by gates + TL merge of PR #8
 
 ## Approach
 
