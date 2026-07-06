@@ -1,0 +1,305 @@
+/*
+ * /tv — 10-foot venue screen styles (TICKET-18).
+ *
+ * Reference: work/design/mockups/tv.html + design-system.md TV scale.
+ * All sizes in vw (1080p reference: 1vw = 19.2px). Floor: nothing under
+ * ~28px @1080p → minimum font-size used anywhere here is 1.5vw (28.8px).
+ * Design tokens are scoped on .tv (not globals) so wave-1 parallel tickets
+ * never collide on app/globals.css.
+ */
+
+.tv {
+  /* design tokens — cantai.css :root, verbatim values */
+  --c-bg: #0d0a14;
+  --c-surface: #1a1424;
+  --c-surface-2: #251c33;
+  --c-border: #372b4a;
+  --c-pink: #ff3d71;
+  --c-pink-deep: #c4285a;
+  --c-amber: #ffc24b;
+  --c-mint: #2ee6a8;
+  --c-text: #f7f3fc;
+  --c-text-muted: #a79bc0;
+  --c-text-dim: #6e6288;
+  --c-danger: #ff5c5c;
+  --g-stage: linear-gradient(135deg, #ff3d71, #ffc24b);
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2vw;
+  padding: 2.5vw 3vw;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Passive screen: cursor vanishes with the chrome (design: cursor hidden) */
+.cursorHidden,
+.cursorHidden * {
+  cursor: none !important;
+}
+
+.wordmark {
+  font-weight: 800;
+  background: var(--g-stage);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.02em;
+}
+
+/* ---- top bar ---- */
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+}
+.topBar .wordmark {
+  font-size: 2.6vw;
+}
+.venue {
+  font-size: 1.5vw;
+  color: var(--c-text-muted);
+  font-weight: 600;
+}
+
+/* ---- main row: video 1.5fr : meta 1fr ---- */
+.main {
+  flex: 1;
+  display: flex;
+  gap: 3vw;
+  min-height: 0;
+}
+.video {
+  flex: 1.5;
+  position: relative;
+  border-radius: 1.2vw;
+  background: #000;
+  border: 2px solid var(--c-border);
+  overflow: hidden;
+  box-shadow: 0 0 3vw rgba(255, 61, 113, 0.18);
+  min-width: 0;
+}
+.video :global(iframe),
+.playerHost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.2vw;
+  min-width: 0;
+}
+.label {
+  font-size: 1.5vw;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--c-amber);
+  text-transform: uppercase;
+}
+.hero {
+  font-size: 4.4vw;
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.singer {
+  font-size: 2.9vw;
+  font-weight: 700;
+}
+.singer .mesa {
+  color: var(--c-text-muted);
+  font-weight: 600;
+}
+
+/* ---- bottom rail: A SEGUIR ×3 + join card ---- */
+.rail {
+  display: flex;
+  align-items: stretch;
+  gap: 1.5vw;
+  flex: none;
+}
+.railLabel {
+  display: flex;
+  align-items: center;
+  font-size: 1.5vw;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--c-text-muted);
+  padding-right: 0.5vw;
+}
+.nextCard {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 1.2vw;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 1vw;
+  padding: 1.2vw 1.5vw;
+  min-width: 0;
+}
+.nextCard .n {
+  font-size: 2.2vw;
+  font-weight: 800;
+  color: var(--c-pink);
+  flex: none;
+}
+.nextCard .info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.nextCard .who {
+  font-size: 2vw;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nextCard .what {
+  font-size: 1.5vw;
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.2vw;
+}
+.nextCard .mesa {
+  font-size: 1.5vw;
+  color: var(--c-amber);
+  font-weight: 700;
+  flex: none;
+}
+
+/* ---- join / powered-by footer card (POWERED_BY_FOOTER) ---- */
+.join {
+  display: flex;
+  align-items: center;
+  gap: 1.2vw;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 1vw;
+  padding: 1vw 1.5vw;
+  flex: none;
+}
+.qr {
+  width: 5.5vw;
+  height: 5.5vw;
+  flex: none;
+  border-radius: 0.5vw;
+  background: repeating-linear-gradient(0deg, #f7f3fc 0 0.5vw, transparent 0 1vw),
+    repeating-linear-gradient(90deg, #f7f3fc 0 0.5vw, #0d0a14 0 1vw);
+}
+.join .cta {
+  font-size: 1.5vw;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.join .url {
+  font-size: 1.5vw;
+  color: var(--c-amber);
+  font-weight: 700;
+}
+.poweredBy {
+  font-size: 1.5vw;
+  color: var(--c-text-dim);
+  font-weight: 600;
+}
+.pbMark {
+  composes: wordmark;
+  font-size: 1.5vw !important; /* wins over .idle .wordmark's 5vw */
+  font-weight: 800;
+}
+
+/* ---- idle state: the recruitment poster ---- */
+.idle {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.4vw;
+  text-align: center;
+  min-height: 0;
+}
+.idle .wordmark {
+  font-size: 5vw;
+}
+.idleCta {
+  font-size: 4.4vw;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+.idleQr {
+  width: 14vw;
+  height: 14vw;
+  border-radius: 1vw;
+  background: repeating-linear-gradient(0deg, #f7f3fc 0 1.2vw, transparent 0 2.4vw),
+    repeating-linear-gradient(90deg, #f7f3fc 0 1.2vw, #0d0a14 0 2.4vw);
+  box-shadow: 0 0 3vw rgba(255, 61, 113, 0.25);
+}
+.idleUrl {
+  font-size: 2.4vw;
+  color: var(--c-amber);
+  font-weight: 700;
+}
+
+/* ---- auto-hiding chrome (fullscreen + skip) ---- */
+.chrome {
+  position: fixed;
+  right: 3vw;
+  bottom: 2.5vw;
+  z-index: 10;
+  display: flex;
+  gap: 1vw;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+.chromeHidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.chromeBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.6vw;
+  padding: 0.7vw 1.4vw;
+  font-size: 1.5vw;
+  font-weight: 700;
+  color: var(--c-text-muted);
+  background: rgba(26, 20, 36, 0.85);
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.chromeBtn:hover {
+  color: var(--c-text);
+  border-color: var(--c-text-dim);
+}
+.chromeHint {
+  display: flex;
+  align-items: center;
+  padding: 0.7vw 1.4vw;
+  font-size: 1.5vw;
+  font-weight: 600;
+  color: var(--c-text-dim);
+  background: rgba(26, 20, 36, 0.85);
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+}
