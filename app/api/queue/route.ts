@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import {
-  addToQueue,
-  getQueue,
-  isQueueFull,
-  nowPlaying,
-  QUEUE_MAX,
-  type Mode,
-} from "@/lib/store";
+import { store, DEFAULT_ROOM, QUEUE_MAX, type Mode } from "@/lib/store";
 import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
 
 // Input limits — this is an unauthenticated endpoint; reject oversized input with 400.
@@ -18,11 +11,12 @@ const MAX_TABLE = 10;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function GET() {
-  return NextResponse.json({
-    items: getQueue(),
-    nowPlaying: nowPlaying(),
-  });
+export async function GET() {
+  const [items, current] = await Promise.all([
+    store.getQueue(DEFAULT_ROOM),
+    store.nowPlaying(DEFAULT_ROOM),
+  ]);
+  return NextResponse.json({ items, nowPlaying: current });
 }
 
 export async function POST(req: NextRequest) {
@@ -101,14 +95,6 @@ export async function POST(req: NextRequest) {
   const resolvedMode: Mode =
     mode === "listen-dance" ? "listen-dance" : "sing";
 
-  // Queue-depth cap — stop unauthenticated memory exhaustion
-  if (isQueueFull()) {
-    return NextResponse.json(
-      { error: `Queue is full (max ${QUEUE_MAX} entries) — try again later` },
-      { status: 429 }
-    );
-  }
-
   const entry = {
     id: uuidv4(),
     videoId: resolvedVideoId,
@@ -121,7 +107,15 @@ export async function POST(req: NextRequest) {
     submittedAt: new Date().toISOString(),
   };
 
-  addToQueue(entry);
+  // Queue-depth cap — stop unauthenticated storage exhaustion. addEntry returns
+  // false (without adding) when the room is at QUEUE_MAX.
+  const added = await store.addEntry(DEFAULT_ROOM, entry);
+  if (!added) {
+    return NextResponse.json(
+      { error: `Queue is full (max ${QUEUE_MAX} entries) — try again later` },
+      { status: 429 }
+    );
+  }
 
   return NextResponse.json({ entry }, { status: 201 });
 }

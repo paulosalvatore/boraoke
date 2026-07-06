@@ -3,7 +3,7 @@
  * The handler only uses req.text(), so a standard Request suffices.
  */
 import { POST } from "@/app/api/queue/route";
-import { clearQueue, getQueue } from "@/lib/store";
+import { store, DEFAULT_ROOM } from "@/lib/store";
 import type { NextRequest } from "next/server";
 
 const VALID_UUID = "123e4567-e89b-42d3-a456-426614174000";
@@ -28,21 +28,21 @@ function validBody(overrides: Record<string, unknown> = {}) {
 }
 
 describe("POST /api/queue validation", () => {
-  beforeEach(() => {
-    clearQueue();
+  beforeEach(async () => {
+    await store.clear(DEFAULT_ROOM);
   });
 
   it("accepts a valid entry", async () => {
     const res = await POST(makeRequest(validBody()));
     expect(res.status).toBe(201);
-    expect(getQueue()).toHaveLength(1);
+    expect(await store.getQueue(DEFAULT_ROOM)).toHaveLength(1);
   });
 
   describe("videoId validation on the direct path (MEDIUM #1)", () => {
     it("rejects a direct videoId that is not 11 chars", async () => {
       const res = await POST(makeRequest(validBody({ videoId: "short" })));
       expect(res.status).toBe(400);
-      expect(getQueue()).toHaveLength(0);
+      expect(await store.getQueue(DEFAULT_ROOM)).toHaveLength(0);
     });
 
     it("rejects a direct videoId with invalid characters", async () => {
@@ -107,9 +107,9 @@ describe("POST /api/queue validation", () => {
   describe("queue-full rejection (MEDIUM #3, API level)", () => {
     it("returns 429 when the queue is full", async () => {
       // Fill the queue via the store directly for speed
-      const { addToQueue, QUEUE_MAX } = await import("@/lib/store");
+      const { QUEUE_MAX } = await import("@/lib/store");
       for (let i = 0; i < QUEUE_MAX; i++) {
-        addToQueue({
+        await store.addEntry(DEFAULT_ROOM, {
           id: `e${i}`,
           videoId: VALID_VIDEO_ID,
           nickname: "Filler",
@@ -120,7 +120,7 @@ describe("POST /api/queue validation", () => {
       }
       const res = await POST(makeRequest(validBody()));
       expect(res.status).toBe(429);
-      expect(getQueue()).toHaveLength(QUEUE_MAX);
+      expect(await store.getQueue(DEFAULT_ROOM)).toHaveLength(QUEUE_MAX);
     });
   });
 });
