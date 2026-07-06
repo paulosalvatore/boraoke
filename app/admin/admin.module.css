@@ -1,0 +1,260 @@
+/* Admin (host controls) — TICKET-7. Desktop/tablet-first per design §5.
+   Reuses the globals.css token palette; adds host-only layout + a couple of
+   accent tints (pink/amber) matching the design mockup intent. */
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* Top bar */
+.top {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+.wordmark {
+  font-size: 1.75rem;
+  font-weight: 800;
+}
+.chip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.chipLive {
+  color: #4ade80;
+  border-color: #16a34a55;
+  background: #16a34a1a;
+}
+.chipPaused {
+  color: #fbbf24;
+  border-color: #f59e0b66;
+  background: #f59e0b1a;
+}
+.spacer { flex: 1; }
+.tvLink {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.tvLink:hover { border-color: var(--accent); text-decoration: none; }
+
+.label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 0.6rem;
+}
+
+/* Mode switcher — inert placeholder (TICKET-10 fills this) */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.85rem;
+}
+.modeOption {
+  padding: 1rem;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  opacity: 0.55;
+}
+.modeName { font-size: 1rem; font-weight: 800; }
+.modeRule {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+  line-height: 1.4;
+}
+.soonNote {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
+.soonTag {
+  display: inline-block;
+  margin-top: 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fbbf24;
+  border: 1px solid #f59e0b55;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+/* Two-column layout */
+.cols {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 760px) {
+  .modes { grid-template-columns: 1fr; }
+  .cols { grid-template-columns: 1fr; }
+}
+
+/* Queue panel */
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+}
+.rowPlaying {
+  border-color: #f59e0b88;
+  background: #f59e0b12;
+}
+.pos {
+  font-weight: 800;
+  font-size: 1.1rem;
+  min-width: 1.75rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+.posPlaying { color: #fbbf24; }
+.songInfo { flex: 1; min-width: 0; }
+.who { font-weight: 600; font-size: 0.95rem; }
+.meta { color: var(--text-muted); font-weight: 400; font-size: 0.85rem; }
+.song {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowActions { display: flex; align-items: center; gap: 0.35rem; }
+
+.moveBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 4px 7px;
+}
+.moveBtn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.moveBtn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.removeBtn {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 6px 8px;
+}
+.removeBtn:hover { text-decoration: underline; }
+.confirm { display: flex; align-items: center; gap: 0.35rem; }
+.confirmYes {
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 5px 9px;
+}
+.confirmNo {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 5px 9px;
+}
+
+.emptyQueue {
+  color: var(--text-muted);
+  padding: 1.5rem 0.5rem;
+  text-align: center;
+}
+
+/* Controls */
+.controls { display: flex; gap: 0.6rem; margin-top: 0.9rem; }
+.ctrlBtn {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.65rem 1rem;
+}
+.ctrlBtn:hover:not(:disabled) { border-color: var(--accent); }
+.ctrlBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ctrlBtnActive {
+  border-color: #f59e0b88;
+  background: #f59e0b1a;
+  color: #fbbf24;
+}
+
+/* Right column */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+  padding: 0.9rem 0.4rem;
+}
+.statN { font-size: 1.6rem; font-weight: 800; }
+.statL {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.joinCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-top: 1rem;
+}
+.joinUrl { margin-top: 0.5rem; font-weight: 700; color: #fbbf24; }
+
+/* Login gate */
+.gate {
+  max-width: 380px;
+  margin: 4rem auto;
+  text-align: center;
+}
+.gate h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
+.gate p { color: var(--text-muted); margin-bottom: 1.5rem; }
+.gateForm { display: flex; flex-direction: column; gap: 0.75rem; text-align: left; }
+.error { color: var(--accent); font-size: 0.85rem; }
