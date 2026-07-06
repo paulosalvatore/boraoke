@@ -77,9 +77,11 @@ test.describe("/tv", () => {
     expect(heroStyle.fontSize).toBeGreaterThanOrEqual(80);
     expect(heroStyle.fontWeight).toBe("800");
 
-    // singer line with table
-    await expect(page.getByText("Beto")).toBeVisible();
-    await expect(page.getByText("· Mesa 3")).toBeVisible();
+    // singer line with table (scope to the singer element — the TICKET-10 30s
+    // "get to the mic" call also renders the nickname, so a bare getByText is
+    // ambiguous)
+    await expect(page.getByTestId("tv-singer")).toContainText("Beto");
+    await expect(page.getByTestId("tv-singer")).toContainText("· Mesa 3");
 
     // up-next rail: exactly 3 cards even with a deeper queue
     await expect(page.getByText("A SEGUIR")).toBeVisible();

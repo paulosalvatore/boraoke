@@ -124,6 +124,35 @@
   color: var(--c-text-muted);
   font-weight: 600;
 }
+/* TICKET-10: 30s "get to the mic" no-show call */
+.micCall {
+  margin-top: 1.2vw;
+  font-size: 2.1vw;
+  font-weight: 800;
+  color: #0f0f14;
+  background: var(--c-amber);
+  border-radius: 12px;
+  padding: 0.6vw 1.1vw;
+  display: inline-block;
+  animation: micPulse 1s ease-in-out infinite;
+}
+@keyframes micPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
+}
+/* TICKET-10: mode-change reorder toast */
+.reorderNotice {
+  position: absolute;
+  top: 8vh;
+  right: 3vw;
+  font-size: 1.6vw;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(230, 57, 70, 0.92);
+  border-radius: 999px;
+  padding: 0.6vw 1.4vw;
+  z-index: 20;
+}
 
 /* ---- bottom rail: A SEGUIR ×3 + join card ---- */
 .rail {

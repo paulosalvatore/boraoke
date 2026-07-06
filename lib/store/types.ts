@@ -71,6 +71,17 @@ export interface QueueStore {
    */
   reorder(roomId: string, entryId: string, newIndex: number): Promise<boolean>;
 
+  /**
+   * Replace the room's queue contents wholesale, in the given order (TICKET-10,
+   * additive — the wave-2 interface freeze ended with wave 2). This is the bulk
+   * op the rotation re-lay uses: ONE store call regardless of queue depth,
+   * instead of N sequential `reorder` round-trips (security MEDIUM-1, PR #14).
+   * An empty array empties the queue. Callers pass a permutation of the queue
+   * they just read; last-writer-wins on races (the same read-modify-write
+   * semantics `reorder` already has).
+   */
+  rewrite(roomId: string, entries: QueueEntry[]): Promise<void>;
+
   /** Set the room's paused flag (host control, TICKET-7). */
   setPaused(roomId: string, paused: boolean): Promise<void>;
 

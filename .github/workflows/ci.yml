@@ -13,11 +13,17 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          # 24: unflagged TypeScript type-stripping (≥23.6) so the
+          # rotation-engine's `node --test` runs its .ts suite with no install.
+          node-version: "24"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Rotation engine unit tests (TICKET-10 — pure lib, zero-dep)
+        run: node --test
+        working-directory: packages/rotation-engine
 
       - name: Build
         run: npm run build

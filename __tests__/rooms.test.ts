@@ -84,7 +84,7 @@ describe("createRoom / getRoom / getPublicRoom", () => {
     expect(isValidRoomId(room.id)).toBe(true);
     expect(room.name).toBe("Bar do Zé");
     expect(hostCode).toMatch(/^[0-9a-hjkmnp-tv-z]{8}$/);
-    expect(room.settings.mode).toBe("full");
+    expect(room.settings.mode).toBe("full-karaoke"); // TICKET-10 default
 
     const fetched = await getRoom(room.id);
     expect(fetched?.id).toBe(room.id);

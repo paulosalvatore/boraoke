@@ -64,10 +64,17 @@ export default function TvScreen({
   const [chromeVisible, setChromeVisible] = useState(true);
   const [joinHost, setJoinHost] = useState("");
   const [joinUrl, setJoinUrl] = useState("");
+  const [reorderNotice, setReorderNotice] = useState("");
+  const [micCallSecs, setMicCallSecs] = useState<number | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const playerDivRef = useRef<HTMLDivElement>(null);
   const currentVideoIdRef = useRef<string | null>(null);
   const chromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevModeRef = useRef<string | null>(null);
+  const micCallEntryRef = useRef<string | null>(null);
+
+  /** Length of the TV "get to the mic" no-show call window (spec §no-shows). */
+  const MIC_CALL_SECONDS = 30;
 
   // Query suffix so every queue call targets this room (absent = default room).
   const roomQuery = roomId ? `?room=${encodeURIComponent(roomId)}` : "";
@@ -111,6 +118,14 @@ export default function TvScreen({
       if (!res.ok) return;
       const data = await res.json();
       setQueue(data.items ?? []);
+      const nextMode: string | null = data.mode ?? null;
+      if (nextMode) {
+        if (prevModeRef.current && prevModeRef.current !== nextMode) {
+          setReorderNotice("Fila reordenada — modo mudou");
+          window.setTimeout(() => setReorderNotice(""), 5000);
+        }
+        prevModeRef.current = nextMode;
+      }
     } catch {
       // network hiccup — retry on next poll
     }
@@ -299,6 +314,33 @@ export default function TvScreen({
   const singerLine = (entry: QueueEntry) =>
     entry.mode === "listen-dance" ? `${entry.nickname} 🎶` : entry.nickname;
 
+  // TICKET-10: 30s "get to the mic" call whenever a NEW sing entry reaches the
+  // stage (spec §no-shows). Counts down once per entry; the host's "🙅 Não veio"
+  // control grants the grace re-queue during this window.
+  const nowPlayingId = nowPlaying?.id ?? null;
+  const nowPlayingIsSing = nowPlaying?.mode === "sing";
+  useEffect(() => {
+    if (!nowPlayingId || !nowPlayingIsSing) {
+      setMicCallSecs(null);
+      micCallEntryRef.current = null;
+      return;
+    }
+    if (micCallEntryRef.current === nowPlayingId) return; // already announced
+    micCallEntryRef.current = nowPlayingId;
+    setMicCallSecs(MIC_CALL_SECONDS);
+    const t = setInterval(() => {
+      setMicCallSecs((s) => {
+        if (s === null) return null;
+        if (s <= 1) {
+          clearInterval(t);
+          return null;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [nowPlayingId, nowPlayingIsSing]);
+
   return (
     <div
       className={`${styles.tv} ${!chromeVisible ? styles.cursorHidden : ""}`}
@@ -322,14 +364,26 @@ export default function TvScreen({
               <h1 className={styles.hero} data-testid="tv-hero">
                 {nowPlaying.title ?? `youtu.be/${nowPlaying.videoId}`}
               </h1>
-              <div className={styles.singer}>
+              <div className={styles.singer} data-testid="tv-singer">
                 🎤 {singerLine(nowPlaying)}
                 {nowPlaying.table ? (
                   <span className={styles.mesa}> · Mesa {nowPlaying.table}</span>
                 ) : null}
               </div>
+              {micCallSecs !== null && (
+                <div className={styles.micCall} data-testid="tv-mic-call" role="status">
+                  🎤 {nowPlaying.nickname}
+                  {nowPlaying.table ? `, Mesa ${nowPlaying.table}` : ""} — vá para o
+                  microfone! <strong>{micCallSecs}s</strong>
+                </div>
+              )}
             </div>
           </div>
+          {reorderNotice && (
+            <div className={styles.reorderNotice} data-testid="tv-reorder-toast" role="status">
+              {reorderNotice}
+            </div>
+          )}
 
           {/* bottom rail */}
           <div className={styles.rail}>

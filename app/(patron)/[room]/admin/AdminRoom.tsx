@@ -3,18 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import type { QueueEntry } from "@/lib/store";
 import { computeStats } from "@/components/host/stats";
+import ModeSwitcher from "@/components/host/ModeSwitcher";
+import { DEFAULT_ROOM_MODE, modeLabel, type RoomMode } from "@/lib/rotation-modes";
 import QrCode from "@/components/QrCode";
 import styles from "./admin.module.css";
 
 const POLL_INTERVAL = 3000;
-
-/** Inert mode-switcher copy — verbatim from the design mockup. TICKET-10 wires
- *  these up; here they render as a disabled "em breve" placeholder. */
-const MODES = [
-  { name: "🎤 Karaokê completo", rule: "Todo mundo entra na fila, ordem de chegada." },
-  { name: "🍻 2 por mesa", rule: "No máximo 2 músicas na fila por mesa; a mesa volta quando tocar." },
-  { name: "🙋 1 por pessoa", rule: "Cada pessoa mantém 1 música na fila; rodízio justo por identidade." },
-];
 
 type Auth = "checking" | "gate" | "authed";
 
@@ -41,6 +35,8 @@ export default function AdminRoom({
   // Dashboard state
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [paused, setPaused] = useState(false);
+  const [mode, setMode] = useState<RoomMode>(DEFAULT_ROOM_MODE);
+  const [modeMsg, setModeMsg] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [joinUrl, setJoinUrl] = useState("");
@@ -72,6 +68,7 @@ export default function AdminRoom({
       const data = await res.json();
       setQueue(data.items ?? []);
       setPaused(Boolean(data.paused));
+      if (data.mode) setMode(data.mode as RoomMode);
     } catch {
       // network hiccup — next poll retries
     }
@@ -126,7 +123,30 @@ export default function AdminRoom({
     }
   }
 
+  async function changeMode(next: RoomMode) {
+    if (next === mode || busy) return;
+    setBusy(true);
+    setMode(next); // optimistic — poll reconciles
+    try {
+      const res = await fetch(`/api/host/mode${roomQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: next }),
+      });
+      if (res.ok) {
+        setModeMsg(`Modo alterado para ${modeLabel(next)} — fila reordenada.`);
+        window.setTimeout(() => setModeMsg(""), 4000);
+      }
+      await fetchQueue();
+    } catch {
+      await fetchQueue(); // revert to server truth
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const skip = () => hostAction("/api/host/skip");
+  const skipNoShow = () => hostAction("/api/host/skip", { grace: true });
   const togglePause = () => hostAction("/api/host/pause", { paused: !paused });
   const remove = (id: string) => {
     setConfirmingId(null);
@@ -197,28 +217,13 @@ export default function AdminRoom({
         </a>
       </header>
 
-      {/* Mode switcher — inert placeholder (TICKET-10) */}
-      <section aria-label="Modo da noite">
-        <span className={styles.label}>Modo da noite</span>
-        <div className={styles.modes}>
-          {MODES.map((m, i) => (
-            <div
-              key={m.name}
-              className={styles.modeOption}
-              role="radio"
-              aria-checked="false"
-              aria-disabled="true"
-            >
-              <div className={styles.modeName}>{m.name}</div>
-              <div className={styles.modeRule}>{m.rule}</div>
-              {i === 0 && <span className={styles.soonTag}>em breve</span>}
-            </div>
-          ))}
-        </div>
-        <p className={styles.soonNote}>
-          Troca de modo chega no rodízio inteligente (em breve).
+      {/* Mode switcher — live (TICKET-10) */}
+      <ModeSwitcher active={mode} onChange={changeMode} disabled={busy} />
+      {modeMsg && (
+        <p className={styles.soonNote} role="status" data-testid="mode-toast">
+          {modeMsg}
         </p>
-      </section>
+      )}
 
       <div className={styles.cols}>
         {/* Left: queue + controls */}
@@ -308,6 +313,14 @@ export default function AdminRoom({
               disabled={busy || queue.length === 0}
             >
               ⏭ Pular música
+            </button>
+            <button
+              className={styles.ctrlBtn}
+              onClick={skipNoShow}
+              disabled={busy || queue.length === 0 || queue[0]?.mode === "listen-dance"}
+              title="Cantor não veio: pula e devolve com 1 chance no próximo rodízio"
+            >
+              🙅 Não veio
             </button>
           </div>
         </section>

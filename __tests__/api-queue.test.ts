@@ -118,7 +118,17 @@ describe("POST /api/queue validation", () => {
           submittedAt: new Date().toISOString(),
         });
       }
-      const res = await POST(makeRequest(validBody()));
+      // Submit a DISTINCT entry (different uuid + video) so the rejection is the
+      // capacity 429, not the TICKET-10 duplicate 409 (the filler rows all share
+      // VALID_UUID/VALID_VIDEO_ID).
+      const res = await POST(
+        makeRequest(
+          validBody({
+            videoId: "abcdefghijk",
+            patronUuid: "11111111-1111-4111-8111-111111111111",
+          }),
+        ),
+      );
       expect(res.status).toBe(429);
       expect(await store.getQueue(DEFAULT_ROOM)).toHaveLength(QUEUE_MAX);
     });

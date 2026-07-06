@@ -79,7 +79,9 @@ test("two rooms stay isolated and the TV shows the room's song", async ({ page }
   // Room A's TV shows the song + table metadata (AC3/AC4).
   await page.goto(`/${roomA}/tv`);
   await expect(page.getByTestId("tv-hero")).toContainText("Musica da Sala A", { timeout: 8000 });
-  await expect(page.getByText(/Mesa 7/)).toBeVisible();
+  // Scope to the singer line — the TICKET-10 "get to the mic" call also shows the
+  // table, so a bare /Mesa 7/ getByText is ambiguous.
+  await expect(page.getByTestId("tv-singer")).toContainText("Mesa 7");
 
   // Room B's TV is idle (the recruitment poster) — no song.
   await page.goto(`/${roomB}/tv`);

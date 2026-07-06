@@ -223,6 +223,49 @@ describe.each(drivers)("QueueStore conformance — %s", (_name, make) => {
     });
   });
 
+  describe("rewrite (bulk replace, TICKET-10 — security MEDIUM-1)", () => {
+    beforeEach(async () => {
+      await s.addEntry(ROOM, makeEntry({ id: "a" }));
+      await s.addEntry(ROOM, makeEntry({ id: "b" }));
+      await s.addEntry(ROOM, makeEntry({ id: "c" }));
+    });
+    it("replaces the queue in the given order (one bulk op)", async () => {
+      const current = await s.getQueue(ROOM);
+      const byId = new Map(current.map((e) => [e.id, e]));
+      await s.rewrite(ROOM, [byId.get("c")!, byId.get("a")!, byId.get("b")!]);
+      expect((await s.getQueue(ROOM)).map((e) => e.id)).toEqual(["c", "a", "b"]);
+    });
+    it("an empty array empties the queue", async () => {
+      await s.rewrite(ROOM, []);
+      expect(await s.getQueue(ROOM)).toHaveLength(0);
+      expect(await s.nowPlaying(ROOM)).toBeNull();
+    });
+    it("preserves full entry payloads across the rewrite", async () => {
+      const entry = makeEntry({
+        id: "rich",
+        title: "Evidências",
+        table: "7",
+        mode: "listen-dance",
+        graceRequeue: true,
+      });
+      await s.rewrite(ROOM, [entry]);
+      const [got] = await s.getQueue(ROOM);
+      expect(got).toEqual(entry);
+    });
+    it("does not touch other rooms", async () => {
+      await s.addEntry("room-other", makeEntry({ id: "x" }));
+      await s.rewrite(ROOM, []);
+      expect((await s.getQueue("room-other")).map((e) => e.id)).toEqual(["x"]);
+    });
+    it("later caller-side mutation of the passed array does not leak in", async () => {
+      const current = await s.getQueue(ROOM);
+      const arr = [...current];
+      await s.rewrite(ROOM, arr);
+      arr.pop(); // caller mutates after the call
+      expect(await s.getQueue(ROOM)).toHaveLength(3);
+    });
+  });
+
   describe("pause flag (host control, TICKET-7)", () => {
     it("sets and reads the paused flag", async () => {
       await s.setPaused(ROOM, true);

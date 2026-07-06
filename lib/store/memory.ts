@@ -74,6 +74,11 @@ export class MemoryStore implements QueueStore {
     return true;
   }
 
+  async rewrite(roomId: string, entries: QueueEntry[]): Promise<void> {
+    // Copy so later caller-side mutation can't reach internal state.
+    this.room(roomId).queue = [...entries];
+  }
+
   async setPaused(roomId: string, paused: boolean): Promise<void> {
     this.room(roomId).paused = paused;
   }

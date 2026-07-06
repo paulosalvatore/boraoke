@@ -58,7 +58,7 @@ export class UpstashStore implements QueueStore {
     const queue = await this.redis.lrange<QueueEntry>(key, 0, -1);
     const next = queue.filter((e) => e.id !== entryId);
     if (next.length === queue.length) return false; // not found
-    await this.rewrite(key, next);
+    await this.rewriteKey(key, next);
     return true;
   }
 
@@ -84,8 +84,12 @@ export class UpstashStore implements QueueStore {
     const clamped = Math.max(0, Math.min(newIndex, queue.length - 1));
     const [entry] = queue.splice(idx, 1);
     queue.splice(clamped, 0, entry);
-    await this.rewrite(key, queue);
+    await this.rewriteKey(key, queue);
     return true;
+  }
+
+  async rewrite(roomId: string, entries: QueueEntry[]): Promise<void> {
+    await this.rewriteKey(keys.queue(roomId), entries);
   }
 
   async setPaused(roomId: string, paused: boolean): Promise<void> {
@@ -105,7 +109,7 @@ export class UpstashStore implements QueueStore {
   }
 
   /** Replace a list's contents wholesale (RPUSH requires ≥1 value). */
-  private async rewrite(key: string, entries: QueueEntry[]): Promise<void> {
+  private async rewriteKey(key: string, entries: QueueEntry[]): Promise<void> {
     await this.redis.del(key);
     if (entries.length > 0) {
       await this.redis.rpush(key, ...entries);
