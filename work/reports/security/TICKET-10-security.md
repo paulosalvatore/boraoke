@@ -144,3 +144,49 @@ The relay-per-submit pattern (MEDIUM-1) is a systemic design gap: the adapter co
 ## Verdict: PASS-WITH-NOTES
 
 No BLOCKERs or HIGHs. Two MEDIUMs (relay cost and fairness-bypass) and one INFO. The MEDIUMs do not block merge by policy but should have follow-up tickets filed before the product reaches high-volume usage. All existing security controls (host auth, input validation, QUEUE_MAX, UUID regex) are intact and correctly applied to the new surfaces.
+
+---
+
+# Re-audit Addendum — Dev remediation delta (commit 8f5766e, tip d3b213c)
+
+**Date:** 2026-07-06 (same day)
+**CI on tip:** build-and-test pass (run 28821013782); Vercel pass. App suite **325/325** (+17), engine **59/59**.
+
+## Resolution verification
+
+### MEDIUM-1a — Bulk `rewrite` store op ✓ RESOLVED
+
+- `QueueStore.rewrite(roomId, entries)` added to the interface (`lib/store/types.ts:74-84`), implemented in both drivers.
+- **Upstash implementation verified — no hidden loop** (`lib/store/upstash.ts:91-93` → `rewriteKey`, lines 111-116): one `del` + one variadic `rpush(key, ...entries)`. That is 2 Redis commands total, **constant regardless of queue depth** (vs. the previous ~3×(N-1)). The `rpush` spread is a single Redis command with N arguments, not N calls.
+- `relayQueue` (`lib/rotation.ts:220-225`) now issues exactly one `store.rewrite` after the read; the N-1 `reorder` loop is gone.
+- **Relay-spy test genuinely counts store ops** (`__tests__/rotation-adapter.test.ts:174-203`): `jest.spyOn(store, "rewrite")` / `spyOn(store, "reorder")` with `toHaveBeenCalledTimes(1)` and `not.toHaveBeenCalled()` respectively, plus an order assertion on the resulting queue and a no-write assertion for 0/1-entry queues. Real op-count verification, not prose.
+- **Race analysis:** `rewriteKey` is `del` → `rpush`, non-atomic. A concurrent `addEntry` (`rpush`) landing between the relay's read and its `del` is lost (last-writer-wins); one landing between `del` and `rpush` survives (appears at the front, self-heals on next relay). This is the **same read-modify-write class** the pre-existing `reorder`/`removeEntry` ops already had — and strictly fewer race windows than before (1 rewrite vs. N-1 sequential reorders, each itself a del+rpush cycle). **Not worse than the accepted R-M-W class.** ✓
+
+### MEDIUM-1b — Submit rate limiter ✓ RESOLVED
+
+- New `lib/queue-rate-limit.ts`: dual sliding-window buckets — 10/min per `patronUuid` + 60/min per IP, LRU-capped at 2000 buckets (heap-growth guard), pt-BR 429 copy.
+- **Bypass-ordering verified** (`app/api/queue/route.ts:116-125`): the limiter is checked immediately after patronUuid regex validation and **before** `getRoomMode`, `getQueue`, `checkSubmit`, `addEntry`, and `relayQueue` — an over-limit caller triggers zero store work. Malformed-uuid requests are rejected 400 *before* charging, so garbage cannot burn a legitimate patron's bucket (test-asserted: "malformed submissions (bad uuid) do not charge the rate bucket").
+- **UUID-rotation dodge closed:** `submitRateLimitOk` evaluates and charges the IP bucket even when the uuid bucket already tripped (`lib/queue-rate-limit.ts:70-76`), so rotating uuids cannot avoid IP accounting (test: "IP bucket trips across rotating uuids").
+- uuid is normalized (`trim().toLowerCase()`) before bucketing — case-variant uuid strings cannot split a bucket. ✓
+
+### INFO-1 — Mode list derived from MODE_META ✓ RESOLVED
+
+`app/api/host/mode/route.ts:32-34`: `valid` is now `MODE_META.map((m) => m.mode)`; error copy derives from the same list. Single source of truth. ✓
+
+### MEDIUM-2 — Accepted-limitation documentation ✓ RESOLVED (as recommended)
+
+`packages/rotation-engine/README.md` now carries an explicit "Accepted v1 limitation — identity is self-reported (PR #14 security MEDIUM-2)" section describing the uuid-rotation / fake-table bypass and naming per-IP pending-sing grouping as the planned mitigation. Matches the recommended disposition. ✓
+
+## New observation from the delta
+
+### LOW-1 — Rate-limit griefing via patronUuid exposure in GET /api/queue
+
+**Location:** `app/api/queue/route.ts` (GET returns raw `QueueEntry` items incl. `patronUuid`), `lib/queue-rate-limit.ts` (per-uuid bucket)
+
+**Problem:** GET /api/queue returns full `QueueEntry` objects including `patronUuid` (pre-existing exposure, not introduced by this PR). With the new per-uuid limiter, a hostile patron in the room can read a victim's uuid from the queue and spoof 10 well-formed submits with it, exhausting the victim's bucket (1-minute submit lockout, renewable). Impact is a minor griefing DoS of one patron, visible to the host, requiring room presence. Duplicate/cap rejections limit what the spoofer can actually enqueue.
+
+**Remediation direction (follow-up, does not block):** strip `patronUuid` from the public GET projection (clients only need their own uuid, which they already hold locally) — also reduces the MEDIUM-2 impersonation surface generally.
+
+## Re-audit Verdict: PASS
+
+All four findings resolved as claimed and verified in code and tests. The remaining items (MEDIUM-2 accepted limitation, LOW-1 uuid exposure) are documented follow-ups that do not block merge. CI green on tip d3b213c; 325/325 app + 59/59 engine tests pass locally.
