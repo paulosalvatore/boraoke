@@ -5,10 +5,13 @@ _Last updated: 2026-07-06 (WAVE 1 COMPLETE — 9 PRs merged; wave 2 building)_
 ## Needs user (TL)
 
 - 🔴 GitHub Actions BILLING broken on paulosalvatore account — CI dies in 2s on every PR ("payments failed / spending limit"). GitHub → Settings → Billing & plans. Binding condition from PR #4 merge exception: first post-merge CI run on main must be verified green after fix.
-- 🟡 Upstash Redis provisioning on the Vercel project (Marketplace → Storage) — unblocks TICKET-6 live path (dev proceeds with memory driver).
+- 🔴 **URGENT (upgraded by PR #11 opus pass): Upstash Redis provisioning** on the Vercel project (Marketplace → Storage → add UPSTASH_REDIS_REST_URL/TOKEN env). Until then, LIVE user feedback AND queues silently evaporate per-lambda — the feedback widget promises "um robô lê cada um" but memory-driver feedback is lost. One dashboard action makes queues + feedback durable, zero code changes.
 - 🟡 YouTube Data API v3 key → Vercel env — unblocks TICKET-8 live search. ⚠️ QUOTA REALITY (opus PR #8 finding, binding condition): default quota = 10,000 units/day and each search costs ~101 units → ~99 searches/day TOTAL across ALL venues; one modest bar night ≈ 80% of it. Before provisioning the key: file a YouTube quota-increase request (or accept day-one degraded fallback), and consider the filed follow-up (move search cache + rate limits onto Upstash so caching actually reduces burn).
 
 ## Follow-ups (filed by gates, unscheduled)
+
+- **BINDING before the feedback-intake ticket (#12/framework intake): Intake-contract condition (PR #11 opus, HIGH)** — feedback ids are stamped at POST but index-commit lands later; id-order ≠ commit-order under concurrent writes, so a naive `since = max(id)` cursor can silently lose entries forever. Intake MUST use lagging watermark + id-dedupe (or the index made commit-ordered) — never the naive loop.
+- Host login throttle → edge/Upstash-backed (per-lambda in-memory now; PR #10 M-1 note).
 
 - Upstash-backed search cache + rate buckets (PR #8 opus rec — biggest quota lever; also makes rate limit cross-instance).
 - Advance-guard for the double-advance race (ENDED vs skip; pre-existing, LOW).
