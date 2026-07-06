@@ -1,7 +1,7 @@
 # TICKET-1 — Dev report
 
 ## Status
-OPUS D-022 FINDINGS ADDRESSED — vercel.json framework preset added (verifying Vercel preview check), in-memory-store divergence honestly documented (footer/README/JSDoc); build green, 39 unit tests pass. Awaiting opus re-verdict on PR #4.
+OPUS FINDINGS ADDRESSED; ONE [needs-user] BLOCKER — Vercel preview GREEN (vercel.json fix worked); divergence honestly documented; PR un-conflicted from main (was silently blocking ALL Actions runs); local build+39 unit tests green. BLOCKED on GitHub Actions billing (account-level payment/spending-limit failure kills every CI job in ~2s) — needs TL dashboard action.
 
 ## Context
 - Worktree: `/Users/paulosalvatore/Documents/GitHub/cantai/.worktrees/ticket-1`
@@ -120,6 +120,10 @@ While verifying the opus fixes, found PR #4 mergeable state CONFLICTING (main mo
 - Re-verification: `npm run build` ✓ clean; `npm test` ✓ 39/39.
 
 Vercel preview after vercel.json fix: **GREEN** (Deployment has completed). Awaiting first real GitHub Actions CI run now that the PR is mergeable.
+
+### 2026-07-05 CI blocked on GitHub billing — [needs-user]
+
+With the PR mergeable, CI finally triggered (run 28759837928) but fails in 2s with the annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings." Every recent cantai CI run on every branch fails identically in ~4s — this is account-level, not repo-level. `[needs-user]` posted on PR #4 (https://github.com/paulosalvatore/cantai/pull/4#issuecomment-4888109634). Nothing in-repo can fix it; local verification (build ✓, 39/39 unit ✓, e2e ✓) is the working evidence until billing is fixed and CI can be re-run.
 
 ## Friction
 - Node.js 25 `localStorage` global (stub without methods) causes Next.js 15 SSR failures for client components that access localStorage. Workaround: `--localstorage-file` flag. Candidate for a framework-level dev environment note (future inbox item if recurring across products).
