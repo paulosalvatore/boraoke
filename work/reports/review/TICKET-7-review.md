@@ -127,6 +127,55 @@ AC#4's TV player-freeze deferral is explicitly scoped in the ticket (`/tv player
 
 ---
 
+## Opus second-pass (D-022 merge-counting judgment layer)
+
+- **Reviewer:** Reviewer agent — opus tier (`claude-opus-4-8`)
+- **Date:** 2026-07-06
+- **Context:** venue admin plane onto the live product; **repo made PUBLIC** (source now readable by attackers).
+- **Verdict:** APPROVE (this is the merge-counting APPROVE).
+
+Independently re-ran: `npx jest` → 6 suites / **117 passed** (reproduced). CI terminal-green: `gh pr checks 10` → Vercel **pass**, Vercel Preview Comments **pass**, zero pending. Build authority is the green Vercel CI (the local worktree build hits the known duplicate-lockfile path confusion, unrelated to the code — same note the security gate recorded). Secret sweep of the full PR diff, `__tests__/`, `e2e/`, and branch file-adds: no real tokens, no `.env`/secret files, no long/real-looking token literals; the only in-source token is `DEV_FALLBACK_TOKEN` (explicitly a non-secret constant).
+
+### 1. PUBLIC-REPO recheck — CLEAN
+
+- **No obscurity dependence.** Session = `HMAC(HOST_TOKEN, "cantai-host-session-v1")`. The domain-separator constant and the entire algorithm being public does not weaken anything — security rests solely on `HOST_TOKEN` entropy (the HMAC key). Kerckhoffs-compliant; publishing the source changes nothing.
+- **Dev fallback genuinely dead in production.** `DEV_FALLBACK_TOKEN = "cantai-dev-host"` is now public but is reachable only when `NODE_ENV !== "production"` (read at runtime). Vercel sets `NODE_ENV=production` at build **and** runtime for **every deployed environment — Production and Preview alike** (only local `vercel dev` / `npm run dev` is `development`). So on any public deployment URL, including public preview deploys, `resolveRoomToken` returns `null` → controls locked. Confirmed by unit tests "is LOCKED (null) in production" / "rejects everything when locked". Residual is purely operational and fail-closed: the owner must set `HOST_TOKEN` in Vercel or controls stay locked — a safe deny, not an exploit.
+- **No token material in fixtures/evidence.** Diff/fixture grep clean; login screenshots show a masked password field.
+
+### 2. Session lifecycle — acceptable, one runbook note
+
+Cookie is stateless `HMAC(token, const)`, `maxAge` 12 h, `httpOnly` + `secure`(prod) + `sameSite=lax`. A stolen cookie is valid until 12 h expiry **or** `HOST_TOKEN` rotation (which changes the HMAC and invalidates **all** sessions at once). There is **no per-session revocation** — rotation is the only kill-switch and it logs every host out. Judgment: acceptable for a single-host bar shift — theft requires device access or TLS MITM (`httpOnly` blocks XSS read, `secure` forces HTTPS), and a server-side session store / jti-blocklist for per-cookie revocation is not warranted at PMF. **Non-blocking.** One doc heads-up (FOLLOW-UP-C): capture "kill-switch = rotate `HOST_TOKEN` in Vercel + redeploy (logs out all hosts)" in the operator runbook so the venue knows the only lever.
+
+### 3. Concurrency (host ops vs patron advance) — real-but-low, UPGRADE the accepted LOW to a tracked follow-up
+
+Most substantive finding. Upstash `removeEntry`/`reorder` are non-atomic read-modify-write (`lrange` → `del` → `rpush`, wholesale list rewrite), racing atomic `LPOP` (advance) and `RPUSH` (addEntry). Now that **live mutation callers ship**, the worst case is no longer purely theoretical:
+
+- remove/reorder overlapping an auto-advance (song-end `LPOP`) → the just-finished head can be **resurrected** (the rewrite restores the pre-LPOP snapshot minus the removed id) → **double-play** of the current song at the top.
+- remove/reorder overlapping a patron submit (`RPUSH`) → the concurrent new entry is **silently dropped** by the `del`+`rpush`.
+
+Assessment: **low probability** at single-venue PMF volume (RMW window ≈ one-two REST round-trips; advance fires per song-end/skip; submits are sparse), **self-healing** (next action/poll reconciles ordering), and **not data-corrupting nor security-relevant**. So it stays **non-blocking** and does not gate this merge. But it should be **upgraded from "accepted theoretical LOW" to a named tracked follow-up** now that real callers exist and TICKET-9 rooms will multiply the surface: make `removeEntry` atomic (Redis `LREM` by serialized value, or a Lua/`MULTI` transaction) and `reorder` via a scripted transaction. Filed as FOLLOW-UP-A.
+
+### 4. Admin UX as the 1am kill-switch — NIT, agree with sonnet
+
+`hostAction` swallows non-2xx and network errors. Weighing severity for the kill-switch specifically: pause/skip/remove/reorder all mutate state the 3 s poll re-renders (the AO VIVO/Pausado chip, the queue rows), so a failed action gives **implicit** feedback within one poll — a host who taps Pausar and sees the chip stay AO VIVO knows it didn't take. `busy` disables buttons in-flight (no double-fire). Remove has a two-step inline confirm (good destructive affordance); skip has **no** confirm — correct call (frequent intentional action, mirrors `/tv` auto-advance; a per-skip confirm would be friction). The genuine gap is the missing **explicit 401/expired-session** signal (silent no-op instead of "sessão expirou, entre de novo"), but 12 h `maxAge` makes a mid-shift expiry unlikely within one night. Judgment: **NIT/LOW, not a blocker**; recommend the toast-on-non-2xx (esp. 401 → re-auth) sonnet flagged as NIT-2. Filed as FOLLOW-UP-B.
+
+### 5. resolveRoomToken seam for TICKET-9 — genuinely single-seam, one honest caveat
+
+All six call sites route through `resolveRoomToken(roomId)` / `requireHost(req, roomId)`; the token-lookup swap is truly localized, and cross-room isolation **already holds** (a cookie `HMAC(tokenA,const)` fails `verifySessionValue(roomB)` because `tokenB` differs → denied, no code change). Caveat for TICKET-9 to enter with eyes open — the session value does **not** encode `roomId` and there is a single shared cookie name `cantai_host`: (a) if TICKET-9 wants a host logged into multiple rooms simultaneously in one browser, it needs per-room cookie **names**, not just a lookup swap; (b) if it binds `roomId` into the session derivation for defense-in-depth, that changes the session shape and **invalidates all live cookies on deploy** → a one-time re-login per host (low impact, expected on a feature deploy). Neither is a defect here; the code comment's single-seam claim is accurate for the token-lookup change. Heads-up, not a finding.
+
+### Follow-ups to file (all non-blocking)
+
+- **FOLLOW-UP-A (concurrency):** make Upstash `removeEntry` (LREM) + `reorder` (Lua/MULTI) atomic before multi-venue scale — upgrade of the accepted store LOW now that live mutation callers ship.
+- **FOLLOW-UP-B (UX):** surface a toast on host-action non-2xx, esp. 401 → re-auth prompt (sonnet NIT-2).
+- **FOLLOW-UP-C (ops):** operator-runbook note — kill-switch is `HOST_TOKEN` rotation + redeploy (logs out all hosts); no per-cookie revocation by design.
+- Already tracked: M-1 edge/Upstash-backed global throttle; App Tester mobile tap-target on ▲/▼.
+
+### Verdict (opus, merge-counting)
+
+`[reviewer] APPROVE (opus, D-022 merge-counting) — TICKET-7 host controls. Independently reproduced 117/117 unit tests + terminal-green CI (Vercel pass). PUBLIC-REPO recheck clean: no obscurity dependence (HMAC strength rests on HOST_TOKEN entropy alone), dev fallback genuinely dead in prod (Vercel NODE_ENV=production on every deployed env incl. public previews → resolveRoomToken null-locks), no real tokens in diff/fixtures/evidence/history. Session lifecycle acceptable for a single-host shift (12h + rotation-as-only-kill-switch; runbook note filed). Concurrency: non-atomic remove/reorder RMW vs LPOP/RPUSH can resurrect the just-played head or drop a concurrent submit — real now that live callers ship, but low-probability + self-healing + non-corrupting at PMF; upgraded to a tracked atomicity follow-up, not a blocker. hostAction silent non-2xx is a NIT (3s poll gives implicit feedback; 401-toast follow-up filed). resolveRoomToken is a genuine single-seam for TICKET-9. No blocking findings; all gates aligned.`
+
+---
+
 ## Nits (non-blocking)
 
 **NIT-1.** `_clearLoginThrottle` is exported from `lib/host-auth.ts` at module level without a test-environment guard. It's safe (server-only module, cannot reach the client), but a test-only helper living in production code is slightly untidy. A `/* test-only */` comment or a conditional `if (process.env.NODE_ENV !== "production")` guard would make intent explicit. Not a security risk — noting for future hygiene.
