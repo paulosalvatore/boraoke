@@ -8,6 +8,7 @@ import {
   SEARCH_DEFAULTS,
   YouTubeQuotaError,
 } from "@/lib/youtube-search";
+import { track } from "@/lib/telemetry";
 
 /**
  * GET /api/search?q=<query>&uuid=<patronUuid>
@@ -92,12 +93,14 @@ export async function GET(req: NextRequest) {
   const ck = cacheKey(q, SEARCH_DEFAULTS.regionCode);
   const cached = getCached(ck);
   if (cached) {
+    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: cached.length } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({ results: cached, cached: true });
   }
 
   try {
     const results = await searchYouTube(q, key);
     setCached(ck, results);
+    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: results.length } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({ results });
   } catch (err) {
     if (err instanceof YouTubeQuotaError) {

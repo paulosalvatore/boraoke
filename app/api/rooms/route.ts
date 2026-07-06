@@ -5,6 +5,7 @@ import {
   isRoomCreateThrottled,
   registerRoomCreation,
 } from "@/lib/room-create-throttle";
+import { track } from "@/lib/telemetry";
 
 const MAX_BODY_BYTES = 1024;
 const MAX_NAME = 60;
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
     );
   }
   registerRoomCreation(ip);
+  void track("room_created", { roomId: created.room.id }); // TICKET-12: fire-and-forget, fail-open
 
   return NextResponse.json(
     {

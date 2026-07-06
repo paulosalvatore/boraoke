@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { store } from "@/lib/store";
 import { requireHost, roomIdFromRequest } from "@/lib/host-auth";
+import { track } from "@/lib/telemetry";
 
 const MAX_BODY_BYTES = 1024;
 
@@ -42,5 +43,6 @@ export async function POST(req: NextRequest) {
   }
 
   await store.setPaused(roomId, paused);
+  void track("host_action", { roomId, props: { action: paused ? "pause" : "resume" } }); // TICKET-12: fire-and-forget, fail-open
   return NextResponse.json({ ok: true, paused });
 }

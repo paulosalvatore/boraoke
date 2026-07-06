@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { store, DEFAULT_ROOM, QUEUE_MAX, type Mode } from "@/lib/store";
 import { isValidRoomId } from "@/lib/rooms";
 import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
+import { track } from "@/lib/telemetry";
 
 /**
  * Resolve the target room for a queue request. `room` comes from the `?room=`
@@ -136,11 +137,13 @@ export async function POST(req: NextRequest) {
   // false (without adding) when the room is at QUEUE_MAX.
   const added = await store.addEntry(roomId, entry);
   if (!added) {
+    void track("submit_rejected", { roomId, uuid: entry.patronUuid, props: { reason: "cap" } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json(
       { error: `Queue is full (max ${QUEUE_MAX} entries) — try again later` },
       { status: 429 }
     );
   }
 
+  void track("song_queued", { roomId, uuid: entry.patronUuid, props: { kind: typeof rawVideoId === "string" && rawVideoId ? "search" : "paste", mode: resolvedMode } }); // TICKET-12: fire-and-forget, fail-open
   return NextResponse.json({ entry }, { status: 201 });
 }

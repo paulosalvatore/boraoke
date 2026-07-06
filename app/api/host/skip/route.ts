@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { store } from "@/lib/store";
 import { requireHost, roomIdFromRequest } from "@/lib/host-auth";
+import { track } from "@/lib/telemetry";
 
 /**
  * POST /api/host/skip?room=<id> — advance past the current head immediately,
@@ -16,5 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const nowPlaying = await store.advance(roomId);
+  void track("song_skipped", { roomId, props: { reason: "host" } }); // TICKET-12: fire-and-forget, fail-open
+  void track("host_action", { roomId, props: { action: "skip" } }); // TICKET-12: fire-and-forget, fail-open
   return NextResponse.json({ ok: true, nowPlaying });
 }

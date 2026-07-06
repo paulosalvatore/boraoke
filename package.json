@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -p 3040",
     "test": "jest --passWithNoTests",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "telemetry:rollup": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/telemetry-rollup.ts"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",
