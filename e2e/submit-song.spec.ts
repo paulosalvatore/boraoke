@@ -22,11 +22,12 @@ test("patron submits a song and it appears in the queue", async ({ page }) => {
   // Wait for the main form to appear
   await page.getByRole("heading", { name: /add a song/i }).waitFor();
 
-  // Submit a YouTube URL
-  await page.getByLabel("YouTube URL").fill("https://youtu.be/dQw4w9WgXcQ");
+  // Paste a YouTube URL into the dual-behavior search input (TICKET-8):
+  // a pasted link is resolved locally without hitting the search API.
+  await page.getByLabel(/Buscar música/i).fill("https://youtu.be/dQw4w9WgXcQ");
 
-  // Wait for video ID parsing confirmation
-  await expect(page.getByText(/Video ID: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
+  // Wait for the resolved-selection confirmation
+  await expect(page.getByText(/Selected: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
 
   // Optionally add a title
   await page.getByPlaceholder(/Bohemian Rhapsody/i).fill("Rick Roll");

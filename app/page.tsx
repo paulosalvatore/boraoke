@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { parseYouTubeVideoId } from "@/lib/youtube";
 import type { QueueEntry, Mode } from "@/lib/store";
+import SongSearch, { type SongSelection } from "@/components/SongSearch";
 
 const POLL_INTERVAL = 3000;
 
@@ -14,13 +14,14 @@ export default function PatronPage() {
   const [nicknameSet, setNicknameSet] = useState(false);
 
   // Form state
-  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [title, setTitle] = useState("");
   const [table, setTable] = useState("");
   const [mode, setMode] = useState<Mode>("sing");
 
-  // UI state
+  // UI state — parsedVideoId is now driven by the SongSearch selection.
   const [parsedVideoId, setParsedVideoId] = useState<string | null>(null);
+  // Bumped after a successful submit to remount SongSearch and clear its input.
+  const [searchKey, setSearchKey] = useState(0);
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -72,10 +73,14 @@ export default function PatronPage() {
     return () => clearInterval(interval);
   }, [fetchQueue]);
 
-  // Parse YouTube URL live
-  useEffect(() => {
-    setParsedVideoId(parseYouTubeVideoId(youtubeUrl));
-  }, [youtubeUrl]);
+  // Selection from the search/paste-link picker.
+  const handleSelect = useCallback((sel: SongSelection | null) => {
+    setParsedVideoId(sel?.videoId ?? null);
+    // Prefill the (optional) title from a picked search result when empty.
+    if (sel?.title) {
+      setTitle((prev) => (prev.trim() ? prev : sel.title!));
+    }
+  }, []);
 
   function saveNickname() {
     const trimmed = nickname.trim();
@@ -118,9 +123,9 @@ export default function PatronPage() {
         return;
       }
       setSubmitSuccess(true);
-      setYoutubeUrl("");
       setTitle("");
       setParsedVideoId(null);
+      setSearchKey((k) => k + 1); // remount SongSearch → clear its input/results
       fetchQueue();
     } catch {
       setSubmitError("Network error — please try again.");
@@ -181,22 +186,12 @@ export default function PatronPage() {
       <section style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: "1.25rem", marginBottom: "2rem" }}>
         <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>Add a song</h2>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <div>
-            <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem", color: "var(--text-muted)" }}>
-              YouTube URL *
-            </label>
-            <input
-              placeholder="https://youtu.be/…"
-              value={youtubeUrl}
-              onChange={(e) => setYoutubeUrl(e.target.value)}
-              aria-label="YouTube URL"
-            />
-            {youtubeUrl && (
-              <p style={{ fontSize: "0.8rem", marginTop: "0.25rem", color: parsedVideoId ? "#4ade80" : "var(--accent)" }}>
-                {parsedVideoId ? `✓ Video ID: ${parsedVideoId}` : "✗ Could not parse — paste a YouTube URL"}
-              </p>
-            )}
-          </div>
+          <SongSearch key={searchKey} patronUuid={patronUuid} onSelect={handleSelect} />
+          {parsedVideoId && (
+            <p style={{ fontSize: "0.8rem", color: "#4ade80" }}>
+              ✓ Selected: {parsedVideoId}
+            </p>
+          )}
 
           <div>
             <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem", color: "var(--text-muted)" }}>
