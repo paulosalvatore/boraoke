@@ -110,26 +110,47 @@ test("addEntry: a duplicate video may be re-added after the first was played", (
 });
 
 // ---------------------------------------------------------------------------
-// full-karaoke: FIFO
+// full-karaoke: round-robin by uuid (spec A1 — anti-hog guarantee)
 // ---------------------------------------------------------------------------
 
-test("full-karaoke: plays strict FIFO regardless of user/table", () => {
+test("full-karaoke: round-robin by uuid, not FIFO (AC1)", () => {
+  let s = fresh("full-karaoke");
+  // uuid A submits 3, then uuid B submits 1 -> play order A1, B1, A2, A3.
+  s = add(s, { id: "a1", uuid: "A" });
+  s = add(s, { id: "a2", uuid: "A" });
+  s = add(s, { id: "a3", uuid: "A" });
+  s = add(s, { id: "b1", uuid: "B" });
+  assert.deepEqual(orderIds(s), ["a1", "b1", "a2", "a3"]);
+});
+
+test("full-karaoke: distinct singers keep arrival order", () => {
   let s = fresh("full-karaoke");
   s = add(s, { id: "a", uuid: "u1" });
-  s = add(s, { id: "b", uuid: "u1" }); // same user twice — allowed in full mode
-  s = add(s, { id: "c", uuid: "u2" });
+  s = add(s, { id: "b", uuid: "u2" });
+  s = add(s, { id: "c", uuid: "u3" });
+  // one entry each -> round-robin degenerates to submission order
   assert.deepEqual(orderIds(s), ["a", "b", "c"]);
+});
+
+test("full-karaoke: no cap on how many a uuid may queue", () => {
+  let s = fresh("full-karaoke");
+  s = add(s, { id: "a", uuid: "u1" });
+  s = add(s, { id: "b", uuid: "u1" });
+  const r = addEntry(s, input({ id: "c", uuid: "u1" }));
+  assert.equal(r.accepted, true); // uncapped in full-karaoke
 });
 
 // ---------------------------------------------------------------------------
 // per-table-2
 // ---------------------------------------------------------------------------
 
-test("per-table-2: rejects a 3rd queued sing entry for the same table", () => {
+test("per-table-2: rejects a 5th queued sing entry for the same table (spec cap 4)", () => {
   let s = fresh("per-table-2");
   s = add(s, { id: "a", table: "5", uuid: "u1" });
   s = add(s, { id: "b", table: "5", uuid: "u2" });
-  const r = addEntry(s, input({ id: "c", table: "5", uuid: "u3" }));
+  s = add(s, { id: "c", table: "5", uuid: "u3" }); // 3rd now allowed (cap 4)
+  s = add(s, { id: "d", table: "5", uuid: "u4" }); // 4th allowed
+  const r = addEntry(s, input({ id: "e", table: "5", uuid: "u5" }));
   assert.equal(r.accepted, false);
   assert.equal(!r.accepted && r.reason, "table-cap");
 });
@@ -138,8 +159,11 @@ test("per-table-2: cap frees up after one plays", () => {
   let s = fresh("per-table-2");
   s = add(s, { id: "a", table: "5", uuid: "u1" });
   s = add(s, { id: "b", table: "5", uuid: "u2" });
-  s = advance(s).state; // a played
-  const r = addEntry(s, input({ id: "c", table: "5", uuid: "u3" }));
+  s = add(s, { id: "c", table: "5", uuid: "u3" });
+  s = add(s, { id: "d", table: "5", uuid: "u4" }); // table at cap (4)
+  assert.equal(addEntry(s, input({ id: "x", table: "5" })).accepted, false);
+  s = advance(s).state; // one plays -> frees a slot
+  const r = addEntry(s, input({ id: "e", table: "5", uuid: "u5" }));
   assert.equal(r.accepted, true);
 });
 
@@ -161,8 +185,10 @@ test("per-table-2: tableless entries bucket per-uuid and rotate fairly", () => {
   s = add(s, { id: "y1", uuid: "uy" }); // different tableless user
   // ux bucket has 2, uy bucket has 1; round-robin: x1, y1, x2
   assert.deepEqual(orderIds(s), ["x1", "y1", "x2"]);
-  // third for ux is capped
-  const r = addEntry(s, input({ id: "x3", uuid: "ux" }));
+  // tableless bucket also gets the 4-cap; a 3rd and 4th are fine, a 5th is capped
+  s = add(s, { id: "x3", uuid: "ux" });
+  s = add(s, { id: "x4", uuid: "ux" });
+  const r = addEntry(s, input({ id: "x5", uuid: "ux" }));
   assert.equal(!r.accepted && r.reason, "table-cap");
 });
 
@@ -180,10 +206,11 @@ test("per-table-2: recency from history carries into ordering", () => {
 // per-person-1
 // ---------------------------------------------------------------------------
 
-test("per-person-1: rejects a 2nd queued sing entry for the same uuid", () => {
+test("per-person-1: rejects a 3rd queued sing entry for the same uuid (spec cap 2)", () => {
   let s = fresh("per-person-1");
   s = add(s, { id: "a", uuid: "u1" });
-  const r = addEntry(s, input({ id: "b", uuid: "u1" }));
+  s = add(s, { id: "b", uuid: "u1" }); // 2nd now allowed (current + next round)
+  const r = addEntry(s, input({ id: "c", uuid: "u1" }));
   assert.equal(r.accepted, false);
   assert.equal(!r.accepted && r.reason, "person-cap");
 });
@@ -191,8 +218,10 @@ test("per-person-1: rejects a 2nd queued sing entry for the same uuid", () => {
 test("per-person-1: cap frees after the person's entry plays", () => {
   let s = fresh("per-person-1");
   s = add(s, { id: "a", uuid: "u1" });
-  s = advance(s).state;
-  const r = addEntry(s, input({ id: "b", uuid: "u1" }));
+  s = add(s, { id: "b", uuid: "u1" }); // at cap (2)
+  assert.equal(addEntry(s, input({ id: "x", uuid: "u1" })).accepted, false);
+  s = advance(s).state; // one plays -> frees a slot
+  const r = addEntry(s, input({ id: "c", uuid: "u1" }));
   assert.equal(r.accepted, true);
 });
 
@@ -461,6 +490,129 @@ test("skip: nothing to skip returns undefined", () => {
   assert.equal(r.skipped, undefined);
   const r2 = skip(s, "nope");
   assert.equal(r2.skipped, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// A3: spec listen policy (maxConsecutiveListen: 0) — listens only when the
+// sing queue is empty. The interleave knob is retained for the future toggle.
+// ---------------------------------------------------------------------------
+
+test("listen (spec default, cap 0): listens play only after every pending sing", () => {
+  let s = fresh("full-karaoke", { maxConsecutiveListen: 0 });
+  s = add(s, { id: "l1", mode: "listen" });
+  s = add(s, { id: "s1", uuid: "u1", mode: "sing" });
+  s = add(s, { id: "l2", mode: "listen" });
+  s = add(s, { id: "s2", uuid: "u2", mode: "sing" });
+  // every sing first (round-robin over distinct uuids), then listens FIFO
+  assert.deepEqual(orderIds(s), ["s1", "s2", "l1", "l2"]);
+});
+
+test("listen (cap 0): with no sings, listens flush FIFO", () => {
+  let s = fresh("full-karaoke", { maxConsecutiveListen: 0 });
+  s = add(s, { id: "l1", mode: "listen" });
+  s = add(s, { id: "l2", mode: "listen" });
+  assert.deepEqual(orderIds(s), ["l1", "l2"]);
+});
+
+// ---------------------------------------------------------------------------
+// A4: no-show grace re-queue + consecutive-no-show credit charging (AC6)
+// ---------------------------------------------------------------------------
+
+test("grace: among equal-credit groups, the grace-holding group sorts first (AC6)", () => {
+  // Real no-show flow: u1 is skipped-absent (1st no-show -> keeps standing, not
+  // charged), then re-queues with graceRequeue. u2 submitted first, so without
+  // grace u2 would lead the tie; grace promotes u1's group to the front of the
+  // round (its "next-round slot"), overriding the submittedAt tie-break.
+  let s = fresh("per-person-1");
+  s = add(s, { id: "a", uuid: "u1" });
+  s = skip(s, "a").state; // u1 no-show #1: forgiven, recency untouched
+  s = add(s, { id: "b", uuid: "u2" }); // u2 (never sang) submits first
+  s = add(s, { id: "g", uuid: "u1", graceRequeue: true }); // u1's grace re-queue
+  // equal credit (neither charged); grace group leads -> g, b
+  assert.deepEqual(orderIds(s), ["g", "b"]);
+});
+
+test("grace: does NOT leapfrog a group that has less credit (front of OWN slot only)", () => {
+  // u1 genuinely sang (charged); u2 never sang. u2 legitimately outranks u1 this
+  // round — grace only orders u1 WITHIN its own (later) slot, it never steals
+  // u2's earned turn.
+  let s = fresh("per-person-1");
+  s = add(s, { id: "a", uuid: "u1" });
+  s = advance(s).state; // u1 actually sang (clock 1)
+  s = add(s, { id: "b", uuid: "u2" }); // u2 never sang -> earned priority
+  s = add(s, { id: "g", uuid: "u1", graceRequeue: true });
+  assert.deepEqual(orderIds(s), ["b", "g"]);
+});
+
+test("grace: within a group, the grace entry precedes older non-grace entries", () => {
+  let s = fresh("full-karaoke");
+  s = add(s, { id: "a1", uuid: "u1" });
+  s = add(s, { id: "a2", uuid: "u1" });
+  s = add(s, { id: "g", uuid: "u1", graceRequeue: true }); // newest but grace
+  // u1's bucket: grace first, then submission order
+  assert.deepEqual(orderIds(s), ["g", "a1", "a2"]);
+});
+
+test("no-show: first is forgiven (graceGranted, no charge); second consecutive is charged", () => {
+  let s = fresh("per-person-1");
+  s = add(s, { id: "a", uuid: "u1" });
+  s = add(s, { id: "b", uuid: "u2" });
+  // First no-show of u1 (skips head): grace granted, recency untouched.
+  let r = skip(s);
+  assert.equal(r.skipped?.id, "a");
+  assert.equal(r.graceGranted, true);
+  assert.deepEqual(r.state.lastSangByUuid, {}); // not charged
+  assert.equal(r.state.noShowStreakByUuid["u1"], 1);
+  s = r.state;
+
+  // u1 re-queues and no-shows AGAIN (still consecutive — never sang between).
+  s = add(s, { id: "a2", uuid: "u1" });
+  r = skip(s, "a2");
+  assert.equal(r.graceGranted, false); // second consecutive -> no grace
+  assert.ok(r.state.lastSangByUuid["u1"] > 0); // credit charged (recency bumped)
+  assert.equal(r.state.noShowStreakByUuid["u1"], 2);
+});
+
+test("no-show: singing between skips resets the consecutive streak", () => {
+  let s = fresh("per-person-1");
+  s = add(s, { id: "a", uuid: "u1" });
+  s = skip(s, "a").state; // 1st no-show (streak 1)
+  s = add(s, { id: "b", uuid: "u1" });
+  s = advance(s).state; // u1 actually sings -> streak reset
+  assert.equal(s.noShowStreakByUuid["u1"] ?? 0, 0);
+  s = add(s, { id: "c", uuid: "u1" });
+  const r = skip(s, "c"); // next no-show is again a "first" -> grace granted
+  assert.equal(r.graceGranted, true);
+});
+
+test("no-show: skipping a listen entry never grants grace or charges", () => {
+  let s = fresh("full-karaoke");
+  s = add(s, { id: "l", uuid: "u1", mode: "listen" });
+  const r = skip(s, "l");
+  assert.equal(r.graceGranted, false);
+  assert.deepEqual(r.state.noShowStreakByUuid, {});
+  assert.deepEqual(r.state.lastSangByUuid, {});
+});
+
+test("grace: the flag rides on the entry, so it is single-use (gone once played)", () => {
+  let s = fresh("per-person-1");
+  s = add(s, { id: "g", uuid: "u1", graceRequeue: true });
+  const r = advance(s);
+  assert.equal(r.played?.id, "g");
+  // entry is gone from the live queue -> grace cannot apply twice
+  assert.equal(r.state.entries.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// A5: duplicate policy — reject only the exact same uuid+video+mode; the same
+// song from a DIFFERENT uuid is always allowed (song-level dupes warn in the UI).
+// ---------------------------------------------------------------------------
+
+test("duplicate (A5): same song from different singers is allowed", () => {
+  let s = fresh("full-karaoke");
+  s = add(s, { id: "a", uuid: "u1", videoId: "song1" });
+  const r = addEntry(s, input({ id: "b", uuid: "u2", videoId: "song1" }));
+  assert.equal(r.accepted, true);
 });
 
 // ---------------------------------------------------------------------------

@@ -46,9 +46,19 @@ export function createQueue(
     lastSangByUuid: {},
     lastSangByTable: {},
     consecutiveListen: 0,
+    noShowStreakByUuid: {},
     options: merged,
   };
 }
+
+/**
+ * Per-venue-mode caps on how many sing entries a fairness group may hold queued
+ * at once (spec: quota + one round of lookahead). `per-table-2` allows 4 per
+ * table (2 rounds), `per-person-1` allows 2 per uuid (current + next round);
+ * `full-karaoke` is uncapped.
+ */
+export const PER_TABLE_CAP = 4;
+export const PER_PERSON_CAP = 2;
 
 // ---------------------------------------------------------------------------
 // Bucketing helpers
@@ -118,15 +128,17 @@ function capViolation(
   input: EntryInput,
 ): RejectReason | undefined {
   if (state.venueMode === "per-person-1") {
-    const already = queuedSings(state).some((e) => e.uuid === input.uuid);
-    return already ? "person-cap" : undefined;
+    const count = queuedSings(state).filter(
+      (e) => e.uuid === input.uuid,
+    ).length;
+    return count >= PER_PERSON_CAP ? "person-cap" : undefined;
   }
   if (state.venueMode === "per-table-2") {
     const bucket = tableBucket(input);
     const count = queuedSings(state).filter(
       (e) => tableBucket(e) === bucket,
     ).length;
-    return count >= 2 ? "table-cap" : undefined;
+    return count >= PER_TABLE_CAP ? "table-cap" : undefined;
   }
   return undefined;
 }
@@ -208,21 +220,28 @@ function bySubmittedAt(a: Entry, b: Entry): number {
   return a.submittedAt - b.submittedAt;
 }
 
-/** Mode-dependent fair ordering of the *sing* entries only. */
+/**
+ * Mode-dependent fair ordering of the *sing* entries only. All three modes are
+ * round-robin (spec A1): full-karaoke & per-person-1 rotate by uuid,
+ * per-table-2 rotates by table bucket. (full-karaoke and per-person-1 share the
+ * same ordering; they differ only in their submit-time cap — full is uncapped.)
+ */
 function computeSingOrder(state: QueueState): Entry[] {
   const sings = queuedSings(state);
-  if (state.venueMode === "full-karaoke") {
-    return sings.slice().sort(bySubmittedAt);
-  }
-  const keyOf =
-    state.venueMode === "per-person-1"
-      ? (e: Entry) => e.uuid
-      : (e: Entry) => tableBucket(e);
-  const lastSang =
-    state.venueMode === "per-person-1"
-      ? state.lastSangByUuid
-      : state.lastSangByTable;
+  const byTable = state.venueMode === "per-table-2";
+  const keyOf = byTable ? (e: Entry) => tableBucket(e) : (e: Entry) => e.uuid;
+  const lastSang = byTable ? state.lastSangByTable : state.lastSangByUuid;
   return roundRobin(sings, keyOf, lastSang);
+}
+
+/**
+ * Within-bucket ordering: grace-re-queued entries first (spec ordering step 3),
+ * then by submission order.
+ */
+function byGraceThenSubmitted(a: Entry, b: Entry): number {
+  const ga = a.graceRequeue ? 0 : 1;
+  const gb = b.graceRequeue ? 0 : 1;
+  return ga !== gb ? ga - gb : a.submittedAt - b.submittedAt;
 }
 
 /**
@@ -239,9 +258,10 @@ function roundRobin(
   keyOf: (e: Entry) => string,
   lastSang: Record<string, number>,
 ): Entry[] {
-  // Group entries by bucket, preserving submission order within each bucket.
+  // Group entries by bucket. Within each bucket, grace-re-queued entries sort to
+  // the front (spec step 3), then by submission order.
   const buckets = new Map<string, Entry[]>();
-  for (const e of entries.slice().sort(bySubmittedAt)) {
+  for (const e of entries.slice().sort(byGraceThenSubmitted)) {
     const k = keyOf(e);
     const arr = buckets.get(k);
     if (arr) arr.push(e);
@@ -260,17 +280,27 @@ function roundRobin(
 
   const total = entries.length;
   while (result.length < total) {
-    // Pick the bucket with a waiting head that is least recently served;
+    // Pick the bucket with a waiting head that is least recently served; among
+    // equal-credit buckets a grace-holding head sorts first (spec step 3), then
     // tie-break by that head's submittedAt.
     let bestKey: string | undefined;
     let bestServed = Infinity;
+    let bestGrace = 1; // 0 = head is a grace re-queue (higher priority)
     let bestHeadSeq = Infinity;
     for (const [k, arr] of buckets) {
       if (arr.length === 0) continue;
       const s = served.get(k)!;
-      const headSeq = arr[0].submittedAt;
-      if (s < bestServed || (s === bestServed && headSeq < bestHeadSeq)) {
+      const head = arr[0];
+      const grace = head.graceRequeue ? 0 : 1;
+      const headSeq = head.submittedAt;
+      const better =
+        s < bestServed ||
+        (s === bestServed &&
+          (grace < bestGrace ||
+            (grace === bestGrace && headSeq < bestHeadSeq)));
+      if (better) {
         bestServed = s;
+        bestGrace = grace;
         bestHeadSeq = headSeq;
         bestKey = k;
       }
@@ -371,17 +401,62 @@ export function skip(state: QueueState, entryId?: string): SkipResult {
   } else {
     target = state.entries.find((e) => e.id === entryId);
   }
-  if (target === undefined) return { state, skipped: undefined };
-  // Skip records history + removes the entry but does NOT bump recency.
-  const next: QueueState = {
-    ...state,
-    entries: state.entries.filter((e) => e.id !== target!.id),
-    history: [
-      ...state.history,
-      { entry: target, outcome: "skipped", at: state.singClock },
-    ],
+  if (target === undefined) {
+    return { state, skipped: undefined, graceGranted: false };
+  }
+
+  const entries = state.entries.filter((e) => e.id !== target!.id);
+  const history = [
+    ...state.history,
+    { entry: target, outcome: "skipped" as const, at: state.singClock },
+  ];
+
+  // Skipping a listen entry is a plain removal — no fairness accounting, no grace.
+  if (target.mode !== "sing") {
+    return {
+      state: { ...state, entries, history },
+      skipped: target,
+      graceGranted: false,
+    };
+  }
+
+  // No-show accounting (spec §no-shows). Track CONSECUTIVE no-shows per uuid.
+  const streak = (state.noShowStreakByUuid[target.uuid] ?? 0) + 1;
+  const noShowStreakByUuid = {
+    ...state.noShowStreakByUuid,
+    [target.uuid]: streak,
   };
-  return { state: next, skipped: target };
+
+  if (streak >= 2) {
+    // Second consecutive no-show: NO grace, and credit IS charged — bump the
+    // singer's recency like a played turn so they drop in the rotation
+    // (prevents "queue and vanish" gaming the top of rounds).
+    const singClock = state.singClock + 1;
+    return {
+      state: {
+        ...state,
+        entries,
+        history,
+        singClock,
+        lastSangByUuid: { ...state.lastSangByUuid, [target.uuid]: singClock },
+        lastSangByTable: {
+          ...state.lastSangByTable,
+          [tableBucket(target)]: singClock,
+        },
+        noShowStreakByUuid,
+      },
+      skipped: target,
+      graceGranted: false,
+    };
+  }
+
+  // First no-show: forgiven. Recency untouched (they keep their standing) and
+  // the caller may re-queue their entry with `graceRequeue: true`.
+  return {
+    state: { ...state, entries, history, noShowStreakByUuid },
+    skipped: target,
+    graceGranted: true,
+  };
 }
 
 /** Remove `entry` from the queue, record it in history, and update recency if it sang. */
@@ -417,6 +492,9 @@ function consume(
     ...state.lastSangByTable,
     [tableBucket(entry)]: singClock,
   };
+  // Actually singing breaks any consecutive-no-show streak for this uuid.
+  const noShowStreakByUuid = { ...state.noShowStreakByUuid };
+  delete noShowStreakByUuid[entry.uuid];
   return {
     ...state,
     entries,
@@ -424,6 +502,7 @@ function consume(
     singClock,
     lastSangByUuid,
     lastSangByTable,
+    noShowStreakByUuid,
     // A sing turn breaks any listen run.
     consecutiveListen: 0,
   };

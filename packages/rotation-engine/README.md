@@ -30,22 +30,26 @@ The venue picks one of three rotation policies:
 
 | Mode | Rule | Fairness |
 | --- | --- | --- |
-| **full-karaoke** | Everybody queues freely | First-in, first-out (FIFO) |
-| **per-table-2** | A table can have at most **2** sing songs waiting at once | Fair **round-robin between tables** |
-| **per-person-1** | A person can have at most **1** sing song waiting at once | Fair **round-robin between people**, by who sang least recently |
+| **full-karaoke** | Everybody queues freely (uncapped) | **Round-robin by person** (anti-hog) |
+| **per-table-2** | A table can hold at most **4** sing songs waiting at once | Fair **round-robin between tables** |
+| **per-person-1** | A person can hold at most **2** sing songs waiting at once | Fair **round-robin between people**, by who sang least recently |
 
-**full-karaoke** is the simplest: songs play in the order they were submitted.
+**full-karaoke** is the default. Ordering is **round-robin by person** (spec A1),
+tie-broken by earliest unplayed submission — one enthusiastic patron dumping 8
+songs can't freeze everyone else out; their entries spread across future rounds
+(the FIFO *feel* is preserved for casual use, but hogging is capped
+structurally). No cap on how many a person may queue.
 
 **per-table-2** keeps one table from hogging the mic. Each table takes turns:
-one song from table A, then one from table B, then back to A, and so on. A
-table's 3rd simultaneous request is politely rejected (`table-cap`) until one of
-its two queued songs has played. A song with no table number is treated as its
-own private "table" keyed to that person, so table-less singers still rotate
-fairly and get the same 2-song allowance.
+one song from table A, then table B, then back to A. A table may hold up to
+**4** queued songs (two rounds of lookahead); a 5th is politely rejected
+(`table-cap`) until one plays. A song with no table number is treated as its own
+private "table" keyed to that person, so table-less singers still rotate fairly
+and get the same 4-song allowance.
 
-**per-person-1** makes it maximally fair between *individuals*. You can only
-have one song waiting at a time (a 2nd is rejected with `person-cap`). The queue
-always favors **whoever sang least recently** — someone who has never sung
+**per-person-1** makes it maximally fair between *individuals*. You may hold up
+to **2** songs waiting (current round + next); a 3rd is rejected with
+`person-cap`. The queue always favors **whoever sang least recently** — someone who has never sung
 outranks someone who sang an hour ago, who outranks someone who just sang. As
 soon as your song plays you can queue another, and you drop to the back behind
 everyone who's been waiting longer.
@@ -58,13 +62,14 @@ singers either — imagine 20 people queueing dance tracks while one nervous
 singer waits forever.
 
 The rule: **at most `maxConsecutiveListen` listen songs may play in a row while
-a singer is still waiting** (default **1**). So with the default, a listen song
-can slip in between two sing turns, but never two listen songs back-to-back
-while a singer waits. When *no* singers are queued, all listen songs simply play
-in submission order. Set `maxConsecutiveListen` higher — or to **`null` ("no
-cap")** — if a venue wants a more dance-forward vibe. (`Infinity` is accepted at
-`createQueue` and normalized to `null` so that queue state stays safe to
-snapshot as JSON.)
+a singer is still waiting** (engine default **1**). The **cantai app configures
+`0`** — the spec policy (A3): listens play *only* when no sing entry is pending,
+so karaoke is always the show and music just fills the gaps. The interleave
+capability is retained as the venue-toggle knob the spec earmarked: set
+`maxConsecutiveListen` to `1`+ (a listen may slip between singers) or to
+**`null` ("no cap")** for a dance-forward vibe. When *no* singers are queued, all
+listen songs play in submission order regardless. (`Infinity` is accepted at
+`createQueue` and normalized to `null` so state stays JSON-safe to snapshot.)
 
 This cap is enforced **across real playback, not just in a preview**: the
 engine persists the current consecutive-listen run on `QueueState`
@@ -74,14 +79,24 @@ screen shows is what actually airs.
 
 ### No-shows, leavers, and edits
 
-- **Skip / no-show** (`skip`): the person at the mic isn't there. They're
-  removed from the queue **without penalty** — their "last sang" standing is
-  untouched, so if they re-join they keep the priority they had. (They didn't
-  actually sing, so fairness shouldn't punish *or* reward them.)
+- **Skip / no-show** (`skip`): the person at the mic isn't there. The **first**
+  no-show is forgiven — removed **without penalty** (their "last sang" standing
+  is untouched) and `skip` reports `graceGranted: true`, so the caller may
+  re-queue their entry with `graceRequeue: true` (see below). A **second
+  consecutive** no-show by the same person (no actual sing in between) IS charged
+  credit — their recency is bumped like a played turn so they drop in the
+  rotation (`graceGranted: false`), preventing "queue and vanish" gaming.
+  Singing anytime resets the consecutive-no-show streak.
+- **Grace re-queue** (`graceRequeue: true` on an entry): a forgiven no-show's
+  re-queued song is scheduled at the **front of that person's next-round slot**
+  — ahead of their own other pending entries, and their group sorts first among
+  equal-credit groups. It never leapfrogs a group that has genuinely less
+  credit. Single-use by construction: the flag rides on the entry, so it's gone
+  once the entry plays.
 - **Leaving** (`removeEntry`): pulls an entry out of the queue. Idempotent — a
   no-op if it's already gone. Frees up that person's/table's cap immediately.
 - **Changing tables** (`moveEntryToTable`): re-buckets the entry. A correction
-  is always honored, even if it briefly pushes a table over its 2-song cap
+  is always honored, even if it briefly pushes a table over its 4-song cap
   (those extras simply drain off; nothing is dropped).
 - **Duplicate submissions**: the same person submitting the same video twice
   **in the same mode** while it's still queued is rejected (`duplicate`). After

@@ -30,6 +30,16 @@ export interface EntryInput {
   table?: string;
   /** Whether this entry takes a sing turn or is a listen/dance-only entry. */
   mode: EntryMode;
+  /**
+   * No-show grace flag (spec §no-shows / ordering step 3). Set `true` by the
+   * caller when re-queuing an entry for a singer skipped-absent on their
+   * previous turn: `getEffectiveOrder` then schedules it at the FRONT of its
+   * group's next round — ahead of that group's other pending entries, and its
+   * group sorts first among equal-credit groups. Single-use by construction:
+   * the flag rides on the entry, so it is gone once the entry plays. Absent /
+   * `false` for a normal submission.
+   */
+  graceRequeue?: boolean;
 }
 
 /**
@@ -90,14 +100,22 @@ export interface QueueState {
    * within one `getEffectiveOrder` snapshot — peek and play always agree.
    */
   consecutiveListen: number;
+  /**
+   * Per-uuid count of CONSECUTIVE no-show skips since that uuid last actually
+   * sang (spec §no-shows). The first no-show is forgiven (no credit charged,
+   * `skip` reports `graceGranted: true`); a second consecutive no-show IS
+   * charged (recency bumped like a played turn, `graceGranted: false`). Reset to
+   * 0 when the uuid plays a sing entry. Absence = 0.
+   */
+  noShowStreakByUuid: Record<string, number>;
   options: QueueOptions;
 }
 
 /** Why an {@link EntryInput} was rejected by `addEntry`. */
 export type RejectReason =
-  | "duplicate" // same uuid + videoId already queued
-  | "table-cap" // per-table-2: table already has 2 queued sing entries
-  | "person-cap"; // per-person-1: uuid already has a queued sing entry
+  | "duplicate" // same uuid + videoId already queued (same mode)
+  | "table-cap" // per-table-2: table already has 4 queued sing entries (spec cap)
+  | "person-cap"; // per-person-1: uuid already has 2 queued sing entries (spec cap)
 
 /** Result of an `addEntry` attempt. */
 export type AddResult =
@@ -116,4 +134,12 @@ export interface SkipResult {
   state: QueueState;
   /** The entry that was skipped, or `undefined` if there was nothing to skip. */
   skipped?: Entry;
+  /**
+   * Whether this skip earned the singer a grace re-queue (spec §no-shows): true
+   * on the FIRST consecutive no-show of a sing entry (credit not charged), false
+   * on a second consecutive no-show (charged) or when skipping a listen / empty
+   * queue. The caller decides how to honor it (e.g. re-queue the entry with
+   * `graceRequeue: true`).
+   */
+  graceGranted: boolean;
 }
