@@ -1,12 +1,20 @@
 # cantai — Board
 
-_Last updated: 2026-07-06 (TICKET-6 merged; wave 2 launched)_
+_Last updated: 2026-07-06 (PRs #8/#9 approved+merging; wave 2 building)_
 
 ## Needs user (TL)
 
 - 🔴 GitHub Actions BILLING broken on paulosalvatore account — CI dies in 2s on every PR ("payments failed / spending limit"). GitHub → Settings → Billing & plans. Binding condition from PR #4 merge exception: first post-merge CI run on main must be verified green after fix.
 - 🟡 Upstash Redis provisioning on the Vercel project (Marketplace → Storage) — unblocks TICKET-6 live path (dev proceeds with memory driver).
-- 🟡 YouTube Data API v3 key → Vercel env — unblocks TICKET-8 live search (dev proceeds with degraded mode).
+- 🟡 YouTube Data API v3 key → Vercel env — unblocks TICKET-8 live search. ⚠️ QUOTA REALITY (opus PR #8 finding, binding condition): default quota = 10,000 units/day and each search costs ~101 units → ~99 searches/day TOTAL across ALL venues; one modest bar night ≈ 80% of it. Before provisioning the key: file a YouTube quota-increase request (or accept day-one degraded fallback), and consider the filed follow-up (move search cache + rate limits onto Upstash so caching actually reduces burn).
+
+## Follow-ups (filed by gates, unscheduled)
+
+- Upstash-backed search cache + rate buckets (PR #8 opus rec — biggest quota lever; also makes rate limit cross-instance).
+- Advance-guard for the double-advance race (ENDED vs skip; pre-existing, LOW).
+- setQueue if-changed diff on /tv (render churn, LOW).
+- POWERED_BY_FOOTER doc nit: env change needs redeploy on Vercel.
+- Design-token consolidation (tv CSS module duplicates TICKET-4 tokens deliberately).
 
 ## Notes
 
@@ -26,5 +34,5 @@ _Last updated: 2026-07-06 (TICKET-6 merged; wave 2 launched)_
 | TICKET-5 | Roadmap + specs (modes/feedback/monetization) | DONE | PR #1 merged (Reviewer APPROVE after B1/B2 fixes; opus-skip recorded, docs-only) |
 | TICKET-19 | PMF wave ticket batch | DONE | PR #5 merged (Reviewer APPROVE after B1 wave-dependency fix; opus-skip, docs-only). Tickets 6-12+18 armed in waves |
 | TICKET-2 | Deploy verification | DONE | PR #6 merged. LIVE: https://cantai-snowy.vercel.app (cantai.vercel.app was name-squatted). All prod e2e checks PASS |
-| TICKET-8 | YouTube search (wave 1) | IN GATES | PR #8: App Tester PASS; security MEDIUMs (rate-limiter) fix round |
-| TICKET-18 | TV fullscreen + bigger type (wave 1) | IN GATES | PR #9: App Tester PASS; sonnet review running (security waived N/A, no new inputs) |
+| TICKET-8 | YouTube search (wave 1) | MERGING | Full chain green (opus APPROVE w/ quota-disclosure condition on key provisioning); .env.example concat in flight |
+| TICKET-18 | TV fullscreen + bigger type (wave 1) | MERGING | Full chain green (opus all-night-reliability audit clean); event-log union in flight |
