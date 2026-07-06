@@ -11,6 +11,22 @@ import { test, expect, type Page } from "@playwright/test";
  * per-room persistence is exercised in isolation.
  */
 
+/**
+ * Compile every room-touching route ONCE up front. Under `next dev` with the
+ * in-memory driver, a route's first compilation re-evaluates the shared
+ * store/rooms modules and resets their singletons — so a room created before an
+ * as-yet-uncompiled room route is hit would be invisible to it. Warming the
+ * routes first makes later create→read round-trips stable (production uses
+ * durable Upstash and has no such caveat).
+ */
+async function warmUp(page: Page) {
+  await page.request.post("/api/rooms", { data: { name: "warmup" } });
+  await page.request.get("/api/rooms?id=default");
+  await page.goto("/default");
+  await page.goto("/default/tv");
+  await page.goto("/default/admin");
+}
+
 async function createRoom(page: Page, name: string): Promise<string> {
   await page.goto("/new");
   await page.getByLabel("Nome do bar").fill(name);
@@ -41,6 +57,10 @@ async function joinAndSubmit(
   await expect(page.getByText(/song added to the queue/i)).toBeVisible({ timeout: 5000 });
   await expect(page.getByText(song)).toBeVisible({ timeout: 6000 });
 }
+
+test.beforeEach(async ({ page }) => {
+  await warmUp(page);
+});
 
 test("two rooms stay isolated and the TV shows the room's song", async ({ page }) => {
   const roomA = await createRoom(page, "Bar E2E Um");
