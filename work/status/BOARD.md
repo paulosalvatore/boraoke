@@ -10,6 +10,10 @@ _Last updated: 2026-07-06 (WAVE 2 COMPLETE — 13 PRs merged; wave 3 building; w
 
 ## Follow-ups (filed by gates, unscheduled)
 
+- **[HIGH] Atomic store RMW (PR #14 opus)** — WATCH/Lua CAS on QueueStore rewrite/removeEntry/reorder + concurrency regression test. Closes the lost-submit window (~0.1-0.3/busy night in bursts, patron-visible+permanent) AND the pre-existing host-op races in one change. First candidate for the next dev slot.
+- **[LOW] Strip patronUuid from public GET /api/queue projection** (griefing lockout via per-uuid limiter) — weigh against patron-page own-row highlighting (may need a hashed marker instead).
+- **[LOW] rotation.ts:13 stale JSDoc; grace-path addEntry-return check** (PR #14 sonnet NITs).
+
 - **BINDING before the feedback-intake ticket (#12/framework intake): Intake-contract condition (PR #11 opus, HIGH)** — feedback ids are stamped at POST but index-commit lands later; id-order ≠ commit-order under concurrent writes, so a naive `since = max(id)` cursor can silently lose entries forever. Intake MUST use lagging watermark + id-dedupe (or the index made commit-ordered) — never the naive loop.
 - Host login throttle → edge/Upstash-backed (per-lambda in-memory now; PR #10 M-1 note).
 
