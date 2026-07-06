@@ -1,6 +1,6 @@
 # cantai — Board
 
-_Last updated: 2026-07-06 (11 PRs merged; repo PUBLIC, CI restored+green; wave-2 finale building)_
+_Last updated: 2026-07-06 (12 PRs merged — MULTI-ROOM LIVE; PR #12 final rebase)_
 
 ## Needs user (TL)
 
@@ -32,8 +32,8 @@ _Last updated: 2026-07-06 (11 PRs merged; repo PUBLIC, CI restored+green; wave-2
 | TICKET-1 | Walking skeleton / prototype core | DONE | PR #4 merged: full gate chain (App Tester PASS, Security MEDIUMs fixed, sonnet+opus APPROVE); CI billing exception recorded |
 | TICKET-6 | Durable persistence (wave 1) | DONE | PR #7 merged: full chain (Security+hardening, sonnet+opus APPROVE; opus verified real @upstash/redis semantics). Upstash activates on TL provisioning |
 | TICKET-7 | Host controls (wave 2) | DONE | PR #10 merged: full chain + FIRST real CI-green gate (190/190 local, Actions pass). Public-repo security recheck clean. Needs HOST_TOKEN env to go live |
-| TICKET-9 | Rooms + QR + table (wave 2) | IN PROGRESS | Dev (opus), .worktrees/ticket-9, port 3013 |
-| TICKET-12 | Telemetry (wave 2) | IN PROGRESS | Dev (opus), .worktrees/ticket-12, port 3012; rebases last |
+| TICKET-9 | Rooms + QR + table (wave 2) | DONE | PR #13 merged: full chain incl. Security FAIL→fix→PASS (creation flood), opus deploy-moment analysis clean. Root URL is now a landing page; legacy queue at /default |
+| TICKET-12 | Telemetry (wave 2) | FINAL REBASE | PR #12: sonnet APPROVE (+binding C1 single-source song_played); instrumentation landing post-#13; opus pass after |
 | TICKET-11 | Feedback widget (wave 2) | DONE | PR #11 merged (151/151 on merged tree). Intake-contract condition + Upstash URGENT recorded |
 | TICKET-3 | Rotation/fairness engine lib | DONE | PR #3 merged: sonnet+opus APPROVE; opus caught real peek≠play starvation bug pre-merge; 47/47 tests |
 | TICKET-4 | Design language + mockups | DONE | PR #2 merged, TL-ratified |
