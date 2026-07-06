@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 import type { QueueEntry, Mode } from "@/lib/store";
+import { modeLabel, type RoomMode } from "@/lib/rotation-modes";
 import SongSearch, { type SongSelection } from "@/components/SongSearch";
 
 const POLL_INTERVAL = 3000;
@@ -40,6 +41,9 @@ export default function PatronRoom({
 
   // Queue state
   const [queue, setQueue] = useState<QueueEntry[]>([]);
+  const [roomMode, setRoomMode] = useState<RoomMode | null>(null);
+  const [reorderNotice, setReorderNotice] = useState("");
+  const prevModeRef = useRef<RoomMode | null>(null);
 
   const nickKey = `cantai:${roomId}:nick`;
   const tableKey = `cantai:${roomId}:table`;
@@ -83,6 +87,16 @@ export default function PatronRoom({
       if (!res.ok) return;
       const data = await res.json();
       setQueue(data.items ?? []);
+      const nextMode = (data.mode ?? null) as RoomMode | null;
+      if (nextMode) {
+        setRoomMode(nextMode);
+        // Toast on a live mode change (skip the very first load).
+        if (prevModeRef.current && prevModeRef.current !== nextMode) {
+          setReorderNotice(`Fila reordenada — modo mudou para ${modeLabel(nextMode)}.`);
+          window.setTimeout(() => setReorderNotice(""), 5000);
+        }
+        prevModeRef.current = nextMode;
+      }
     } catch {
       // network hiccup — next poll retries
     }
@@ -289,12 +303,36 @@ export default function PatronRoom({
 
       {/* Live queue */}
       <section>
-        <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>
+        <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
           Live queue{" "}
           <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: "0.875rem" }}>
             ({queue.length} {queue.length === 1 ? "song" : "songs"})
           </span>
         </h2>
+        {roomMode && (
+          <p
+            data-testid="patron-mode-hint"
+            style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.5rem" }}
+          >
+            Modo: {modeLabel(roomMode)}
+          </p>
+        )}
+        {reorderNotice && (
+          <p
+            role="status"
+            data-testid="reorder-toast"
+            style={{
+              background: "rgba(230, 57, 70, 0.12)",
+              border: "1px solid var(--accent)",
+              borderRadius: "var(--radius)",
+              padding: "0.5rem 0.75rem",
+              fontSize: "0.85rem",
+              marginBottom: "0.75rem",
+            }}
+          >
+            {reorderNotice}
+          </p>
+        )}
 
         {queue.length === 0 ? (
           <p style={{ color: "var(--text-muted)" }}>No songs yet — be the first!</p>

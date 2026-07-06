@@ -22,10 +22,20 @@ import "server-only";
 
 import { createHmac, randomBytes as nodeRandomBytes } from "crypto";
 import { Redis } from "@upstash/redis";
-import { DEFAULT_ROOM, type Mode } from "./store";
+import { DEFAULT_ROOM } from "./store";
+import {
+  DEFAULT_ROOM_MODE,
+  normalizeRoomMode,
+  type RoomMode,
+} from "./rotation-modes";
 
 export interface RoomSettings {
-  mode: Mode | "full"; // "full" = karaokê completo (default); #10 wires real modes
+  /**
+   * Venue rotation mode (TICKET-10). Persisted as a {@link RoomMode}. Legacy
+   * records (pre-#10) stored `"full"` / entry-mode placeholders — those read
+   * back through `normalizeRoomMode` as the default, with NO re-migration.
+   */
+  mode: RoomMode;
 }
 
 export interface Room {
@@ -111,6 +121,11 @@ interface RoomBackend {
   get(id: string): Promise<Room | null>;
   /** Persist a NEW room record (also advances the creation counter). */
   create(room: Room): Promise<void>;
+  /**
+   * Persist an UPDATED room record in place (TICKET-10, additive — does NOT
+   * touch the creation counter). No-op if the room does not exist.
+   */
+  update(room: Room): Promise<void>;
   /** Total rooms ever created (ceiling input — see ROOM_MAX). */
   count(): Promise<number>;
 }
@@ -122,6 +137,9 @@ class MemoryRoomBackend implements RoomBackend {
   }
   async create(room: Room): Promise<void> {
     this.rooms.set(room.id, room);
+  }
+  async update(room: Room): Promise<void> {
+    if (this.rooms.has(room.id)) this.rooms.set(room.id, room);
   }
   async count(): Promise<number> {
     return this.rooms.size;
@@ -140,6 +158,11 @@ class UpstashRoomBackend implements RoomBackend {
     // (none are yet — expiry is a #14 follow-up), which only makes the ceiling
     // MORE conservative, never less.
     await this.redis.incr(ROOMS_COUNT_KEY);
+  }
+  async update(room: Room): Promise<void> {
+    // In-place overwrite (no counter change). The caller only invokes this for a
+    // room it already read, so a `set` here never creates a phantom record.
+    await this.redis.set(roomKey(room.id), room);
   }
   async count(): Promise<number> {
     const v = await this.redis.get<number | string>(ROOMS_COUNT_KEY);
@@ -234,10 +257,37 @@ export async function createRoom(name: string): Promise<CreatedRoom | null> {
     name: trimmed || "sala",
     hostCodeHash: hashHostCode(hostCode),
     createdAt: new Date().toISOString(),
-    settings: { mode: "full" },
+    settings: { mode: DEFAULT_ROOM_MODE },
   };
   await roomBackend.create(room);
   return { room, hostCode };
+}
+
+/**
+ * Read a room's current rotation mode, normalized (TICKET-10). Rooms without a
+ * record (e.g. the legacy DEFAULT_ROOM) or with a legacy settings value read
+ * back as the default — no re-migration, no write.
+ */
+export async function getRoomMode(roomId: string): Promise<RoomMode> {
+  const room = await getRoom(roomId);
+  return normalizeRoomMode(room?.settings?.mode);
+}
+
+/**
+ * Set a room's rotation mode (TICKET-10, additive host mutator). Persists in
+ * place via the backend `update`. Returns the new mode on success, or `null`
+ * when the room does not exist (mode-switch is host-authed, so this only fires
+ * for a real, host-owned room). Idempotent.
+ */
+export async function setRoomMode(
+  roomId: string,
+  mode: RoomMode,
+): Promise<RoomMode | null> {
+  const room = await getRoom(roomId);
+  if (!room) return null;
+  const next: Room = { ...room, settings: { ...room.settings, mode } };
+  await roomBackend.update(next);
+  return mode;
 }
 
 /** The legacy single-queue room id (pre-multi-room prototype). */

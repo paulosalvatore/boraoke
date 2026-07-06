@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { store, DEFAULT_ROOM, QUEUE_MAX, type Mode } from "@/lib/store";
-import { isValidRoomId } from "@/lib/rooms";
+import { store, DEFAULT_ROOM, QUEUE_MAX, type Mode, type QueueEntry } from "@/lib/store";
+import { isValidRoomId, getRoomMode } from "@/lib/rooms";
+import { checkSubmit, orderQueue, relayQueue } from "@/lib/rotation";
 import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
 import { track } from "@/lib/telemetry";
 
@@ -29,14 +30,20 @@ export async function GET(req: NextRequest) {
   if (roomId === null) {
     return NextResponse.json({ error: "Invalid room id" }, { status: 400 });
   }
-  const [items, current, paused] = await Promise.all([
+  const [rawItems, paused, mode] = await Promise.all([
     store.getQueue(roomId),
-    store.nowPlaying(roomId),
     store.isPaused(roomId),
+    getRoomMode(roomId),
   ]);
+  // TICKET-10: render the EFFECTIVE (fairness-engine) order, not raw insertion
+  // order. `orderQueue` pins items[0] as now-playing and is idempotent, so this
+  // is correct whether or not a re-lay has already run. `mode` is additive —
+  // patron/TV use it for position hints and the "queue reordered" toast.
+  const items = orderQueue(rawItems, mode);
+  const current = items[0] ?? null;
   // `paused` is additive (TICKET-7): host pause reflected on every polling view.
   // /tv consumes it to freeze playback; patron submits stay accepted while paused.
-  return NextResponse.json({ items, nowPlaying: current, paused });
+  return NextResponse.json({ items, nowPlaying: current, paused, mode });
 }
 
 export async function POST(req: NextRequest) {
@@ -121,7 +128,7 @@ export async function POST(req: NextRequest) {
   const resolvedMode: Mode =
     mode === "listen-dance" ? "listen-dance" : "sing";
 
-  const entry = {
+  const entry: QueueEntry = {
     id: uuidv4(),
     videoId: resolvedVideoId,
     title: typeof title === "string" && title.trim() ? title.trim() : undefined,
@@ -133,6 +140,17 @@ export async function POST(req: NextRequest) {
     submittedAt: new Date().toISOString(),
   };
 
+  // TICKET-10: rotation-mode enforcement (caps / table-required / duplicate)
+  // BEFORE the entry is stored. Friendly pt-BR copy for the patron; a 409 so the
+  // client can distinguish it from a validation 400 or the capacity 429.
+  const roomMode = await getRoomMode(roomId);
+  const currentQueue = await store.getQueue(roomId);
+  const check = checkSubmit(currentQueue, entry, roomMode);
+  if (!check.ok) {
+    void track("submit_rejected", { roomId, uuid: entry.patronUuid, props: { reason: check.reason } }); // TICKET-12: fire-and-forget, fail-open
+    return NextResponse.json({ error: check.message, reason: check.reason }, { status: 409 });
+  }
+
   // Queue-depth cap — stop unauthenticated storage exhaustion. addEntry returns
   // false (without adding) when the room is at QUEUE_MAX.
   const added = await store.addEntry(roomId, entry);
@@ -143,6 +161,10 @@ export async function POST(req: NextRequest) {
       { status: 429 }
     );
   }
+
+  // TICKET-10: re-lay the stored queue into effective (fairness) order so reads
+  // AND the store-head-based advance/skip all reflect the new entry's fair slot.
+  await relayQueue(roomId, roomMode);
 
   void track("song_queued", { roomId, uuid: entry.patronUuid, props: { kind: typeof rawVideoId === "string" && rawVideoId ? "search" : "paste", mode: resolvedMode } }); // TICKET-12: fire-and-forget, fail-open
   return NextResponse.json({ entry }, { status: 201 });
