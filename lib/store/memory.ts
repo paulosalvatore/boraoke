@@ -74,9 +74,28 @@ export class MemoryStore implements QueueStore {
     return true;
   }
 
-  async rewrite(roomId: string, entries: QueueEntry[]): Promise<void> {
-    // Copy so later caller-side mutation can't reach internal state.
-    this.room(roomId).queue = [...entries];
+  async rewrite(
+    roomId: string,
+    entries: QueueEntry[],
+    opts?: { snapshot?: string[] },
+  ): Promise<void> {
+    const r = this.room(roomId);
+    if (!opts?.snapshot) {
+      // Wholesale replace. Copy so later caller-side mutation can't reach state.
+      r.queue = [...entries];
+      return;
+    }
+    // Merge-on-write (TICKET-21). Single-process so already atomic, but implement
+    // the SAME suffix-preservation contract as the Upstash Lua path so the store
+    // conformance tests document one contract across both drivers: keep the
+    // desired entries whose id is still present (drop ids that vanished via a
+    // concurrent advance/remove), then re-append any currently-stored entry whose
+    // id was NOT in the snapshot (a submit that raced the read → write).
+    const inSnapshot = new Set(opts.snapshot);
+    const present = new Set(r.queue.map((e) => e.id));
+    const kept = entries.filter((e) => present.has(e.id));
+    const appended = r.queue.filter((e) => !inSnapshot.has(e.id));
+    r.queue = [...kept, ...appended];
   }
 
   async setPaused(roomId: string, paused: boolean): Promise<void> {

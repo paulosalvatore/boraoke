@@ -7,9 +7,21 @@
  *                           parses them on read (automaticDeserialization).
  *   room:<roomId>:paused  → "1" / "0" flag.
  *
- * Hot patron path (addEntry) uses atomic RPUSH; advance uses atomic LPOP. The
- * lower-frequency host ops (removeEntry, reorder) do a read-modify-write, which
- * is acceptable for a small single-host queue at PMF volume.
+ * Hot patron path (addEntry) uses atomic RPUSH; advance uses atomic LPOP.
+ *
+ * Atomic read-modify-write (TICKET-21). The ordering ops (`rewrite` for the
+ * rotation re-lay, plus `removeEntry`/`reorder`) computed their new list
+ * client-side then did `del`+`rpush` — a non-atomic read→write with a
+ * lost-update window: a concurrent `addEntry` (atomic RPUSH) landing between the
+ * caller's read and the rewrite was PERMANENTLY dropped (the patron saw "added",
+ * their song vanished). @upstash/redis@1.38 over the stateless REST transport has
+ * NO WATCH (optimistic locking needs a held connection REST doesn't have), and
+ * its MULTI/EXEC only pipelines a fixed command list — neither can do
+ * read-then-conditional-write CAS. The one server-side atomic primitive it
+ * exposes is a Lua script via EVAL. So all three ordering ops route through ONE
+ * Lua merge script (`MERGE_SCRIPT`) that runs the whole read→merge→write
+ * atomically server-side: Redis's single-threaded execution serializes it
+ * against every concurrent RPUSH, so no submit can ever be lost.
  *
  * The client is injected (see `createUpstashStore`) so unit tests can drive a
  * fake Redis with zero network/credentials.
@@ -25,6 +37,64 @@ import {
   type QueueStore,
 } from "./types";
 
+/**
+ * Atomic merge-on-write (TICKET-21). Runs entirely inside one EVAL, so it is
+ * atomic against every concurrent RPUSH/LPOP.
+ *
+ * KEYS[1] = queue list key.
+ * ARGV[1] = JSON array of the DESIRED entries, each element itself the exact
+ *           `JSON.stringify` of a QueueEntry (the same string RPUSH would store).
+ * ARGV[2] = JSON array of the SNAPSHOT ids — the ids the caller read before
+ *           computing the desired ordering.
+ *
+ * Merge rule — final list =
+ *   (1) the desired entries whose id is STILL present in the current list, in
+ *       desired order  (a concurrent advance/remove that dropped an id is
+ *       respected — the vanished id is NOT resurrected);   then
+ *   (2) every current entry whose id was NOT in the snapshot — i.e. entries
+ *       appended by a concurrent addEntry AFTER the caller's read — preserved in
+ *       their current order  (this is the lost-update fix: a racing submit can
+ *       never be silently dropped).
+ *
+ * Desired strings are RPUSH'd VERBATIM (decoded only to read `.id`, never
+ * re-encoded) so payloads round-trip byte-for-byte. Returns the final length.
+ */
+export const MERGE_SCRIPT = `
+local key = KEYS[1]
+local desired = cjson.decode(ARGV[1])
+local snapIds = cjson.decode(ARGV[2])
+
+local inSnapshot = {}
+for _, id in ipairs(snapIds) do inSnapshot[id] = true end
+
+local current = redis.call('LRANGE', key, 0, -1)
+local present = {}
+for _, s in ipairs(current) do
+  local ok, obj = pcall(cjson.decode, s)
+  if ok and obj.id ~= nil then present[obj.id] = true end
+end
+
+local out = {}
+for _, s in ipairs(desired) do
+  local ok, obj = pcall(cjson.decode, s)
+  if ok and obj.id ~= nil and present[obj.id] then
+    out[#out + 1] = s
+  end
+end
+for _, s in ipairs(current) do
+  local ok, obj = pcall(cjson.decode, s)
+  if ok and obj.id ~= nil and not inSnapshot[obj.id] then
+    out[#out + 1] = s
+  end
+end
+
+redis.call('DEL', key)
+if #out > 0 then
+  redis.call('RPUSH', key, unpack(out))
+end
+return #out
+`;
+
 /** The subset of the Redis client this store depends on (keeps it injectable). */
 export interface RedisLike {
   lrange<T = unknown>(key: string, start: number, stop: number): Promise<T[]>;
@@ -35,6 +105,8 @@ export interface RedisLike {
   del(...keys: string[]): Promise<number>;
   set(key: string, value: unknown): Promise<unknown>;
   get<T = unknown>(key: string): Promise<T | null>;
+  /** EVAL a Lua script (TICKET-21 atomic RMW). Matches @upstash/redis's signature. */
+  eval<T = unknown>(script: string, keys: string[], args: unknown[]): Promise<T>;
 }
 
 export class UpstashStore implements QueueStore {
@@ -58,7 +130,10 @@ export class UpstashStore implements QueueStore {
     const queue = await this.redis.lrange<QueueEntry>(key, 0, -1);
     const next = queue.filter((e) => e.id !== entryId);
     if (next.length === queue.length) return false; // not found
-    await this.rewriteKey(key, next);
+    // Merge-apply with the full read id-set as snapshot: the removed entry is in
+    // the snapshot (so NOT re-appended as a stray "concurrent add"), while a
+    // submit that raced this remove (id not in snapshot) is preserved.
+    await this.mergeApply(key, next, queue.map((e) => e.id));
     return true;
   }
 
@@ -81,15 +156,28 @@ export class UpstashStore implements QueueStore {
     const queue = await this.redis.lrange<QueueEntry>(key, 0, -1);
     const idx = queue.findIndex((e) => e.id === entryId);
     if (idx === -1) return false;
+    const snapshot = queue.map((e) => e.id);
     const clamped = Math.max(0, Math.min(newIndex, queue.length - 1));
     const [entry] = queue.splice(idx, 1);
     queue.splice(clamped, 0, entry);
-    await this.rewriteKey(key, queue);
+    // Same merge-apply: the reorder is a permutation of the snapshot, and a
+    // concurrent submit lands at the tail rather than being lost.
+    await this.mergeApply(key, queue, snapshot);
     return true;
   }
 
-  async rewrite(roomId: string, entries: QueueEntry[]): Promise<void> {
-    await this.rewriteKey(keys.queue(roomId), entries);
+  async rewrite(
+    roomId: string,
+    entries: QueueEntry[],
+    opts?: { snapshot?: string[] },
+  ): Promise<void> {
+    const key = keys.queue(roomId);
+    if (!opts?.snapshot) {
+      // Wholesale replace (original TICKET-10 contract; empty array empties).
+      await this.rewriteKey(key, entries);
+      return;
+    }
+    await this.mergeApply(key, entries, opts.snapshot);
   }
 
   async setPaused(roomId: string, paused: boolean): Promise<void> {
@@ -106,6 +194,22 @@ export class UpstashStore implements QueueStore {
 
   async clear(roomId: string): Promise<void> {
     await this.redis.del(keys.queue(roomId), keys.paused(roomId));
+  }
+
+  /**
+   * Atomic merge-on-write via the Lua script (TICKET-21). Desired entries are
+   * passed as their exact JSON strings and RPUSH'd verbatim; the snapshot id-set
+   * lets the script tell a caller-known entry (to drop/keep) from a concurrent
+   * append (to preserve). O(1) round-trips (one EVAL).
+   */
+  private async mergeApply(
+    key: string,
+    desired: QueueEntry[],
+    snapshot: string[],
+  ): Promise<number> {
+    const desiredArg = JSON.stringify(desired.map((e) => JSON.stringify(e)));
+    const snapshotArg = JSON.stringify(snapshot);
+    return this.redis.eval<number>(MERGE_SCRIPT, [key], [desiredArg, snapshotArg]);
   }
 
   /** Replace a list's contents wholesale (RPUSH requires ≥1 value). */
