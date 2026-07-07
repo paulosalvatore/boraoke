@@ -26,6 +26,8 @@
 
 Core stays free forever: shared queue, YouTube playback, all three rotation modes, feedback widget. Fairness is the product's soul — never paywall it (a "pay to jump the queue" patron feature would monetize by destroying the core promise; explicitly rejected).
 
+> **Supersession note (TICKET-22, 2026-07-07):** the blanket pay-to-queue rejection above is superseded by the TL's v2 directive via the fairness-bounded paid-priority design in `platform-aggregation.md` §"Reconciling 'pay to queue' with the fairness promise" — free queue never displaced, bounded to max 1 boosted song per rotation round, venue-opt-in, TV-badged.
+
 ## Ads vs paid — tradeoff analysis and recommendation
 
 ### Ads (patron-side or TV-side)
