@@ -94,6 +94,36 @@ class FakeRedis implements RedisLike {
   async get<T = unknown>(key: string): Promise<T | null> {
     return (this.kv.get(key) as T) ?? null;
   }
+
+  /**
+   * Emulate the atomic MERGE_SCRIPT (TICKET-21). The real script runs on the
+   * Redis server over stored JSON strings; this in-process fake operates on the
+   * already-deserialized objects (matching @upstash's automaticDeserialization),
+   * but applies the identical merge algorithm. Executing synchronously here
+   * models the script's server-side atomicity (no interleave mid-merge).
+   *
+   * args[0] = JSON array of desired entries, each element a JSON.stringify'd entry.
+   * args[1] = JSON array of snapshot ids.
+   */
+  async eval<T = unknown>(
+    _script: string,
+    ks: string[],
+    args: unknown[],
+  ): Promise<T> {
+    const key = ks[0];
+    const desired = (JSON.parse(args[0] as string) as string[]).map(
+      (s) => JSON.parse(s) as { id?: string },
+    );
+    const snapshot = JSON.parse(args[1] as string) as string[];
+    const inSnapshot = new Set(snapshot);
+    const current = this.list(key) as Array<{ id?: string }>;
+    const present = new Set(current.map((e) => e.id));
+    const kept = desired.filter((e) => e.id != null && present.has(e.id));
+    const appended = current.filter((e) => e.id != null && !inSnapshot.has(e.id));
+    const out = [...kept, ...appended];
+    this.lists.set(key, out);
+    return out.length as T;
+  }
 }
 
 const drivers: Array<[string, () => QueueStore]> = [
@@ -263,6 +293,100 @@ describe.each(drivers)("QueueStore conformance — %s", (_name, make) => {
       await s.rewrite(ROOM, arr);
       arr.pop(); // caller mutates after the call
       expect(await s.getQueue(ROOM)).toHaveLength(3);
+    });
+  });
+
+  describe("rewrite merge-on-write — atomic RMW (TICKET-21)", () => {
+    beforeEach(async () => {
+      await s.addEntry(ROOM, makeEntry({ id: "a" }));
+      await s.addEntry(ROOM, makeEntry({ id: "b" }));
+      await s.addEntry(ROOM, makeEntry({ id: "c" }));
+    });
+
+    it("reorders in the given order when nothing raced (snapshot mode)", async () => {
+      const q = await s.getQueue(ROOM);
+      const byId = new Map(q.map((e) => [e.id, e]));
+      await s.rewrite(ROOM, [byId.get("c")!, byId.get("a")!, byId.get("b")!], {
+        snapshot: q.map((e) => e.id),
+      });
+      expect((await s.getQueue(ROOM)).map((e) => e.id)).toEqual(["c", "a", "b"]);
+    });
+
+    it("drops a desired entry whose id vanished concurrently (advance/remove)", async () => {
+      const q = await s.getQueue(ROOM); // snapshot [a,b,c]
+      // A concurrent op removed "b" AFTER our read.
+      await s.removeEntry(ROOM, "b");
+      // We still ask to rewrite the whole snapshot, "b" included.
+      await s.rewrite(ROOM, [q[2], q[1], q[0]], { snapshot: q.map((e) => e.id) });
+      // "b" is NOT resurrected — the vanished id is respected.
+      expect((await s.getQueue(ROOM)).map((e) => e.id)).toEqual(["c", "a"]);
+    });
+
+    it("wholesale mode (no snapshot) still overwrites, empty empties", async () => {
+      await s.rewrite(ROOM, []);
+      expect(await s.getQueue(ROOM)).toHaveLength(0);
+    });
+  });
+
+  describe("CONCURRENCY REGRESSION — append-during-relay never loses a submit (TICKET-21)", () => {
+    // This is the exact PR #14 opus-review failure: a concurrent addEntry (atomic
+    // RPUSH) landing between a relay's getQueue and its rewrite. Deterministically
+    // interleaved: read snapshot → inject the concurrent submit → apply the relay.
+    // Under the OLD wholesale rewrite the injected entry was PERMANENTLY lost.
+    it("preserves a submit that lands between the relay's read and its rewrite", async () => {
+      await s.addEntry(ROOM, makeEntry({ id: "np", nickname: "NowPlaying" }));
+      await s.addEntry(ROOM, makeEntry({ id: "x", nickname: "Xavier" }));
+
+      // 1) Relay reads the queue it intends to reorder.
+      const snapshot = await s.getQueue(ROOM); // [np, x]
+
+      // 2) A concurrent patron submits — atomic append — AFTER the relay's read.
+      await s.addEntry(ROOM, makeEntry({ id: "late", nickname: "Latecomer" }));
+
+      // 3) Relay applies its desired ordering computed from the STALE snapshot
+      //    (it never saw "late"). Merge mode with the snapshot ids.
+      const desired = [snapshot[1], snapshot[0]]; // reorder [x, np]
+      await s.rewrite(ROOM, desired, { snapshot: snapshot.map((e) => e.id) });
+
+      // 4) The late submit MUST survive (re-appended), plus the reordering held.
+      const ids = (await s.getQueue(ROOM)).map((e) => e.id);
+      expect(ids).toContain("late");
+      expect(ids).toEqual(["x", "np", "late"]);
+    });
+
+    it("two racing relays: the earlier reader's stale rewrite keeps the newer submit", async () => {
+      await s.addEntry(ROOM, makeEntry({ id: "A" }));
+
+      // R1 reads first (only sees A).
+      const s1 = await s.getQueue(ROOM); // [A]
+      // R2's submit + rewrite happen while R1 is mid-flight.
+      await s.addEntry(ROOM, makeEntry({ id: "B" }));
+      const s2 = await s.getQueue(ROOM); // [A, B]
+      await s.rewrite(ROOM, s2, { snapshot: s2.map((e) => e.id) });
+      // R1 finally applies its stale ordering (no B in its snapshot).
+      await s.rewrite(ROOM, s1, { snapshot: s1.map((e) => e.id) });
+
+      // B is NOT clobbered by R1's stale rewrite.
+      expect((await s.getQueue(ROOM)).map((e) => e.id)).toEqual(["A", "B"]);
+    });
+  });
+
+  describe("host-op races — removeEntry / reorder vs a concurrent submit (TICKET-21)", () => {
+    it("removeEntry removes its target and keeps a concurrently-added entry", async () => {
+      await s.addEntry(ROOM, makeEntry({ id: "a" }));
+      await s.addEntry(ROOM, makeEntry({ id: "b" }));
+      // "c" was added by a concurrent submit; removeEntry(b) must not drop it.
+      await s.addEntry(ROOM, makeEntry({ id: "c" }));
+      expect(await s.removeEntry(ROOM, "b")).toBe(true);
+      expect((await s.getQueue(ROOM)).map((e) => e.id)).toEqual(["a", "c"]);
+    });
+
+    it("reorder moves its target and keeps a concurrently-added entry", async () => {
+      await s.addEntry(ROOM, makeEntry({ id: "a" }));
+      await s.addEntry(ROOM, makeEntry({ id: "b" }));
+      await s.addEntry(ROOM, makeEntry({ id: "c" }));
+      expect(await s.reorder(ROOM, "c", 0)).toBe(true);
+      expect((await s.getQueue(ROOM)).map((e) => e.id)).toEqual(["c", "a", "b"]);
     });
   });
 

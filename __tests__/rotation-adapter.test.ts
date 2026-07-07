@@ -199,6 +199,26 @@ describe("relayQueue — single bulk store op (security MEDIUM-1, PR #14)", () =
     await relayQueue(ROOM, "per-table-2");
     expect(rewriteSpy).not.toHaveBeenCalled();
   });
+
+  it("CONCURRENCY REGRESSION: a submit that races the relay is never lost (TICKET-21)", async () => {
+    // The exact PR #14 opus-review failure, end-to-end through relayQueue: a
+    // concurrent addEntry lands AFTER the relay reads but BEFORE it writes.
+    await store.addEntry(ROOM, entry({ id: "np", patronUuid: "A" }));
+    await store.addEntry(ROOM, entry({ id: "x", patronUuid: "B" }));
+
+    // The relay will read this stale snapshot (it never sees "late")...
+    const stale = await store.getQueue(ROOM); // [np, x]
+    jest.spyOn(store, "getQueue").mockResolvedValueOnce(stale);
+    // ...while a concurrent patron submit is durably appended.
+    await store.addEntry(ROOM, entry({ id: "late", patronUuid: "C" }));
+
+    await relayQueue(ROOM, "full-karaoke");
+
+    // Under the old wholesale rewrite, "late" was permanently dropped. The merge
+    // preserves it (re-appended after the relaid order).
+    const ids = (await store.getQueue(ROOM)).map((e) => e.id);
+    expect(ids).toContain("late");
+  });
 });
 
 // keep RoomMode referenced (type-only import guard for isolatedModules)

@@ -72,15 +72,34 @@ export interface QueueStore {
   reorder(roomId: string, entryId: string, newIndex: number): Promise<boolean>;
 
   /**
-   * Replace the room's queue contents wholesale, in the given order (TICKET-10,
-   * additive — the wave-2 interface freeze ended with wave 2). This is the bulk
-   * op the rotation re-lay uses: ONE store call regardless of queue depth,
-   * instead of N sequential `reorder` round-trips (security MEDIUM-1, PR #14).
-   * An empty array empties the queue. Callers pass a permutation of the queue
-   * they just read; last-writer-wins on races (the same read-modify-write
-   * semantics `reorder` already has).
+   * Replace the room's queue contents, in the given order (TICKET-10, additive —
+   * the wave-2 interface freeze ended with wave 2). This is the bulk op the
+   * rotation re-lay uses: ONE store round-trip regardless of queue depth, instead
+   * of N sequential `reorder` calls (security MEDIUM-1, PR #14).
+   *
+   * Two modes (TICKET-21 — atomic RMW / lost-update fix):
+   *
+   *  - **Wholesale (no `opts.snapshot`):** the queue becomes exactly `entries`.
+   *    An empty array empties the queue. This is the original TICKET-10 contract
+   *    — last-writer-wins; a concurrent `addEntry` racing the read→write can be
+   *    lost. Use only when you truly want to overwrite everything (e.g. reset).
+   *
+   *  - **Merge-on-write (`opts.snapshot` = the ids the caller just read):** the
+   *    apply is atomic w.r.t. concurrent `addEntry`. The store keeps the `entries`
+   *    whose id is STILL present (dropping ids that vanished via a concurrent
+   *    advance/remove) in the given order, then re-appends any currently-stored
+   *    entry whose id was NOT in `snapshot` — i.e. entries appended AFTER the
+   *    caller's read. This preserves a concurrent submit by construction (it can
+   *    never be silently dropped). Callers pass a permutation/subset of the queue
+   *    they just read as `entries`, and that read's full id-set as `snapshot`.
+   *
+   * The rotation re-lay uses the merge mode (see `relayQueue`).
    */
-  rewrite(roomId: string, entries: QueueEntry[]): Promise<void>;
+  rewrite(
+    roomId: string,
+    entries: QueueEntry[],
+    opts?: { snapshot?: string[] },
+  ): Promise<void>;
 
   /** Set the room's paused flag (host control, TICKET-7). */
   setPaused(roomId: string, paused: boolean): Promise<void>;

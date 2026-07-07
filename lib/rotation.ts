@@ -211,16 +211,22 @@ export function checkSubmit(
  * Re-lay the room's stored queue into effective order (pinning now-playing) so
  * that reads render fairly AND `advance`/`skip` (which operate on the store's
  * physical head) play the effective head. Uses the store's bulk `rewrite` op —
- * ONE store call regardless of queue depth (security MEDIUM-1 on PR #14: the
- * previous N-1 sequential `reorder` calls were ~3 Redis RTTs each — seconds of
- * patron-borne submit latency near QUEUE_MAX). No-op for a queue of 0/1
- * entries. Best-effort last-writer-wins on races (the same read-modify-write
- * semantics `reorder` already had); a racing mutation self-heals on the next
- * relay.
+ * ONE store round-trip regardless of queue depth (security MEDIUM-1 on PR #14:
+ * the previous N-1 sequential `reorder` calls were ~3 Redis RTTs each — seconds
+ * of patron-borne submit latency near QUEUE_MAX). No-op for a queue of 0/1
+ * entries.
+ *
+ * Atomic against concurrent submits (TICKET-21). We pass the ids we just read as
+ * `snapshot`, so `rewrite` runs in merge-on-write mode: a concurrent `addEntry`
+ * (atomic RPUSH) that lands between this read and the rewrite is preserved by
+ * construction instead of being silently overwritten. This closes the
+ * lost-submit window flagged in the PR #14 opus review (a patron saw "✓ added"
+ * and their song vanished — permanent, not self-healing). Ordering that races is
+ * still best-effort (it self-heals on the next relay); only ENTRY LOSS is fixed.
  */
 export async function relayQueue(roomId: string, mode: RoomMode): Promise<void> {
   const items = await store.getQueue(roomId);
   if (items.length <= 1) return;
   const desired = orderQueue(items, mode);
-  await store.rewrite(roomId, desired);
+  await store.rewrite(roomId, desired, { snapshot: items.map((e) => e.id) });
 }
