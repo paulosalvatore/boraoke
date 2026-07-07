@@ -1,6 +1,6 @@
 # cantai — Board
 
-_Last updated: 2026-07-07 (TICKET-21 merged; Upstash+envs+domain live; rebrand infra done)_
+_Last updated: 2026-07-07 (TICKET-20/21/22 merged + live; awaiting TL ratifications for design/brand; wave 4 ready)_
 
 ## Needs user (TL)
 
@@ -41,7 +41,7 @@ _Last updated: 2026-07-07 (TICKET-21 merged; Upstash+envs+domain live; rebrand i
 | TICKET-7 | Host controls (wave 2) | DONE | PR #10 merged: full chain + FIRST real CI-green gate (190/190 local, Actions pass). Public-repo security recheck clean. Needs HOST_TOKEN env to go live |
 | TICKET-9 | Rooms + QR + table (wave 2) | DONE | PR #13 merged: full chain incl. Security FAIL→fix→PASS (creation flood), opus deploy-moment analysis clean. Root URL is now a landing page; legacy queue at /default |
 | TICKET-12 | Telemetry (wave 2) | DONE | PR #12 merged: full chain, C1 verified single-source, fail-open airtight by construction, CI green on merged tip (292/292). #16 follow-ups: patron_joined client beacon, noshow emitter |
-| TICKET-20 | P0 UX fixes + render/link test suite | IN PROGRESS | Dev (opus), .worktrees/ticket-20 — room-404 honesty, join-code input bug, YT-embed report, clean slugs, admin→customer links |
+| TICKET-20 | P0 UX fixes + render/link test suite | DONE | PR #17 merged (348/348, CI green). Opus TL-trust ruling: suite would MISS contrast-class bugs → HIGH follow-up F/A (computed-style contrast assertion) filed for wave 4 |
 | TICKET-21 | Atomic store RMW (HIGH) | DONE | PR #16 merged: Lua merge-on-write, opus verified against REAL Upstash (byte-fidelity + races). Lost-submit window closed |
 | TICKET-22 | Roadmap v2 (platform vision) | DONE | PR #15 merged (Reviewer APPROVE + patches; opus-skip docs-only) |
 | TICKET-23 | Design v2 | IN PROGRESS | Designer (fable) — full UX audit of live product, theming dark/light, i18n, admin analytics UX |
