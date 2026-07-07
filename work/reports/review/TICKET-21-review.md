@@ -167,3 +167,60 @@ No BLOCKER or HIGH findings.
 ---
 
 *Evidence relied on: local test run (340 pass), engine test run (59 pass), build (clean), `gh pr checks 16` (Vercel PASS), `gh run list` (build-and-test success), full PR diff (`git diff c84bd5d..origin/ticket/21-atomic-rmw`), dev report (`work/reports/dev/TICKET-21.md`), security report (`work/reports/security/TICKET-21-security.md`), Lua script line-by-line read, FakeRedis.eval side-by-side comparison.*
+
+---
+---
+
+# Opus Merge-Counting Pass (D-022 / D-011) — 2026-07-07
+
+**Reviewer:** Reviewer agent (opus second pass — the APPROVE that counts for merge)
+**Verdict:** **APPROVE (merge-counting)**
+
+This pass ran the judgment the mid-tier pass could not: it verified the fake-vs-real seam **against the live Upstash store running the actual Lua**, not just the in-process FakeRedis.
+
+## 1. REAL-UPSTASH-VS-FAKE — the marshalling seam (definitive)
+
+The classic failure mode of fake-tested Lua is a driver marshalling mismatch: the seam where `@upstash/redis` might JSON-encode a string ARGV a second time and break `cjson.decode`. Traced both statically and against the real store:
+
+**Static (node_modules trace):**
+- `EvalCommand` builds `["eval", script, keys.length, ...keys, ...args]` (`nodejs.js:767`).
+- `defaultSerializer` (`nodejs.js:562`) passes `typeof === "string"` values **through verbatim** — it JSON-encodes only non-primitives. `mergeApply` passes `desiredArg`/`snapshotArg` as **strings**, so they hit the wire un-re-encoded. **No double-encoding.**
+- The real client's `eval(script: string, keys: string[], args): Promise<TData>` (`error-8y4qG0W2.d.ts:4241`) exactly matches the `RedisLike.eval` signature the store depends on. Contract match confirmed.
+
+**Dynamic (one-time guarded run against the LIVE provisioned Upstash, throwaway key `room:opus-verify-21:queue`, deleted after — running the exact `MERGE_SCRIPT` verbatim):**
+
+| Scenario | Result |
+|---|---|
+| Concurrency regression — submit races the relay | `["c","a","b","late"]` — late **preserved**, reorder held ✓ |
+| Vanished id not resurrected (concurrent remove of `b`) | `["c","a"]` — `b` **dropped**, not resurrected ✓ |
+| **Byte-for-byte payload fidelity** — `songTitle: 'Ação — "Olá" \ /x 日本語'`, `nickname: "Zé"` | round-trips **exactly** through EVAL→cjson→RPUSH-verbatim→automaticDeserialization ✓ |
+| Empty-result path — `del` without `rpush` | key **gone**, return `0`, no partial-write window ✓ |
+
+The Unicode/quote/backslash round-trip is the decisive proof: the JSON-string-of-JSON-strings ARGV survives `cjson.decode` → `.id` read → verbatim RPUSH → client deserialization with zero corruption. **The seam is closed — real Lua behaves identically to the FakeRedis emulation. NOT a blocker.**
+
+## 2. Failure-mode judgment
+
+- **EVAL availability:** EVAL is a core Redis scripting primitive, supported across Upstash tiers; verified live on the actual provisioned store. If ever unavailable, `redis.eval` throws → the route surfaces a 500 → **fail-loud**, which is correct for a data-integrity op (a 500 is strictly better than a silent lost/corrupted queue).
+- **Lua atomicity (all-or-nothing):** confirmed. The whole read→merge→`DEL`→`RPUSH` runs inside one EVAL, serialized by Redis's single thread against every concurrent RPUSH/LPOP. Scenario 4 proves the empty-merge case cleanly empties the key with **no partial del-without-rpush window** visible to any other client (the script is indivisible). Caveat (theoretical, non-blocking): Redis Lua does not roll back a partially-run script on a mid-script *runtime* error — but `RPUSH` of already-validated strings cannot error, and `unpack(out)` is bounded by `QUEUE_MAX` (a small karaoke queue), so no Lua-stack overflow. Practically safe.
+
+## 3. Ordering-at-END concession (one real bar scenario)
+
+Patron C submits a song while a relay is mid-flight: C's entry is durably RPUSH'd, then re-appended at the queue **tail** by the merge (rather than slotted into its fair rotation position, because the relay computed order from a snapshot that predates C). Relays fire on every submit/advance, so the **next** relay re-sorts C into fair position — self-correcting within ≤1 poll cycle. The entry is **never lost** (the property that matters). No patron-visible injustice beyond a sub-second ordering delay. Concession is sound.
+
+## 4. Architectural coherence — MERGE_SCRIPT-for-everything
+
+Judged, not redesigned: routing all three ops (`rewrite`/`removeEntry`/`reorder`) through one merge script is the **right long-term shape** here. All three are genuinely the same shape — read → compute the desired list **client-side** (the engine-fairness order the server cannot recompute) → atomic merge-write — so a single generic merge is the natural primitive, not an over-generalization. One script also minimizes the FakeRedis emulation surface (one algorithm to mirror across both drivers), a real maintainability win. Per-op native scripts (e.g. `LREM`-by-id) would be marginally more bandwidth-efficient but multiply the test-double surface for no correctness gain. Coherent.
+
+## 5. Tests / build (independently re-verified)
+
+`STORE_DRIVER=memory npx jest` → 23 suites / **340 pass**; `node --test` (packages/rotation-engine) → **59 pass**. Build is CI-verified green: the `build-and-test` run (28873705494) passed on commit `2958af8`, and `git diff 2958af8..HEAD` touches **only** `work/reports/**` + `work/events/**` — zero code delta, so the green run fully represents the code at HEAD `f22dfcf` (S1 satisfied).
+
+## Merge-prep note (non-code, for the TM)
+
+`gh pr view` reports `mergeStateStatus: DIRTY`. `git merge-tree` confirms the **only** conflict is `work/events/2026-07.jsonl` — the append-only framework event log (both `main` and this branch appended). **All code and doc files merge cleanly.** This is a mechanical, recurring event-log conflict; the TM resolves it (union both appends) as merge prep — it does not affect code correctness or this verdict. Class-level suggestion: add a `merge=union` `.gitattributes` entry for `work/events/*.jsonl` to auto-resolve this recurring conflict.
+
+## Opus findings
+
+No new BLOCKER or HIGH. Concurs with the first-pass nits (REV-21-01 EVALSHA caching; REV-21-02 test label; SEC-21-01 unguarded outer `cjson.decode`) — all non-blocking, carry as optional follow-ups.
+
+**[reviewer] APPROVE (opus merge-counting)** — code correct and provably atomic against concurrent RPUSH, fake-vs-real seam **closed by live-store verification** (incl. byte-for-byte payload fidelity), failure modes fail-loud, ordering concession sound, architecture coherent, tests bite (340/59, CI-green). One non-code merge-prep item: resolve the `work/events` event-log conflict before merge.
