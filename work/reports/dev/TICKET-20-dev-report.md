@@ -83,7 +83,16 @@ player-hint, 04 admin customer-screen links, 05 room-404 recreate, 06 tv playing
 
 Did NOT touch `lib/store/**` (parallel Dev owns it).
 
-## CI
+## CI — PR #17 (green)
 
-To be pasted verbatim once the PR CI runs.
+`gh pr checks 17` (verbatim):
+
+```
+Vercel	pass	0	https://vercel.com/paulosalvatores-projects/cantai/13qUEkhnRgMo6q4xgxUhhY9hChan	Deployment has completed
+Vercel Preview Comments	pass	0	https://vercel.com/github
+build-and-test	pass	2m35s	https://github.com/paulosalvatore/boraoke/actions/runs/28873796812/job/85643295968
+```
+
+Required check `build-and-test` (rotation-engine `node --test` + `npm run build` + `npm test` +
+Playwright e2e) terminal-green. PR: https://github.com/paulosalvatore/cantai/pull/17
 </content>
