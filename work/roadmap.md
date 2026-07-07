@@ -3,7 +3,7 @@
 - **Owner:** Product Owner (TICKET-22; supersedes the TICKET-5 roadmap)
 - **Last groomed:** 2026-07-07
 - **Status:** proposed — priorities are the Tech Lead's to confirm (PO proposes, never imposes)
-- **Naming note:** a rename is in flight (cantai.com is taken; parallel naming research running). This roadmap is name-agnostic: "cantai" below means "the product", and every v2 artifact avoids baking the name into copy, slugs, or specs. The rebrand ships as its own ticket (TICKET-33) once the TL picks the name.
+- **Naming note:** the TL greenlit the rename to **Boraoke** (boraoke.com bought 2026-07-07; DNS pending TL; assets in generation). Specs stay name-agnostic ("cantai" below means "the product") because the live product runs under the old name until TICKET-33 executes the rebrand in its solo merge window.
 
 ## North star (v2)
 
@@ -24,7 +24,7 @@ Primary early market remains Brazil (pt-BR-first), with multi-language support o
 
 ### LIVE (PMF feature set, 14 PRs merged)
 
-Multi-room + QR join + table capture, host controls, all three rotation modes wired to UI, in-app YouTube search (pending API key), feedback widget, telemetry baseline, TV fullscreen mode, persistence-ready store (pending Upstash provisioning), deployed at https://cantai-snowy.vercel.app.
+Multi-room + QR join + table capture, host controls, all three rotation modes wired to UI, in-app YouTube search (pending API key), feedback widget, telemetry baseline, TV fullscreen mode, durable store LIVE on Upstash (provisioned + verified 2026-07-07), deployed at https://cantai-snowy.vercel.app.
 
 ### IN FLIGHT (v2 wave 0, launched 2026-07-07)
 
@@ -34,12 +34,13 @@ Multi-room + QR join + table capture, host controls, all three rotation modes wi
 | TICKET-21 | Atomic store RMW (HIGH from PR #14 opus): WATCH/Lua CAS on QueueStore + concurrency regression test | Dev (opus), in progress, `lib/store/**` only |
 | TICKET-22 | This roadmap v2 | PO (fable), this PR |
 | TICKET-23 | Design v2: full UX audit, theming dark/light direction, i18n direction, admin analytics UX | Designer (fable), in progress |
-| (research) | Naming + domain availability | fable agent, in progress |
+| (research) | Naming + domain availability | RESOLVED — TL bought boraoke.com and greenlit the rename (executes as TICKET-33) |
 
 ### BLOCKED ON TL (needs-user, carried from the board)
 
-- 🔴 **Upstash Redis provisioning** (URGENT, confirmed user-facing by the TL's room-404) — everything durable (queues, feedback, and the entire v2 identity/accounts layer) sits behind this one dashboard action.
+- 🟢 RESOLVED: **Upstash Redis provisioned 2026-07-07** (live in prod, verified) — queues and feedback are durable; TICKET-26's hard dependency is satisfied; wave 4 arms on TICKET-20 + TICKET-21 merge only.
 - 🟡 **YouTube Data API key + quota plan** — unblocks live search; quota-increase request or degraded-fallback acceptance per the PR #8 opus condition.
+- 🟡 **Boraoke DNS** — domain bought, DNS pending TL (blocks the TICKET-33 cutover, nothing else).
 
 ## Phases (v2)
 
@@ -92,9 +93,9 @@ Preconditions: wave 4 arms only after TICKET-20 and TICKET-21 merge (they own `a
 
 | # | Ticket (proposed) | What / why | Owns (files) | Depends on |
 |---|---|---|---|---|
-| 24 | Hardening batch (board follow-ups) | Pays the recorded debt in one mechanical pass: strip patronUuid from public GET /api/queue (hashed own-row marker), advance-guard for the ENDED-vs-skip double-advance, setQueue if-changed diff on /tv, rotation.ts JSDoc + grace-path check, host-login throttle → Upstash, search cache + rate buckets → Upstash (the biggest YT-quota lever). | `lib/store/**` (post-21), `lib/rotation.ts`, `app/api/queue/**`, `app/api/search/**`, `app/tv/**` | TICKET-21 merged; Upstash provisioned (throttle/cache parts degrade gracefully without it) |
+| 24 | Hardening batch (board follow-ups) | Pays the recorded debt in one mechanical pass: strip patronUuid from public GET /api/queue (hashed own-row marker), advance-guard for the ENDED-vs-skip double-advance, setQueue if-changed diff on /tv, rotation.ts JSDoc + grace-path check, host-login throttle → Upstash, search cache + rate buckets → Upstash (the biggest YT-quota lever). | `lib/store/**` (post-21), `lib/rotation.ts`, `app/api/queue/**`, `app/api/search/**`, `app/tv/**` | TICKET-21 merged (Upstash ✅ live since 2026-07-07) |
 | 25 | Telemetry completions + e2e deflake | The #16 follow-ups (patron_joined client beacon, noshow emitter) so retention data is complete before accounts launch, plus the MED CI-flake fix (shared memory-driver e2e helper: warmUp + seed-after-compile, bounded /tv waits). | `lib/telemetry/**`, `e2e/**` | none (parallel-safe with 24) |
-| 26 | Anonymous identity registry | The anon-first foundation: server-issued uuid identity record for every visitor from first touch, rooms stamped with creatorUuid, activity keyed server-side — so signup can later claim it all retroactively. TL directive: "register anonymous users from the start". | `lib/identity/**`, `app/api/identity/**`, middleware, room-creation write path (coordinate one-file seam with 24's queue projection — merge 24 first) | Upstash provisioned (hard — identity must be durable) |
+| 26 | Anonymous identity registry | The anon-first foundation: server-issued uuid identity record for every visitor from first touch, rooms stamped with creatorUuid, activity keyed server-side — so signup can later claim it all retroactively. TL directive: "register anonymous users from the start". | `lib/identity/**`, `app/api/identity/**`, middleware, room-creation write path (coordinate one-file seam with 24's queue projection — merge 24 first) | Upstash ✅ (hard dep — satisfied 2026-07-07); merge 24 first (shared seam) |
 | 27 | Bot prevention + abuse controls | CAPTCHA-class protection (recommend Cloudflare Turnstile: free, invisible-first, LGPD-friendlier than reCAPTCHA — TL said "reCAPTCHA" as intent, not vendor; TL confirms vendor) on room creation, join, feedback POST; per-uuid velocity caps. | `lib/abuse/**`, guard call-sites in `app/api/rooms|feedback/**`, join UI widget slot | none; touches api/rooms after 26 stamps creatorUuid — merge 26 before 27 |
 
 ### Wave 5 — accounts + experience
@@ -111,7 +112,7 @@ Preconditions: wave 4 arms only after TICKET-20 and TICKET-21 merge (they own `a
 |---|---|---|---|---|
 | 31 | Admin dashboard v2 | The rich management surface the TL asked for: host adds songs directly, full queue management upgrades, stats/history views (all karaoke days, songs played, live-now), prominent links/QRs to guest and TV screens. | `app/admin/**` (new dashboard routes), `app/api/admin/**`, reads `lib/telemetry` | 28 (stats ownership), 25 (complete telemetry) |
 | 32 | Venue types v1 | Venue-type selection at room creation (bar / party-event / condo / corporate), per-type copy packs, theme presets, rotation-mode defaults, feature-flag matrix. | `lib/venue-types/**`, room-creation flow, copy/locale additions (translation files shared with 30 — additive keys only) | 29 + 30 (theming + i18n are the delivery vehicles), spec in `venue-generalization.md` |
-| 33 | Rename/rebrand execution | New name across product, domain cutover with redirects from cantai-snowy, QR continuity for existing rooms, name-agnostic copy audit. Spec stays name-agnostic until the TL picks. | repo-wide copy/config sweep — **solo ticket, no wave-mates during its merge window** | naming research + TL decision (hard gate) |
+| 33 | Rename/rebrand execution — **EXECUTE: rebrand to Boraoke** | Domain bought (boraoke.com), rename greenlit by the TL; assets in generation. New name across product, boraoke.com cutover with redirects from cantai-snowy, QR continuity for existing rooms, full copy sweep. | repo-wide copy/config sweep — **solo ticket, no wave-mates during its merge window** | DNS pending TL (cutover step only); brand assets delivered |
 
 ### Wave 7+ (directional — groom after wave 5 ships, before arming)
 
@@ -128,11 +129,11 @@ Retired from the v1 backlog: #14 "venue accounts + rooms model" is superseded by
 
 ### Dependency edges (summary)
 
-- Upstash provisioning (TL) → 24 (partial), 26 (hard) → 28 → 31.
+- Upstash ✅ provisioned 2026-07-07 — 24 and 26 fully unblocked; 26 → 28 → 31.
 - 27 → 28 (signup surfaces need bot guards live first).
 - TICKET-23 design spec → 29, 30 (soft); 29 + 30 → 32.
 - 25 → 31 (stats need complete telemetry).
-- Naming decision (TL) → 33; 33 runs solo.
+- Naming decision ✅ (Boraoke) → 33 executes; only the DNS/cutover step waits on the TL; 33 still runs solo.
 - Nothing in waves 4–6 blocks on payments; the platform-aggregation wave (34+) is cleanly detachable if the TL resequences.
 
 ## Open questions (for the Tech Lead)
@@ -141,4 +142,5 @@ Retired from the v1 backlog: #14 "venue accounts + rooms model" is superseded by
 - **Language set for i18n launch:** proposal is pt-BR/en/es first, others as follow-up translation PRs — confirm or extend.
 - **Venue-type shortlist:** proposal is party/event + condo + corporate as the first three beyond bars (schools/churches deferred — content-moderation prerequisite); see `venue-generalization.md`.
 - **First paid feature + rail:** pay-to-boost via Pix/Mercado Pago recommended — see `platform-aggregation.md` for the scoring; the fairness-bounding design needs TL sign-off since it touches the product's soul.
-- **Rename timing:** wave 6 placement assumes the name lands within ~2 weeks; if it lands earlier, 33 can pull forward to any solo merge window.
+- **Payments business setup (blocks TICKET-34 arming):** receiving money needs TL decisions — CNPJ vs MEI, which Mercado Pago account receives, fiscal/refund posture, and the venue revenue-share % (proposed 50/50). One needs-user round before the payments wave.
+- **Rename timing:** name decided (Boraoke) — TICKET-33 can pull forward from wave 6 to any solo merge window once brand assets land; DNS remains on the TL for the cutover step.
