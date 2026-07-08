@@ -62,6 +62,12 @@ export type PublicRoom = Pick<Room, "id" | "name" | "createdAt"> & {
  * a per-value salt) so the stored hash doubles as the room's session-derivation
  * secret in `lib/host-auth.ts`. Fine for a 40-bit shown-once prototype secret;
  * #14's accounts replace host codes entirely.
+ *
+ * STORAGE-KEY NOTE (TICKET-33 rebrand): the `cantai-hostcode-v1` HMAC key is
+ * DELIBERATELY kept under the old brand — every stored `hostCodeHash` was
+ * minted with it, so renaming/rotating it invalidates all live host codes AND
+ * host-session derivation. Never rotate without a migration. See
+ * work/tickets/TICKET-33-code-rebrand.md.
  */
 export function hashHostCode(code: string): string {
   return createHmac("sha256", "cantai-hostcode-v1").update(code).digest("hex");
