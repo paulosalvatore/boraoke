@@ -139,3 +139,80 @@ None.
 - `/api/search/route.ts` read in full (security waiver verification)
 - TICKET-43 worktree `PatronRoom.tsx` diff read (sequential-merge compatibility confirmed)
 - PR #21 thread read in full (5 comments: Vercel bot, app-tester FAIL, dev fix, dev gate-request, app-tester PASS)
+
+---
+
+# TICKET-40 — Reviewer Report — OPUS SECOND PASS (D-022 merge-counting)
+
+**Verdict: APPROVE (opus merge-counting pass)**
+**Reviewer model:** claude-opus-4-8 (judgment layer)
+**Date:** 2026-07-08
+**Branch reviewed:** `origin/ticket/40-search-ux` tip `b10a52f` (== worktree HEAD; the exact tip that merges)
+**Diff base:** `a1129ed` (merge-base with `origin/main`)
+
+The sonnet first pass above is accurate and I concur with its structural findings. This pass adds the judgment layer the mandate called for: the karaoke-keyword product judgment, the focus-jump UX walked myself, quota economics, the mode-switch effect chain, and independent re-verification of tests/build.
+
+## Re-verification (ran myself)
+
+| Check | Result |
+|---|---|
+| `npx jest` (full unit) | **369 passed / 369 total, 25 suites** |
+| `npm run build` | **clean** (routes compiled, no type errors) |
+| `npx jest __tests__/search-query.test.ts` | **15 passed** (augmentQuery + containsKaraoke) |
+| `CI=1 npx playwright test e2e/search.spec.ts` | **4 passed** (clean server) |
+| Own patron-journey walk (390px, clean CI server) | **PASS** — see §UX below |
+
+**Important test-runner note (not a defect, but worth recording):** the first e2e run I did reused a dev server I had manually started on port 3040 (`reuseExistingServer: !CI`), and the focus assertions FAILED (`toBeFocused` → inactive). Re-running with `CI=1` (Playwright owns a clean server) → all pass. The failure was a reused-dirty-server artifact of my own manual serve on the shared port, NOT a code defect. Confirmed by re-running twice clean and by my independent journey test. Anyone re-verifying must let Playwright own the server (or `CI=1`); a hand-started dev server on 3040 will produce false focus failures.
+
+## Product judgment 1 — the karaoke keyword (sing-mode results become karaoke-dominated)
+
+I walked the real cases the mandate named.
+
+**Does "obscure song + karaoke" return NOTHING or degrade gracefully?** It degrades gracefully — verified against `lib/youtube-search.ts`. The search uses `search.list` with a free-text `q` and no hard filter (only `type=video`, `videoEmbeddable=true`, `safeSearch`, `regionCode`, `maxResults=8`) at the default `order=relevance`. Appending "karaoke" **reweights ranking toward karaoke versions; it does not filter to exact karaoke matches.** So a patron wanting an obscure sertanejo song with no karaoke version still gets the 8 most relevant videos for "<song> karaoke" — YouTube falls back to the closest matches (often the original track or a lyric video), never an empty list. Empty results would require the raw terms themselves to have zero YouTube matches, which is vanishingly rare. The App Tester's "degrades gracefully" reasoning is sound and I independently confirm the mechanism. The tradeoff (switch to listen mode, or paste a link) is a real, discoverable escape hatch — both are one interaction away in the same form.
+
+**Should the UI hint that sing-mode filters for karaoke versions?** Judgment: **a subtle hint is worth it, but its absence is NOT a blocker.** The augmentation is currently invisible — a patron sees karaoke-dominated results without knowing why, and a patron who wanted the *original* track in sing mode has no signal that the mode is reshaping their results. That said: (a) the mode selector (🎤 Sing / 💃 Listen / Dance) is right there in the same form, so the cause is one glance away; (b) adding "buscando versões de karaokê" copy near the search box risks clutter on a 390px phone form that already carries search + optional title + table + mode. This is a genuine product-polish call, not a correctness gap. **Filing as a follow-up ticket suggestion (below), merge-as-is** — consistent with the prototype→MVP iterative-ship posture. The behavior is correct today; the hint is an enhancement.
+
+## Product judgment 2 — quota economics (the "hidden doubling" question)
+
+Confirmed the cache-coherence claim by reading `lib/youtube-search.ts`: `cacheKey(q, regionCode)` keys on the query string, and the augmented string (`"roberto carlos karaoke"` vs `"roberto carlos"`) is what carries in `?q=`. So sing and listen for the same raw words are **two distinct cache entries** — the design-decision claim in `lib/search-query.ts` holds exactly. Each cache miss costs `search.list` (100 units) + `videos.list` (1 unit) = **101 units**; the "each mode pays its own 101" framing is accurate.
+
+**Is this a hidden quota doubling for indecisive patrons? Judge scale:** Yes in the narrow sense (a patron who toggles sing↔listen on the same words pays for both), but the scale is **acceptable and well-bounded**:
+- The 400ms debounce collapses keystrokes, so a mode toggle costs at most one fresh search, not one per character.
+- The dual rate limiter caps it hard: `RATE_MAX=5` per-uuid and `RATE_IP_MAX=30` per-IP per 10s window. An indecisive patron physically cannot burn more than 5 searches / 10s — the limiter returns 429 and paste-link still works.
+- The in-memory LRU cache means a patron flipping back to a mode they already searched pays **zero** additional units (cache hit).
+- The daily 10k-unit default quota = ~99 uncached searches/day; the augmentation at most doubles the *distinct-query* surface for the subset of users who toggle modes on identical text — a small fraction of a small number. On quota exhaustion the app degrades to paste-link (the whole design is fail-soft).
+
+Net: the doubling is real but second-order, debounce- and rate-limit-bounded, and cache-absorbed on repeats. **Acceptable at this product stage.** Worth a telemetry glance post-launch if quota ever tightens; not a merge blocker.
+
+## UX judgment — focus-jump journey (walked myself at 390px)
+
+I drove the full journey on a clean CI server at 390×844 (my own Playwright journey test, mocked `/api/search`): join → type "evidencias" → results render → pick result → observe CTA. Findings:
+
+- **Query sent in sing mode: `"evidencias karaoke"`** — augmentation confirmed end-to-end through the real browser, not just the unit.
+- **CTA state after select:** `disabled:false`, `type:submit`, `aria-disabled:null`, **`inViewport:true`**, and `toBeFocused()` passes. The button is a real native `<button>` receiving real DOM focus — so screen readers announce "Add to queue, button" on the jump. There is **no `aria-disabled` lie** (the button is genuinely enabled before focus lands, which is the whole point of the BUG-01 effect-after-commit fix) and **no focus trap** — Tab/Shift-Tab move away normally, focus just *starts* on the CTA. This is genuinely GOOD a11y, as the mandate anticipated: the patron (and the screen-reader user) is taken straight to the actionable next step instead of hunting below the fold.
+- **After submit:** search input resets to `""` and the CTA returns to disabled — clean reset, and the null-guard (`if (!parsedVideoId) return`) means the reset does NOT fire an uninvited focus jump. Confirmed.
+- **Jarring scroll on slow devices?** The scroll uses `behavior:"smooth"` + `block:"center"` and `focus({preventScroll:true})` avoids a second competing scroll. At 390px the CTA was already at ~top 514 of an 844 viewport after select — a short, smooth center-scroll, not a page-length lurch. On a genuinely slow device the smooth scroll may lag a frame or two but there is only ONE scroll driver (the preventScroll on focus is the guard against a double-scroll fight). No jank risk of note. If ever a concern, `scrollIntoView` honors `prefers-reduced-motion` at the browser level for users who set it. Fine as-is.
+
+## Mode-switch re-run — effect chain read (no double-fire)
+
+Read the chain in `SongSearch.tsx`: `runSearch` is `useCallback(…, [patronUuid, mode])`; the input effect is `useEffect(…, [input, runSearch])` and **clears any pending debounce at the top** (`if (debounceRef.current) clearTimeout(...)`) plus a cleanup that clears on unmount/re-run. When `mode` flips, `runSearch` gets a new identity → the input effect re-runs → old timer cleared → one new debounced (`400ms`) search scheduled. **Exactly one search fires per mode switch, no double-fire.** The e2e test asserts this at the network level: `seenQueries` transitions `"evidencias karaoke"` → (poll) → `"evidencias"` on the sing→listen toggle. I confirm both the code path and the test are correct. There is also a `seqRef` monotonic guard in `runSearch` that discards stale in-flight responses — so even a fast toggle mid-flight can't render superseded results.
+
+## Architecture / maintainability judgment
+
+- **Client-side augmentation is the right seam.** Doing it before `/api/search` keeps the server's query-keyed cache and rate-limiter untouched and cross-mode-coherent by construction. Server-side augmentation would have forced the cache key to also encode mode/keyword to avoid poisoning — strictly more surface for strictly less benefit. The `augmentQuery`/`containsKaraoke` split into a pure, separately-unit-tested `lib/` module is clean and the right testability boundary (15 focused unit tests vs. driving it only through the component).
+- **The `karaokê` (accented) decision** I concur is sound: dedupe targets the injected ASCII keyword, not every spelling of the concept; `augmentQuery("karaokê","sing") → "karaokê karaoke"` maximizes YouTube recall. The sonnet-pass optional (add an explicit `augmentQuery("karaokê","sing")` assertion) is a nice-to-have for authoritative documentation but strictly optional — the behavior is already pinned by `containsKaraoke("karaokê") === false`.
+- **PR #22 (TICKET-43) spatial compatibility** re-confirmed: the `useEffect([parsedVideoId])` + `submitBtnRef` + `mode` prop are additive, non-overlapping anchors vs. #22's boot-effect `rememberJoinedRoom`. Sequential three-way merge applies both. No concern.
+
+## Findings (opus pass)
+
+**Blocking:** None.
+
+**Follow-up ticket suggestions (non-blocking, merge-as-is):**
+1. **Sing-mode karaoke hint (product polish).** Consider a subtle, space-conscious cue that sing mode is surfacing karaoke versions (e.g. helper text under the search box, shown only in sing mode) — helps the patron who wanted the original track understand why results shifted. Weigh against 390px clutter; a lightweight tooltip/subtext, not a banner. File as a design-judgment ticket.
+2. **Post-launch quota telemetry glance.** If daily quota ever tightens, add a counter on distinct augmented-vs-raw query pairs to quantify the mode-toggle doubling before optimizing. Purely a watch-item; do not build speculatively.
+
+**Nits (concur with sonnet pass, none blocking):** dev-report "Files touched" still lists the removed `onSongChosen` prop (prose elsewhere is correct); an explicit `containsKaraoke`/`augmentQuery` accented-form comment would aid future readers.
+
+## Verdict (opus merge-counting)
+
+`[reviewer] APPROVE (opus pass, D-022 merge-counting)` — I independently re-verified 369/369 unit, clean build, 4/4 search e2e (clean server), and walked the full patron journey myself at 390px. The two product judgments the mandate demanded both land on the right side: (1) the karaoke keyword **reweights ranking, never hard-filters**, so obscure-song sing searches degrade gracefully to closest matches rather than returning nothing — the tradeoff (switch mode / paste) is one interaction away and correct; the invisible-augment UI hint is a worthwhile follow-up, not a blocker. (2) The quota "doubling" for indecisive patrons is real but second-order and hard-bounded by the 400ms debounce, the 5/uuid + 30/ip rate limiter, and LRU cache hits on repeats — acceptable at this stage. The focus-jump is genuine good a11y (real native-button focus, no `aria-disabled` lie, no trap, single smooth scroll, clean post-submit reset with a null-guard against uninvited jumps). The mode-switch effect chain fires exactly one debounced search per toggle (clear-at-top + seqRef guard) — no double-fire, confirmed at the network level. Client-side augmentation is the correct cache-coherent seam. No blocking items; two follow-up tickets suggested.
