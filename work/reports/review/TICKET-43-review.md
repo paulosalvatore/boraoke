@@ -4,7 +4,8 @@
 - **Branch:** ticket/43-session-recovery
 - **Reviewer:** Reviewer agent (sonnet pass + opus judgment)
 - **Date:** 2026-07-08
-- **Verdict:** REQUEST-CHANGES (1 blocking — probe bounding; 1 gate clarification)
+- **Verdict (round 1):** REQUEST-CHANGES (1 blocking — probe bounding; 1 gate clarification)
+- **Verdict (round 2, final):** APPROVE — all requested items confirmed fixed (see "Re-review (round 2)" section at bottom)
 
 ---
 
@@ -189,3 +190,34 @@ All acceptance criteria are met by the implementation. The blocking item (probe 
 ## Summary
 
 The implementation is clean, well-structured, and correctly addresses the ticket's scope. The lib quality is high: fail-soft paths, type-enforced + runtime-stripped security invariant, injected storage for testability, documented wave-28 seam. The single blocking issue is the unbounded parallel probe fan-out on landing load, which needs a cap (top-3 created rooms is the natural bound). The fix is a one-liner; re-review expected to be fast.
+
+---
+
+# Re-review (round 2) — fix commit 512b8fe
+
+Dev addressed all three items (PR reply: issuecomment-4918944893). Delta reviewed locally (`git diff f70e384..origin/ticket/43-session-recovery`); suite re-run independently.
+
+## BLOCKING-1 — probe bounding: FIXED, confirmed at the fetch loop
+
+- New pure helper `roomsToProbe(rooms, limit = MAX_HOST_PROBES)` in `lib/room-memory.ts` (`MAX_HOST_PROBES = 3`): `rooms.filter(r => r.role === "created").slice(0, limit)`.
+- **Critical check — the bound genuinely gates the fetch loop, not just a display list:** `SavedRooms.tsx`'s probe `useEffect` now iterates `for (const room of roomsToProbe(rooms))` — the `fetch` call itself is inside this bounded loop. The old unbounded `for (const room of rooms) { if (role !== "created") continue; fetch(...) }` is gone. Max 3 fetches per landing load, most-recent-first (loadRooms returns sorted). Confirmed in the diff and current file.
+- 3 new unit tests (`describe("probe bound (BLOCKING-1, PR #22)")`): bound holds with 5+ created rooms (exactly 3, most-recent-first, joined never probed), fewer-than-limit case, custom limit. All pass.
+
+## NIT-1 — in-flight adminHref: FIXED
+
+Default flipped: only a probe that POSITIVELY returned expired (`hostValid[room.id] === false`) routes to `?expired=1`; in-flight/unprobed rooms link to plain `/<id>/admin`, whose own `checkSession()` self-routes. This also correctly covers the >3 unprobed rooms after BLOCKING-1 — they get the plain link, never a misleading "expirou".
+
+## NIT-2 — migration story: DOCUMENTED
+
+`ROOMS_KEY` doc comment now states the strategy: additive shape changes absorbed at read time by `coerceRoom` defaults (no key bump); `_v2` only on a breaking shape change with a one-time read-v1→write-v2 migration in `loadRooms`.
+
+## Independent verification (round 2)
+
+- `npm test` at HEAD f4e42e2: **25 suites, 374 passed, 0 failed** (371 + 3 new probe-bound tests).
+- `npm run build`: compiled successfully, 22/22 static pages, type-check clean.
+- Dev report updated (status line current, round-1 fix log added) — TICKET-F23 currency satisfied.
+- Dev reports full e2e 31 passed on PORT=3043 this round (including the feedback spec that was flaky/failing before — consistent with a flaky pre-existing test, not a regression).
+
+## Final verdict: APPROVE
+
+All round-1 items resolved and confirmed by direct code read + independent test run. Sequential-merge constraint with TICKET-40 (shared `PatronRoom.tsx`) still applies at merge time.
