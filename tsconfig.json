@@ -26,7 +26,7 @@
       "@/*": [
         "./*"
       ],
-      "@cantai/rotation-engine": [
+      "@boraoke/rotation-engine": [
         "./packages/rotation-engine/src/index.ts"
       ]
     },

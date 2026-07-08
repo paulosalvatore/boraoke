@@ -1,6 +1,6 @@
 /**
  * Rotation adapter (TICKET-10) — the single boundary between the app's frozen
- * `QueueStore` and the pure `@cantai/rotation-engine`.
+ * `QueueStore` and the pure `@boraoke/rotation-engine`.
  *
  * Responsibilities:
  *  - translate app `QueueEntry` ⇄ engine `Entry` (spec A6 naming: app
@@ -32,7 +32,7 @@ import {
   type Entry as EngineEntry,
   type EntryInput as EngineInput,
   type QueueState,
-} from "@cantai/rotation-engine";
+} from "@boraoke/rotation-engine";
 import { store, type QueueEntry } from "./store";
 import {
   LISTEN_CAP_PER_UUID,

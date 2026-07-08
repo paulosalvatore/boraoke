@@ -1,4 +1,4 @@
-# @cantai/rotation-engine
+# @boraoke/rotation-engine
 
 The fairness heart of cantai. A **pure, immutable, dependency-free** TypeScript
 library that decides *who sings next* in a bar's shared karaoke queue.
@@ -114,7 +114,7 @@ screen shows is what actually airs.
 import {
   createQueue, addEntry, removeEntry, moveEntryToTable,
   setVenueMode, getEffectiveOrder, peekUpcoming, advance, skip,
-} from "@cantai/rotation-engine";
+} from "@boraoke/rotation-engine";
 
 let state = createQueue("per-person-1");            // or full-karaoke / per-table-2
 

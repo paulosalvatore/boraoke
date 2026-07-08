@@ -6,7 +6,7 @@
  * AND server code (the rotation adapter, room persistence). It is the canonical
  * naming boundary (spec A6): `RoomMode` reuses the engine's `VenueMode` string
  * values verbatim, so the venue mode needs zero translation between the app,
- * the store, and `@cantai/rotation-engine`.
+ * the store, and `@boraoke/rotation-engine`.
  */
 
 /**

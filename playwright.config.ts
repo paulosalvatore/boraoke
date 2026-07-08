@@ -33,7 +33,7 @@ export default defineConfig({
     env: {
       // Node.js 22+ provides localStorage as a global; without a valid file path it's a broken stub.
       // Provide a temp file so the global is functional during SSR.
-      NODE_OPTIONS: `--localstorage-file=/tmp/cantai-ls-${PORT}.json`,
+      NODE_OPTIONS: `--localstorage-file=/tmp/boraoke-ls-${PORT}.json`,
     },
   },
 });

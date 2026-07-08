@@ -12,6 +12,10 @@ import type { FeedbackSubmission, Role } from "@/lib/feedback-types";
  *   cantai_patron_uuid, cantai_nickname.
  */
 
+// STORAGE-KEY NOTE (TICKET-33 rebrand): these `cantai_*` keys are DELIBERATELY
+// kept under the old brand name — they are live state on real users' devices and
+// must match the keys the patron page writes (PatronRoom.tsx). Renaming them
+// would orphan every returning patron's identity. See TICKET-33-code-rebrand.md.
 const LS_UUID = "cantai_patron_uuid";
 const LS_NICK = "cantai_nickname";
 const LS_MODE = "cantai_mode";

@@ -14,6 +14,12 @@ const POLL_INTERVAL = 3000;
  * and nickname + table persist PER ROOM in localStorage (`cantai:<room>:*`),
  * with the global `cantai_nickname` as a first-visit prefill. The venue name is
  * shown as a chip in the top bar.
+ *
+ * STORAGE-KEY NOTE (TICKET-33 rebrand): the `cantai*` localStorage keys below
+ * are DELIBERATELY kept under the old brand name. They are live state on real
+ * users' devices — renaming them would drop every returning patron's identity,
+ * nickname and table. Cosmetic key rename is not worth that. See
+ * work/tickets/TICKET-33-code-rebrand.md.
  */
 export default function PatronRoom({
   roomId,
@@ -184,7 +190,7 @@ export default function PatronRoom({
   if (!nicknameSet) {
     return (
       <main style={{ maxWidth: 480, margin: "0 auto", padding: "2rem 1rem" }}>
-        <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>🎤 Cantai</h1>
+        <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>🎤 Boraoke</h1>
         <p style={{ color: "var(--text-muted)", marginBottom: "0.5rem" }}>
           Karaoke queue for{" "}
           <span style={{ color: "var(--accent)", fontWeight: 600 }}>{venueName}</span>
@@ -216,7 +222,7 @@ export default function PatronRoom({
   return (
     <main style={{ maxWidth: 540, margin: "0 auto", padding: "1.5rem 1rem" }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "1rem" }}>
-        <h1 style={{ fontSize: "1.75rem" }}>🎤 Cantai</h1>
+        <h1 style={{ fontSize: "1.75rem" }}>🎤 Boraoke</h1>
         <span style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
           Hi,{" "}
           <button

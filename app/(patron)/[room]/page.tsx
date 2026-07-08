@@ -38,7 +38,7 @@ export default async function RoomPage({
     return <RoomNotFound roomId={room} ephemeral={isEphemeralRoomStore()} />;
   }
 
-  const venueName = record?.name ?? "cantai";
+  const venueName = record?.name ?? "Boraoke";
   return <PatronRoom roomId={room} venueName={venueName} />;
 }
 
@@ -58,7 +58,7 @@ function RoomNotFound({
   const suggestedName = roomId ? deriveRoomName(roomId) : "";
   return (
     <main style={{ maxWidth: 480, margin: "0 auto", padding: "3rem 1rem", textAlign: "center" }}>
-      <h1 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🎤 cantai</h1>
+      <h1 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🎤 Boraoke</h1>
       <p style={{ color: "var(--text-muted)", marginBottom: "1.25rem" }}>
         Essa sala não existe (ou o link está errado).
       </p>

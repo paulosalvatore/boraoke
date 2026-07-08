@@ -167,7 +167,7 @@ export default function AdminRoom({
   if (auth === "gate") {
     return (
       <main className={styles.gate}>
-        <h1>🎤 cantai · admin</h1>
+        <h1>🎤 Boraoke · admin</h1>
         <p style={{ marginBottom: "0.25rem" }}>{venueName ?? roomId}</p>
         <p>
           {configured
@@ -204,7 +204,7 @@ export default function AdminRoom({
   return (
     <main className={styles.wrap}>
       <header className={styles.top}>
-        <span className={styles.wordmark}>cantai</span>
+        <span className={styles.wordmark}>Boraoke</span>
         <span className={styles.chip}>{venueName ?? roomId}</span>
         {paused ? (
           <span className={styles.chipPaused}>⏸ Pausado</span>

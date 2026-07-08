@@ -13,7 +13,7 @@ import { getPublicRoom } from "@/lib/rooms";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "cantai — tv",
+  title: "TV",
 };
 
 export default async function RoomTvPage({

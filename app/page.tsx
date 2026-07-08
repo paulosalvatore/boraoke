@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 /**
  * Landing (TICKET-9) — replaces the old global patron flow (which moved to
- * /[room]). Explains cantai, offers "create your room" (→ /new), and a
+ * /[room]). Explains Boraoke, offers "create your room" (→ /new), and a
  * join-by-code input that sends a patron to /<code>. Prefills the last room
  * joined from localStorage for quick re-entry.
  */
@@ -17,6 +17,9 @@ export default function Landing() {
 
   useEffect(() => {
     try {
+      // NOTE: storage key intentionally kept as `cantai_last_room` — it is live
+      // state on users' devices (see TICKET-33 storage-key decision). Renaming
+      // it would drop every returning patron's last-room quick-entry.
       const last = window.localStorage.getItem("cantai_last_room");
       if (last) setLastRoom(last);
     } catch { /* sandboxed */ }
@@ -38,7 +41,7 @@ export default function Landing() {
 
   return (
     <main style={{ maxWidth: 480, margin: "0 auto", padding: "3rem 1rem", display: "flex", flexDirection: "column", minHeight: "80vh" }}>
-      <h1 style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>🎤 cantai</h1>
+      <h1 style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>🎤 Boraoke</h1>
       <p style={{ color: "var(--text-muted)", fontSize: "1.05rem", lineHeight: 1.5, marginBottom: "2rem" }}>
         A fila de karaokê do seu bar, no celular de cada cliente. Crie a sala,
         mostre o QR, e todo mundo entra na fila com a mesa marcada.
@@ -84,7 +87,7 @@ export default function Landing() {
       </section>
 
       <footer style={{ marginTop: "auto", paddingTop: "2rem", color: "var(--text-muted)", fontSize: "0.75rem", textAlign: "center" }}>
-        <span>cantai — early access · uma sala por bar, filas isoladas</span>
+        <span>Boraoke — early access · uma sala por bar, filas isoladas</span>
       </footer>
     </main>
   );

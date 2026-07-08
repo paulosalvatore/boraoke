@@ -1,11 +1,7 @@
-import type { Metadata } from "next";
 import "./globals.css";
 import { FeedbackWidget } from "@/components/FeedbackWidget";
 
-export const metadata: Metadata = {
-  title: "Cantai — Karaoke Queue",
-  description: "Free karaoke queue platform for bars and venues.",
-};
+export { metadata, viewport } from "./metadata";
 
 export default function RootLayout({
   children,
@@ -13,7 +9,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="pt-BR">
       <body>
         {children}
         <FeedbackWidget />

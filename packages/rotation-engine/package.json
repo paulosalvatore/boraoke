@@ -1,5 +1,5 @@
 {
-  "name": "@cantai/rotation-engine",
+  "name": "@boraoke/rotation-engine",
   "version": "0.1.0",
   "private": true,
   "description": "Pure, immutable rotation/fairness queue engine for cantai venue modes.",

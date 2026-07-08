@@ -10,7 +10,7 @@ const config: Config = {
     "^server-only$": "<rootDir>/__mocks__/server-only.ts",
     // rotation-engine (TICKET-10): resolve the workspace package to its source
     // entry. The engine's internal `.ts`-suffixed imports resolve as real files.
-    "^@cantai/rotation-engine$": "<rootDir>/packages/rotation-engine/src/index.ts",
+    "^@boraoke/rotation-engine$": "<rootDir>/packages/rotation-engine/src/index.ts",
     "^@/(.*)$": "<rootDir>/$1",
   },
   // The engine source lives outside the app tree and imports sibling `.ts` files

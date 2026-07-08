@@ -1,6 +1,6 @@
 ---
 name: run-app
-description: Start the cantai app locally on port 3040.
+description: Start the Boraoke app locally on port 3040.
 ---
 
 # run-app
@@ -36,4 +36,4 @@ npm run dev
 - The venue screen (`/tv`) uses the official YouTube IFrame Player API. No API key is required.
 - Run unit tests: `npm test`
 - Run Playwright e2e: `npm run test:e2e` (starts dev server automatically if not already running). Parallel worktrees: `PORT=<3000+ticket#> npm run test:e2e` runs the whole suite on its own port (TICKET-18).
-- `/tv` extras (TICKET-18): `F` or the on-screen affordance enters fullscreen (Esc exits); the "powered by cantai" + join footer is on by default — start with `POWERED_BY_FOOTER=0` to hide it (read at request time, no rebuild needed).
+- `/tv` extras (TICKET-18): `F` or the on-screen affordance enters fullscreen (Esc exits); the "powered by Boraoke" + join footer is on by default — start with `POWERED_BY_FOOTER=0` to hide it (read at request time, no rebuild needed).

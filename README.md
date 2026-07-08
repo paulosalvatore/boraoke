@@ -1,9 +1,9 @@
-# cantai
+# Boraoke
 
-Cantai is a free, embeddable karaoke-queue platform any bar can run with zero setup: patrons join with a nickname, paste a YouTube URL for a song, and submit it to a shared queue; the venue screen plays the queue through the YouTube IFrame Player. Supports table numbers, sing vs listen/dance entries, and venue rotation modes (full karaoke, 2 per table, one per person). Free early access; professional paid plan later. Built-in feedback loop drives progressive development.
+Boraoke is a free, embeddable karaoke-queue platform any bar can run with zero setup: patrons join with a nickname, paste a YouTube URL for a song, and submit it to a shared queue; the venue screen plays the queue through the YouTube IFrame Player. Supports table numbers, sing vs listen/dance entries, and venue rotation modes (full karaoke, 2 per table, one per person). Free early access; professional paid plan later. Built-in feedback loop drives progressive development.
 
 - **Stack:** Next.js (single app, App Router, TypeScript)
-- **Deploy:** Vercel — live URL: **https://cantai-snowy.vercel.app**
+- **Deploy:** Vercel — live URL: **https://boraoke.com** (also reachable at https://cantai-snowy.vercel.app, which 308-redirects to the canonical domain)
 - Built by the [agentic software house](https://github.com/paulosalvatore/agentic-software-house).
 
 ## Running locally
@@ -60,7 +60,7 @@ The Upstash driver uses [Upstash Redis](https://upstash.com/) via the Vercel Mar
 
 ## Telemetry & privacy
 
-Cantai collects a small set of **anonymous** product events (song queued, song played, host actions, searches) to understand how venues actually use the product during free early access. In plain language:
+Boraoke collects a small set of **anonymous** product events (song queued, song played, host actions, searches) to understand how venues actually use the product during free early access. In plain language:
 
 - **Anonymous by design.** Events carry only a random patron id (the same one the queue uses), a room id, and a timestamp. No names, no free text, no IP addresses, no cookies, no ad/tracking SDKs — there is nothing here a consent banner would need to gate, and the design is LGPD-friendly.
 - **No ads.** This data is never sold and never feeds an ad network; it only informs which features venues find valuable.
@@ -73,4 +73,4 @@ The full schema and event list are documented in [`work/telemetry/README.md`](wo
 
 - YouTube playback uses the **official YouTube IFrame Player API** only (ToS-compliant). Media is never downloaded or proxied.
 - No secrets are required to run the default (memory) driver locally or in CI. Durable persistence (the `upstash` driver) needs Upstash Redis credentials — see [Persistence](#persistence).
-- Port 3040 is dedicated to cantai in the agentic software house fleet.
+- Port 3040 is dedicated to Boraoke in the agentic software house fleet.

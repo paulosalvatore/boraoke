@@ -88,7 +88,7 @@ export default function TvScreen({
   }, [roomId]);
 
   // Human-facing short URL (host + room path) for the printed line under the QR.
-  const joinLabel = joinHost ? `${joinHost}${roomId ? `/${roomId}` : ""}` : "cantai";
+  const joinLabel = joinHost ? `${joinHost}${roomId ? `/${roomId}` : ""}` : "boraoke.com";
 
   // ---- Load YouTube IFrame API ----
   useEffect(() => {
@@ -348,7 +348,7 @@ export default function TvScreen({
     >
       {/* top bar */}
       <div className={styles.topBar}>
-        <span className={styles.wordmark}>cantai</span>
+        <span className={styles.wordmark}>Boraoke</span>
         <span className={styles.venue}>{venueName || "noite de karaokê"}</span>
       </div>
 
@@ -418,7 +418,7 @@ export default function TvScreen({
                   <div className={styles.cta}>Escaneia e canta!</div>
                   <div className={styles.url}>{joinLabel}</div>
                   <div className={styles.poweredBy}>
-                    powered by <span className={styles.pbMark}>cantai</span>
+                    powered by <span className={styles.pbMark}>Boraoke</span>
                   </div>
                 </div>
               </div>
@@ -428,7 +428,7 @@ export default function TvScreen({
       ) : (
         /* idle state — the recruitment poster */
         <div className={styles.idle} data-testid="tv-idle">
-          <span className={styles.wordmark}>cantai</span>
+          <span className={styles.wordmark}>Boraoke</span>
           <div className={styles.idleCta}>Escaneia e canta! 🎤</div>
           <QrCode
             className={styles.idleQr}
@@ -439,7 +439,7 @@ export default function TvScreen({
           <div className={styles.idleUrl}>{joinLabel}</div>
           {poweredByFooter && (
             <div className={styles.poweredBy} data-testid="tv-powered-by">
-              powered by <span className={styles.pbMark}>cantai</span>
+              powered by <span className={styles.pbMark}>Boraoke</span>
             </div>
           )}
         </div>

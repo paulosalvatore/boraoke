@@ -45,6 +45,12 @@ import { DEFAULT_ROOM, getRoom, hashHostCode, isValidRoomId } from "./rooms";
 /**
  * Base cookie name (legacy `default` room). Per-room cookies append the room id
  * via `hostCookieName`. Kept exported for back-compat / tests.
+ *
+ * STORAGE-KEY NOTE (TICKET-33 rebrand): the `cantai_host*` cookie names and the
+ * `cantai-*` HMAC salt strings in this file are DELIBERATELY kept under the old
+ * brand. They are live auth state — renaming the cookie logs every active host
+ * out, and rotating the salts invalidates every issued session. Cosmetic rename
+ * is not worth that. See work/tickets/TICKET-33-code-rebrand.md.
  */
 export const HOST_COOKIE = "cantai_host";
 
