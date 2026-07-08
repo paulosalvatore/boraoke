@@ -135,6 +135,14 @@ test("degraded search shows fallback copy but paste-link still works", async ({ 
   await input.fill("https://youtu.be/dQw4w9WgXcQ");
   await expect(page.getByText(/Selected: dQw4w9WgXcQ/)).toBeVisible({ timeout: 5000 });
 
-  await page.getByRole("button", { name: /add to queue/i }).click();
+  // TICKET-40-BUG-01 regression: the paste-resolve in DEGRADED mode must ALSO
+  // jump focus to the (now enabled) add-to-queue CTA. The jump is an effect on
+  // the selection state, so it fires after React commits — the button is
+  // enabled by the time .focus() runs.
+  const cta = page.getByRole("button", { name: /add to queue/i });
+  await expect(cta).toBeEnabled();
+  await expect(cta).toBeFocused();
+
+  await cta.click();
   await expect(page.getByText(/song added to the queue/i)).toBeVisible({ timeout: 5000 });
 });

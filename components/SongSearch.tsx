@@ -22,13 +22,13 @@ interface SongSearchProps {
    * Pasted YouTube links are never affected.
    */
   mode: Mode;
-  /** Called with the current selection, or null when the selection is cleared. */
-  onSelect: (selection: SongSelection | null) => void;
   /**
-   * Called after a result is picked or a pasted link resolves, so the parent can
-   * jump the patron to the submit CTA (scroll into view + focus). TICKET-40 §1.
+   * Called with the current selection, or null when the selection is cleared.
+   * NOTE (TICKET-40 §1 / BUG-01): the parent drives the jump-to-CTA
+   * (scroll+focus) off this selection state via an effect — one code path for
+   * both the result-pick and paste-resolve flows (see PatronRoom).
    */
-  onSongChosen?: () => void;
+  onSelect: (selection: SongSelection | null) => void;
 }
 
 const FALLBACK_COPY = "Busca indisponível — cola o link do YouTube";
@@ -39,7 +39,7 @@ const FALLBACK_COPY = "Busca indisponível — cola o link do YouTube";
  *   - A pasted YouTube URL/ID → resolved locally via parseYouTubeVideoId, NO API call.
  * Degraded (no key / quota / error) shows the fallback copy; paste-link still works.
  */
-export default function SongSearch({ patronUuid, mode, onSelect, onSongChosen }: SongSearchProps) {
+export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchProps) {
   const [input, setInput] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,11 +125,10 @@ export default function SongSearch({ patronUuid, mode, onSelect, onSongChosen }:
           thumbnailUrl: `https://i.ytimg.com/vi/${pastedId}/mqdefault.jpg`,
         },
       ]);
-      // Auto-select the resolved link.
+      // Auto-select the resolved link. (The parent's effect on the selection
+      // state performs the jump-to-CTA — TICKET-40 §1.)
       setSelectedId(pastedId);
       onSelect({ videoId: pastedId });
-      // A pasted link IS a song choice — jump the patron to the submit CTA.
-      onSongChosen?.();
       return;
     }
 
@@ -149,7 +148,7 @@ export default function SongSearch({ patronUuid, mode, onSelect, onSongChosen }:
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-    // onSelect/clearSelection/onSongChosen are stable via useCallback in the parent contract.
+    // onSelect/clearSelection are stable via useCallback in the parent contract.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, runSearch]);
 
@@ -159,8 +158,6 @@ export default function SongSearch({ patronUuid, mode, onSelect, onSongChosen }:
       videoId: r.videoId,
       title: r.title && r.title !== "Link do YouTube" ? r.title : undefined,
     });
-    // Picking a result IS a song choice — jump the patron to the submit CTA.
-    onSongChosen?.();
   }
 
   return (

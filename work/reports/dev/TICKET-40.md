@@ -34,3 +34,17 @@ Repo: paulosalvatore/boraoke
 ## Implementation log
 - `e021689` — impl (`lib/search-query.ts`, `SongSearch`, `PatronRoom`) + unit tests + e2e + ticket + dev report.
 - (evidence commit) — mobile screenshots + `scripts/capture-ticket-40.mjs`.
+
+## Gate feedback addressed
+
+### TICKET-40-BUG-01 (App Tester FAIL, Medium) — degraded-paste: CTA never focused
+- **Root cause confirmed:** the `onSongChosen` callback + `requestAnimationFrame` fired while React's `setParsedVideoId` commit was still pending; the CTA was still `disabled` and `.focus()` silently no-op'd (disabled elements are not focusable).
+- **Fix (tester's suggested approach adopted):** removed the `onSongChosen` callback entirely; the jump is now a `useEffect` in `PatronRoom` watching `parsedVideoId` — effects run after commit, so the CTA is already enabled when scrolled/focused. ONE mechanism covering BOTH paths (result pick + paste resolve, normal and degraded), since both converge on `setParsedVideoId` via `handleSelect`. Skips `null` (clear / post-submit reset) so focus never jumps uninvited.
+- **Test coverage for the gap:** the degraded e2e now asserts `toBeEnabled()` + `toBeFocused()` on the CTA after the paste resolves (regression test for BUG-01).
+- **Re-verification:** unit 369/369, build green, full e2e 30/30 (incl. the new assertions + the existing §1 focus-jump test on the pick path).
+
+## Implementation log (SHAs)
+- `e021689` — impl + unit tests + e2e + ticket + dev report.
+- `6999c71` — mobile evidence screenshots + capture script.
+- `ff2d3d9` — dev report final verification.
+- (next commit) — BUG-01 fix: effect-on-selection focus jump + degraded-paste e2e regression assertions.

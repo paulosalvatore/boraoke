@@ -128,16 +128,23 @@ export default function PatronRoom({
   // remove the hunt for the CTA — scroll it into view AND focus it, WITHOUT
   // auto-submitting. On phones the CTA sits below the fold, so we center it above
   // the keyboard fold (block:"center") and focus without a second competing scroll
-  // (preventScroll:true). Deferred a tick so the CTA has re-rendered (it only
-  // mounts/enables once parsedVideoId is set) before we scroll to it.
-  const handleSongChosen = useCallback(() => {
-    requestAnimationFrame(() => {
-      const btn = submitBtnRef.current;
-      if (!btn) return;
-      btn.scrollIntoView({ block: "center", behavior: "smooth" });
-      btn.focus({ preventScroll: true });
-    });
-  }, []);
+  // (preventScroll:true).
+  //
+  // Implemented as an effect on parsedVideoId (TICKET-40-BUG-01): both selection
+  // sources (result pick AND paste-resolve) converge on setParsedVideoId via
+  // handleSelect, and effects run AFTER React commits — so the CTA is already
+  // enabled (`disabled={submitting || !parsedVideoId}`) when we focus it. The
+  // previous callback + requestAnimationFrame fired while the state commit was
+  // still pending in the degraded-paste path: the button was still disabled and
+  // .focus() silently no-op'd. One effect = one code path for both flows. Skips
+  // null (selection cleared / post-submit reset) so focus never jumps uninvited.
+  useEffect(() => {
+    if (!parsedVideoId) return;
+    const btn = submitBtnRef.current;
+    if (!btn) return;
+    btn.scrollIntoView({ block: "center", behavior: "smooth" });
+    btn.focus({ preventScroll: true });
+  }, [parsedVideoId]);
 
   function saveNickname() {
     const trimmed = nickname.trim();
@@ -280,7 +287,6 @@ export default function PatronRoom({
             patronUuid={patronUuid}
             mode={mode}
             onSelect={handleSelect}
-            onSongChosen={handleSongChosen}
           />
           {parsedVideoId && (
             <p style={{ fontSize: "0.8rem", color: "#4ade80" }}>✓ Selected: {parsedVideoId}</p>
