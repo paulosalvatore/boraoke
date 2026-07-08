@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseYouTubeVideoId } from "@/lib/youtube";
+import { augmentQuery } from "@/lib/search-query";
+import type { Mode } from "@/lib/store";
 import type { SearchResult } from "@/lib/youtube-search";
 
 const DEBOUNCE_MS = 400;
@@ -14,7 +16,18 @@ export interface SongSelection {
 
 interface SongSearchProps {
   patronUuid: string;
-  /** Called with the current selection, or null when the selection is cleared. */
+  /**
+   * Entry mode (TICKET-40). In "sing" mode the free-text query is augmented with
+   * the "karaoke" keyword before hitting /api/search; other modes search raw.
+   * Pasted YouTube links are never affected.
+   */
+  mode: Mode;
+  /**
+   * Called with the current selection, or null when the selection is cleared.
+   * NOTE (TICKET-40 §1 / BUG-01): the parent drives the jump-to-CTA
+   * (scroll+focus) off this selection state via an effect — one code path for
+   * both the result-pick and paste-resolve flows (see PatronRoom).
+   */
   onSelect: (selection: SongSelection | null) => void;
 }
 
@@ -26,7 +39,7 @@ const FALLBACK_COPY = "Busca indisponível — cola o link do YouTube";
  *   - A pasted YouTube URL/ID → resolved locally via parseYouTubeVideoId, NO API call.
  * Degraded (no key / quota / error) shows the fallback copy; paste-link still works.
  */
-export default function SongSearch({ patronUuid, onSelect }: SongSearchProps) {
+export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchProps) {
   const [input, setInput] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -49,7 +62,9 @@ export default function SongSearch({ patronUuid, onSelect }: SongSearchProps) {
       setDegraded(false);
       setRateLimitMsg("");
       try {
-        const params = new URLSearchParams({ q, uuid: patronUuid || "anon" });
+        // Mode-aware augmentation (TICKET-40): sing → append "karaoke", others → raw.
+        const augmented = augmentQuery(q, mode);
+        const params = new URLSearchParams({ q: augmented, uuid: patronUuid || "anon" });
         const res = await fetch(`/api/search?${params.toString()}`);
         if (seq !== seqRef.current) return; // a newer query superseded this one
 
@@ -75,7 +90,7 @@ export default function SongSearch({ patronUuid, onSelect }: SongSearchProps) {
         if (seq === seqRef.current) setLoading(false);
       }
     },
-    [patronUuid],
+    [patronUuid, mode],
   );
 
   // React to input changes: resolve pasted links locally, else debounce a search.
@@ -110,7 +125,8 @@ export default function SongSearch({ patronUuid, onSelect }: SongSearchProps) {
           thumbnailUrl: `https://i.ytimg.com/vi/${pastedId}/mqdefault.jpg`,
         },
       ]);
-      // Auto-select the resolved link.
+      // Auto-select the resolved link. (The parent's effect on the selection
+      // state performs the jump-to-CTA — TICKET-40 §1.)
       setSelectedId(pastedId);
       onSelect({ videoId: pastedId });
       return;

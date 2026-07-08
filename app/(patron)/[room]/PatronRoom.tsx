@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { QueueEntry, Mode } from "@/lib/store";
 import { modeLabel, type RoomMode } from "@/lib/rotation-modes";
 import SongSearch, { type SongSelection } from "@/components/SongSearch";
+import { rememberJoinedRoom } from "@/lib/room-memory";
 
 const POLL_INTERVAL = 3000;
 
@@ -51,6 +52,9 @@ export default function PatronRoom({
   const [reorderNotice, setReorderNotice] = useState("");
   const prevModeRef = useRef<RoomMode | null>(null);
 
+  // Add-to-queue CTA — jumped into view + focused once a song is chosen (TICKET-40 §1).
+  const submitBtnRef = useRef<HTMLButtonElement | null>(null);
+
   const nickKey = `cantai:${roomId}:nick`;
   const tableKey = `cantai:${roomId}:table`;
 
@@ -74,6 +78,11 @@ export default function PatronRoom({
 
     // Remember this as the last room joined (landing prefill).
     try { ls.setItem("cantai_last_room", roomId); } catch { /* sandboxed */ }
+
+    // TICKET-43: add this room to the device's remembered-rooms list (joined
+    // role) so it shows under the landing "Suas salas" section for quick
+    // re-entry after a refresh. Uses the venue name for a friendly label.
+    rememberJoinedRoom({ id: roomId, name: venueName || roomId });
 
     // Per-room nickname, falling back to the global prefill.
     const savedNick = ls.getItem(nickKey) ?? ls.getItem("cantai_nickname");
@@ -120,6 +129,28 @@ export default function PatronRoom({
       setTitle((prev) => (prev.trim() ? prev : sel.title!));
     }
   }, []);
+
+  // TICKET-40 §1: once a song is chosen (result picked or pasted link resolved),
+  // remove the hunt for the CTA — scroll it into view AND focus it, WITHOUT
+  // auto-submitting. On phones the CTA sits below the fold, so we center it above
+  // the keyboard fold (block:"center") and focus without a second competing scroll
+  // (preventScroll:true).
+  //
+  // Implemented as an effect on parsedVideoId (TICKET-40-BUG-01): both selection
+  // sources (result pick AND paste-resolve) converge on setParsedVideoId via
+  // handleSelect, and effects run AFTER React commits — so the CTA is already
+  // enabled (`disabled={submitting || !parsedVideoId}`) when we focus it. The
+  // previous callback + requestAnimationFrame fired while the state commit was
+  // still pending in the degraded-paste path: the button was still disabled and
+  // .focus() silently no-op'd. One effect = one code path for both flows. Skips
+  // null (selection cleared / post-submit reset) so focus never jumps uninvited.
+  useEffect(() => {
+    if (!parsedVideoId) return;
+    const btn = submitBtnRef.current;
+    if (!btn) return;
+    btn.scrollIntoView({ block: "center", behavior: "smooth" });
+    btn.focus({ preventScroll: true });
+  }, [parsedVideoId]);
 
   function saveNickname() {
     const trimmed = nickname.trim();
@@ -257,7 +288,12 @@ export default function PatronRoom({
       <section style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: "1.25rem", marginBottom: "2rem" }}>
         <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>Add a song</h2>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <SongSearch key={searchKey} patronUuid={patronUuid} onSelect={handleSelect} />
+          <SongSearch
+            key={searchKey}
+            patronUuid={patronUuid}
+            mode={mode}
+            onSelect={handleSelect}
+          />
           {parsedVideoId && (
             <p style={{ fontSize: "0.8rem", color: "#4ade80" }}>✓ Selected: {parsedVideoId}</p>
           )}
@@ -301,7 +337,12 @@ export default function PatronRoom({
           {submitError && <p style={{ color: "var(--accent)", fontSize: "0.875rem" }}>{submitError}</p>}
           {submitSuccess && <p style={{ color: "#4ade80", fontSize: "0.875rem" }}>✓ Song added to the queue!</p>}
 
-          <button className="btn-primary" type="submit" disabled={submitting || !parsedVideoId}>
+          <button
+            ref={submitBtnRef}
+            className="btn-primary"
+            type="submit"
+            disabled={submitting || !parsedVideoId}
+          >
             {submitting ? "Adding…" : "Add to queue"}
           </button>
         </form>
