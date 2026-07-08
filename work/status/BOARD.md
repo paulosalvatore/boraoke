@@ -1,6 +1,6 @@
 # cantai — Board
 
-_Last updated: 2026-07-08 (21 PRs merged; 40+43 live; 41 in review; 30 sweeps last; 45/44 queued)_
+_Last updated: 2026-07-08 (22 PRs merged; TV watchdog LIVE; i18n final sweep running; 45/44 next)_
 
 ## Needs user (TL)
 
@@ -52,10 +52,10 @@ _Last updated: 2026-07-08 (21 PRs merged; 40+43 live; 41 in review; 30 sweeps la
 | TICKET-33a | Brand asset kit | DONE | PR #19 merged (pt-BR, TL-waived en/es); og-image-pt-BR live (200) |
 | TICKET-33c | EN/ES OG cards | PARKED | Asset agent ready; needs TL login to aistudio.google.com in debug-Chrome window |
 | TICKET-40 | Search UX (select-jump + karaoke keyword) | DONE | PR #21 merged (App Tester FAIL→fix→PASS focus race; opus product judgments recorded) |
-| TICKET-41 | TV watchdog + embeddable search + advance auth | IN PROGRESS | Dev (opus), .worktrees/ticket-41; folded TL skip-hole fix (screen-token design) |
+| TICKET-41 | TV watchdog + embeddable search | DONE | PR #24 merged (415/415; opus all-night walk blessed 12s ladder; skip-AUTH deferred by design → TICKET-45) |
 | TICKET-43 | Session recovery (local room memory) | DONE | PR #22 merged (probe bounded top-3; claim-path AC binding for TICKET-28 recorded) |
 | TICKET-44 | Optional moderation mode | QUEUED (next wave) | TL 2026-07-08: venue-optional song approval before queue entry ("wrong oriented stuff" guard); touches queue POST + admin + patron — launches after 40/41 merge. Related: roadmap content-filter prerequisite for schools/churches venue types |
-| TICKET-30 | i18n pt-BR/en/es + switcher | IN PROGRESS | Dev (opus), .worktrees/ticket-30; REBASES LAST after 40/41/43 |
+| TICKET-30 | i18n pt-BR/en/es + switcher | FINAL SWEEP | Rebase window open; mechanical t() sweep of merged components running |
 | TICKET-33 | Code rebrand + publish metadata | DONE | PR #20 merged; boraoke.com live-verified (title, OG 200, 308 redirect w/ path+query) |
 | (research) | Naming + domain availability | IN PROGRESS | fable agent — cantai.com taken; shortlist w/ whois checks |
 | TICKET-10 | Rotation modes UI (wave 3) | DONE | PR #14 merged: full chain (App Tester ordering proofs, Security fix round + re-audit, sonnet+opus APPROVE; lost-submit race quantified + HIGH atomic-RMW follow-up filed). KICKOFF SCOPE COMPLETE |
