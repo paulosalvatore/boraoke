@@ -1,0 +1,101 @@
+/* Language switcher (TICKET-30) — globe pill + popover/sheet.
+   Authored with logical properties (design §3 RTL pre-work). */
+
+.root {
+  position: relative;
+  display: inline-block;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface-2, #251c33);
+  color: var(--text, #f7f3fc);
+  border: 1px solid var(--border, #372b4a);
+  border-radius: 999px;
+  padding-block: 0.35rem;
+  padding-inline: 0.75rem;
+  font: 600 0.85rem/1 inherit;
+  cursor: pointer;
+}
+
+.pill:hover:not(:disabled) {
+  border-color: var(--text-muted, #a79bc0);
+}
+
+.pill:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* Popover (desktop default): anchored under the pill, inline-end aligned. */
+.sheet {
+  position: absolute;
+  inset-block-start: calc(100% + 0.4rem);
+  inset-inline-end: 0;
+  z-index: 50;
+  min-width: 220px;
+  background: var(--surface, #1a1424);
+  border: 1px solid var(--border, #372b4a);
+  border-radius: 12px;
+  padding: 0.35rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.sheetHeader {
+  padding: 0.5rem 0.6rem 0.35rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #a79bc0);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  inline-size: 100%;
+  gap: 0.75rem;
+  background: transparent;
+  border: none;
+  color: var(--text, #f7f3fc);
+  text-align: start;
+  padding: 0.6rem;
+  border-radius: 8px;
+  font: 500 0.95rem/1.2 inherit;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--surface-2, #251c33);
+}
+
+.check {
+  color: var(--accent, #ff3d71);
+  font-weight: 700;
+}
+
+.hint {
+  padding: 0.45rem 0.6rem 0.35rem;
+  font-size: 0.72rem;
+  color: var(--text-dim, #6e6288);
+}
+
+/* Bottom sheet on narrow viewports (mobile) — full-width, pinned to the bottom. */
+@media (max-width: 520px) {
+  .sheet {
+    position: fixed;
+    inset-block-start: auto;
+    inset-block-end: 0;
+    inset-inline: 0;
+    min-width: 0;
+    border-radius: 16px 16px 0 0;
+    padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0));
+  }
+
+  .item {
+    padding: 0.85rem 0.6rem;
+    font-size: 1.05rem;
+  }
+}

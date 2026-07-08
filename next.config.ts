@@ -1,4 +1,10 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+// i18n (TICKET-30): next-intl WITHOUT i18n routing — locale lives in the
+// NEXT_LOCALE cookie, NOT the URL, so room URLs stay `/<room>`. The plugin only
+// wires the request config below; it adds no path segment and no middleware.
+const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
 const nextConfig: NextConfig = {
   // Allow YouTube iframe embedding in CSP — IFrame Player API is the only playback mechanism (ToS)
@@ -18,4 +24,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

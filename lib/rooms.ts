@@ -28,6 +28,7 @@ import {
   normalizeRoomMode,
   type RoomMode,
 } from "./rotation-modes";
+import { normalizeLocale, type Locale } from "@/i18n/locales";
 
 export interface RoomSettings {
   /**
@@ -36,6 +37,14 @@ export interface RoomSettings {
    * back through `normalizeRoomMode` as the default, with NO re-migration.
    */
   mode: RoomMode;
+  /**
+   * Room default UI language (TICKET-30, ADDITIVE + optional). The venue sets it
+   * in admin; it drives the TV surface (which never follows a per-user cookie)
+   * and the first-visit default for patrons who have no explicit locale cookie.
+   * Legacy/absent → `DEFAULT_LOCALE` (pt-BR) via {@link normalizeLocale}, no
+   * migration and no write.
+   */
+  language?: Locale;
 }
 
 export interface Room {
@@ -363,6 +372,36 @@ export async function setRoomMode(
   const next: Room = { ...room, settings: { ...room.settings, mode } };
   await roomBackend.update(next);
   return mode;
+}
+
+/**
+ * Read a room's default UI language, normalized (TICKET-30). Rooms without a
+ * record or without the (optional, additive) `language` field read back as the
+ * default locale (pt-BR) — no re-migration, no write. Mirrors `getRoomMode`.
+ */
+export async function getRoomLanguage(roomId: string): Promise<Locale> {
+  const room = await getRoom(roomId);
+  return normalizeLocale(room?.settings?.language);
+}
+
+/**
+ * Set a room's default UI language (TICKET-30, additive host mutator). Persists
+ * in place via the backend `update`. Returns the new language on success, or
+ * `null` when the room does not exist (language-set is host-authed, so this only
+ * fires for a real, host-owned room). Idempotent. Mirrors `setRoomMode`.
+ */
+export async function setRoomLanguage(
+  roomId: string,
+  language: Locale,
+): Promise<Locale | null> {
+  const room = await getRoom(roomId);
+  if (!room) return null;
+  const next: Room = {
+    ...room,
+    settings: { ...room.settings, language },
+  };
+  await roomBackend.update(next);
+  return language;
 }
 
 /** The legacy single-queue room id (pre-multi-room prototype). */
