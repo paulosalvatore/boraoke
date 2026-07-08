@@ -158,3 +158,57 @@ None.
 Evidence: Reviewer ran the full suite independently (npm test 380/380, npm run build green, e2e 30/30 with no flakes). The pure-function watchdog design makes the state machine fully provable at unit level (23 tests, all branches covered). TICKET-18 reliability properties are preserved: single timers per concern, cleared on unmount, handlers attached once, `playerEpoch` recreate pattern is the only mechanism that re-creates the player. The advance route `reason` allowlist is strict. Song_skipped uuid is correctly sourced from the pre-advance head. Auth deferral is honestly documented and not misrepresented. The only merge obstacle is the events-log UNION (code-clean).
 
 The only remaining items before merge: UNION-resolve the `work/events/2026-07.jsonl` conflict (TM), and gate checkboxes in the PR description.
+
+---
+
+## 9. D-022 OPUS MERGE-COUNTING PASS (second tier — the all-night-promise audit)
+
+**Reviewer:** Reviewer agent, opus tier (`claude-opus-4-8`). This is the APPROVE that counts for merge (D-022). Framing: the TL's TV died mid-night once; this merge is the promise it never happens again. Judged against that promise, adversarially.
+
+### 9.1 Independent re-verification (ran myself, this worktree)
+
+- `npx jest` → **25 suites, 380/380 green** (1.7s).
+- `npm run build` → **green** (Next.js production build, all routes compiled including `/tv`, `/api/queue/advance`).
+- `npx playwright test` → **30/30 green** (1.3m, incl. the two `tv-watchdog.spec.ts` onError e2e tests). No flakes.
+
+Sonnet's numbers reproduced exactly.
+
+### 9.2 Adversarial walk of a 6-hour night — REAL vs THEORETICAL
+
+**(a) A video that plays 2s then stalls repeatedly (ad-injection / throttled wifi).** Traced the ladder. Any poll sample with ≥`MIN_PROGRESS_SECONDS` (0.25s) of `getCurrentTime()` movement resets `escalation` to 0. So a video that plays a spurt, stalls 12s, gets a `replay` nudge, plays another spurt → the ladder resets to rung 0 on every spurt. **It does NOT thrash replay→reload→recreate on every such video** — it re-arms at `replay` (the cheapest, visually-gentle rung) as long as *any* real progress keeps happening. This is the correct, deliberate edge: a video making genuine (if slow) progress should not be hard-skipped. The only cost is that a pathologically-stuttering-but-progressing stream keeps getting gentle `replay` nudges rather than being skipped — acceptable, because it IS advancing and a skip would punish a song that's merely on bad wifi. **Real finding: NONE — behavior is correct by design.** Documented here so the edge is on the record.
+
+**(b) What the venue SEES during a 12s stall window.** No app-level black overlay and no skip toast fire *during* the stall window — I confirmed via `tv.module.css` that `.skipNotice` is a small amber pill (top-14vh/right-3vw), shown only once `skipUnplayable` actually fires (onError or ladder-top). During the 12s no-progress window the YT iframe shows **its own native buffering spinner / last frame** — not black. So the crowd sees at most 12s of YouTube's normal buffering UI before the first *invisible* `replay` nudge (a `seekTo(current)+playVideo`, imperceptible if it succeeds). 12s of frozen-but-spinning karaoke reads as "buffering," not "broken." **Verdict: acceptable venue UX.**
+
+**(c) Repeated stalls across consecutive videos — per-video rung reset.** Verified rung state resets per video at **every** advance boundary: `stallStateRef.current = createStallState(Date.now())` is called in the `onStateChange` ENDED path, in `skipUnplayable`, and in the player-effect's load-new-video branch. So video N's climbed rungs never leak into video N+1. The no-advance-loop guard (`rung >= ESCALATION_LADDER.length` → reset to 0, action `none`) re-arms correctly: after the `advance` rung fires, `skipUnplayable` recreates fresh stall state, so the guard's defensive branch is a belt-and-suspenders that the unit test "never loops advance" exercises directly. **Real finding: NONE — per-video isolation and re-arm are both correct.**
+
+**(d) Genuinely dead network for 10 minutes (bootstrap AND queue poll both failing).** Walked both code paths:
+- *Bootstrap:* `inject()` retries the YT API script on `script.onerror` and on ready-timeout, backoff 5/10/20/30s capped-but-unlimited (`bootstrapRetryDelayMs`). Never sits dead. When wifi heals, `onYouTubeIframeAPIReady` fires → `ytReady=true` → player effect creates the player.
+- *Queue poll:* `fetchQueue`'s `catch {}` is silent and does NOT call `setQueue`, so the **last-known-good queue persists on screen** through the outage (the TV keeps showing the last now-playing card rather than blanking). Retries every 3s.
+- *Watchdog during the outage:* if a player already exists and stalls, the ladder may reach the `advance` rung → `skipUnplayable` → `advance()` does `fetch(/api/queue/advance)` which **throws (network dead) → caught → returns null → server queue is untouched.** So a dead-network stall produces NO spurious server-side advance; the head is preserved. When wifi heals, the next queue poll returns the same head and the player effect reloads it. **Clean reconnection, no data loss, no phantom skips.** Real finding: NONE.
+
+### 9.3 The 12s threshold — TL-experience ruling
+
+**BLESSED.** Rationale: YouTube's own player will spin on a wedged stream *indefinitely* without ever self-recovering to a different video — that is precisely the failure that killed the TL's TV. 12s before the first (invisible) `replay` is long enough that ordinary transient buffering — an ad, a slow segment, a 3–5s wifi hiccup — resolves on its own with zero intervention, and short enough that a truly wedged stream gets nudged before the crowd notices. The first two rungs (`replay`, `reload`) are visually gentle; only after 4×12s ≈ **48s of sustained no-progress** does the watchdog hard-skip. That 48s-to-skip is well-judged patience: it never nukes a merely-slow video, yet guarantees recovery within ~1 minute of a genuine stall. A tighter window would fight YouTube's normal buffering and cause spurious skips; a looser one would leave the crowd staring. 12s is the right number.
+
+### 9.4 The reason-param C1 interaction under the watchdog-advance vs host-skip RACE
+
+Re-audited the race the brief flagged: watchdog-advance (`POST /api/queue/advance?reason=unplayable`) colliding with host-skip (`POST /api/host/skip`), both targeting head X.
+
+- Store `advance` is atomic `LPOP` + `LINDEX 0` (upstash) / `shift()` (memory). `nowPlaying` is a non-mutating `LINDEX 0`.
+- **`song_played` single-source is intact:** grepped all emitters — the ONLY `song_played` source is `advance/route.ts`. `host/skip` does NOT emit `song_played`. So the C1 invariant (one `song_played` source) survives this ticket. Confirmed.
+- **The loser's telemetry does NOT emit for an entry that didn't skip in the double-LPOP sense:** the watchdog route reads `skipped = nowPlaying` *before* its own `advance`, and only emits `song_skipped` when `skipped` is non-null. Under a true simultaneous double-LPOP, X and Y are both physically removed — both `song_skipped` emissions (reason=unplayable for X, reason=host for the head the host route read) correspond to entries that WERE removed. There is no phantom `song_skipped` for an entry still in the queue.
+- **The one honest edge:** if host-skip's LPOP lands in the tiny window between the watchdog's `nowPlaying` read and its own LPOP, the watchdog's LPOP removes what is now Y while its telemetry is attributed to X → a *mis-attributed* (not phantom) `song_skipped`, and Y is dropped un-announced. This is **fire-and-forget telemetry mis-attribution under a sub-millisecond race between two rare human/automated skip events on the identical head** — and it is **pre-existing** (the host-skip-vs-TV-end-advance race already had identical LPOP semantics before this ticket; TICKET-41 adds one more advance caller, not a new class of race). It does not corrupt queue state beyond the inherent double-skip that any concurrent-advance design has, does not break C1, and does not affect a route's response. **Not a blocker.** Filed as an observation for a future atomic compare-and-advance (skip-by-id) hardening if telemetry precision under concurrent skips ever matters — out of scope for the all-night-promise, which is about *self-healing*, not race-exact telemetry.
+
+### 9.5 Zero-overlap claim vs post-#21/#22 main — VERIFIED BY DIFF
+
+Merge-base is `5943a10`, which is **after** #21 (TICKET-40 `af156a7`) and #22 (TICKET-43 `b97289e`) on `origin/main` — the branch is already based on post-#21/#22 main. `comm -12` of files-changed-on-main-since-base ∩ files-changed-on-branch yields **exactly one file: `work/events/2026-07.jsonl`** (append-only log, UNION-resolvable, non-code). Zero code-file conflicts. The one file shared with TICKET-40's declared lane (`lib/youtube-search.ts`) is a purely additive single-param change (`videoSyndicated=true`) — TICKET-40 did not touch that file, so no conflict. **Zero-overlap claim CONFIRMED.**
+
+### 9.6 Opus-pass findings
+
+- **Blocking:** none.
+- **Observation (non-blocking, future ticket):** telemetry mis-attribution under the sub-ms watchdog-advance vs host-skip race on the identical head (§9.4). Pre-existing class, fire-and-forget only, C1 intact. Candidate for a skip-by-id atomic advance if precise concurrent-skip telemetry is ever wanted.
+- Both sonnet-pass NITs (PR body advance-auth mention; "20 vs 23 tests" count) stand as-is — informational, non-blocking.
+
+### 9.7 OPUS VERDICT
+
+**[reviewer] APPROVE (D-022 opus, merge-counting).** The all-night promise is kept: every failure mode I could construct across a 6-hour night — fatal onError, intermittent-progress stutter, per-video repeated stalls, a 10-minute dead network hitting both bootstrap and queue poll — self-heals without a human refresh and reconnects clean when wifi returns. 12s is the right patience. C1 `song_played` single-source survives; the reason-param is strictly allowlisted (XSS-tested). Zero code-overlap with post-#21/#22 main, confirmed by diff. 380/380 + 30/30 + build green, reproduced independently. The only merge action is the routine `work/events/2026-07.jsonl` UNION resolve (TM).
