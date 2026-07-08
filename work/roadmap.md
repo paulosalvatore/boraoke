@@ -1,101 +1,146 @@
-# cantai — Product Roadmap
+# cantai — Product Roadmap v2 (platform vision)
 
-- **Owner:** Product Owner (TICKET-5)
-- **Last groomed:** 2026-07-05
+- **Owner:** Product Owner (TICKET-22; supersedes the TICKET-5 roadmap)
+- **Last groomed:** 2026-07-07
 - **Status:** proposed — priorities are the Tech Lead's to confirm (PO proposes, never imposes)
+- **Naming note:** the TL greenlit the rename to **Boraoke** (boraoke.com bought 2026-07-07; DNS pending TL; assets in generation). Specs stay name-agnostic ("cantai" below means "the product") because the live product runs under the old name until TICKET-33 executes the rebrand in its solo merge window.
 
-## North star
+## North star (v2)
 
-Any bar can run a great karaoke night with **zero setup and zero cost to start**: patrons scan a QR, pick a song, and the venue screen just plays — fairly, in the right order, with no host babysitting the queue. cantai wins by being the **lowest-friction** venue music/karaoke system, and it improves itself faster than competitors because user feedback flows straight into an automated build loop (our agent fleet). Growth engine: every free venue screen is a live demo ("powered by cantai") in front of a room full of potential patrons and venue owners.
+Anyone hosting a gathering — a bar, a birthday party, a wedding, a condo salão de festas, a company offsite — can run a great interactive music night with **zero setup and zero cost to start**: guests scan a QR, pick a song, and the venue screen just plays, fairly. cantai grows from a karaoke queue into the **interaction layer for the venue's screen and the guest's phone** — song queue first, then menu ordering, paid boosts, dedications, and whatever the room wants next — monetized additively (hosts and guests can pay for extras) while the core loop stays free and fair forever.
 
-Primary early market: Brazilian bars (the name is Portuguese — "cantai" = "sing!"), so pt-BR-first UI with en as the second locale.
+Primary early market remains Brazil (pt-BR-first), with multi-language support opening the product beyond it.
 
-## Guiding principles
+## Guiding principles (v2)
 
-- Prototype → MVP → PMF → 1.0 (house iteration model, TICKET-0): ship the smallest usable venue+patron flow before polish.
-- Free early access with EVERYTHING available (TL directive, verbatim intent). Monetization decisions come later, informed by telemetry we start collecting now — see `work/planning/early-access-monetization.md`.
-- The feedback loop is a first-class product feature AND a house differentiator, not an afterthought — see `work/planning/feedback-loop.md`.
-- YouTube ToS compliance is non-negotiable: IFrame Player API embeds only, no downloading/stripping, visible player.
+- **The TL's free-early-access promise holds.** Everything that exists today stays free. Paid features are additive extras layered on top — never a paywall in front of existing functionality, and **never a paywall on fairness** (paid priority is bounded by the rotation engine so the free queue never starves; see `work/planning/platform-aggregation.md`).
+- **Anon-first identity.** Every visitor is a server-registered anonymous user from first touch; signing up retroactively claims everything they did anonymously. Nobody is ever forced to log in to sing. See `work/planning/accounts-and-identity.md`.
+- **Venue-type generalization over venue-type forks.** One product, per-type presets (copy, theming, modes, feature flags) — not N verticalized apps. See `work/planning/venue-generalization.md`.
+- **Prototype → MVP → PMF → 1.0** house iteration model continues; each platform extension ships as its own thin vertical slice.
+- **YouTube ToS compliance stays non-negotiable:** IFrame Player API embeds only, visible player.
+- Prior strategy specs remain in force where not superseded: `work/planning/early-access-monetization.md` (freemium venue posture; v2 adds guest-side additive payments, which that spec's "no patron-side monetization" analysis did not anticipate — the fairness-preserving design in `platform-aggregation.md` is the reconciliation), `work/planning/feedback-loop.md`, `work/planning/rotation-modes-fair-queue.md`.
 
-## Phases
+## Where we are (honest snapshot, 2026-07-07)
 
-### Phase 0 — Prototype (in flight)
+### LIVE (PMF feature set, 14 PRs merged)
 
-Goal: one venue can run one real karaoke session end-to-end on a public URL.
+Multi-room + QR join + table capture, host controls, all three rotation modes wired to UI, in-app YouTube search (pending API key), feedback widget, telemetry baseline, TV fullscreen mode, durable store LIVE on Upstash (provisioned + verified 2026-07-07), deployed at https://cantai-snowy.vercel.app.
 
-| Ticket | What | Why | Status |
-|---|---|---|---|
-| TICKET-1 | Walking skeleton: join → paste YouTube link → queue → /tv autoplay, in-memory store | Proves the core loop | in gates (PR #4, test gate) |
-| TICKET-2 | Vercel deploy pipeline | Public URL = testable with real people | unblocked (TL connected Vercel); queued after PR #4 |
-| TICKET-3 | Rotation/fairness engine lib | The fairness brain, built pure so it's testable in isolation | in gates (PR #3, opus review pass) |
-| TICKET-4 | Design system | Bar-friendly look before UI multiplies | DONE (PR #2 merged, TL-ratified) |
-| TICKET-5 | This roadmap + specs | Product brain: what/why sequenced before build fan-out | DONE (PR #1 merged) |
+### IN FLIGHT (v2 wave 0, launched 2026-07-07)
 
-Exit criteria: live URL; a phone can queue a song; the TV plays it; the whole flow survives a 10-song session.
+| Ticket | What | Status |
+|---|---|---|
+| TICKET-20 | P0 UX fixes: room-404 honesty, join-code input bug, YT-embed report, clean slugs, admin→customer links + render/link test suite | Dev (opus), in progress |
+| TICKET-21 | Atomic store RMW (HIGH from PR #14 opus): WATCH/Lua CAS on QueueStore + concurrency regression test | Dev (opus), in progress, `lib/store/**` only |
+| TICKET-22 | This roadmap v2 | PO (fable), this PR |
+| TICKET-23 | Design v2: full UX audit, theming dark/light direction, i18n direction, admin analytics UX | Designer (fable), in progress |
+| (research) | Naming + domain availability | RESOLVED — TL bought boraoke.com and greenlit the rename (executes as TICKET-33) |
 
-### Phase 1 — MVP (next)
+### BLOCKED ON TL (needs-user, carried from the board)
 
-Goal: a real bar can run a real Friday night unattended-ish, and we hear about everything that goes wrong.
+- 🟢 RESOLVED: **Upstash Redis provisioned 2026-07-07** (live in prod, verified) — queues and feedback are durable; TICKET-26's hard dependency is satisfied; wave 4 arms on TICKET-20 + TICKET-21 merge only.
+- 🟡 **YouTube Data API key + quota plan** — unblocks live search; quota-increase request or degraded-fallback acceptance per the PR #8 opus condition.
+- 🟡 **Boraoke DNS** — domain bought, DNS pending TL (blocks the TICKET-33 cutover, nothing else).
 
-Ordered initiatives (see Groomed backlog below for ticket-level detail):
+## Phases (v2)
 
-1. **Durable persistence** — in-memory dies per serverless instance on Vercel; nothing else is trustworthy until state survives. Sizing: S-M.
-2. **Host controls** — skip, remove, reorder, pause; a venue cannot run a night without a kill switch for a 10-minute song or a no-show. Sizing: M.
-3. **In-app YouTube search** — paste-a-link is patron friction #1; search-and-tap is the expected UX. Sizing: M (Data API key server-side, per TICKET-0 constraint).
-4. **QR join + table capture** — the physical onboarding moment; table number feeds the 2-per-table mode. Sizing: S.
-5. **Rotation modes wired to UI** — surface the TICKET-3 engine as venue settings (full karaoke / 2-per-table / one-per-person) + sing vs listen/dance on submit. Spec: `work/planning/rotation-modes-fair-queue.md`. Sizing: M.
-6. **Feedback widget + storage** — zero-friction in-app capture, uuid+nickname attached. Spec: `work/planning/feedback-loop.md`. Sizing: S-M.
-7. **Feedback-intake agent loop (house side)** — periodic agent mines feedback into triaged proposals; this is the progressive-development differentiator. Sizing: M (mostly framework/skill work).
-8. **Telemetry baseline** — anonymous product events (sessions, songs, modes, retention) so the later monetization call is data-driven, not vibes. Spec: `work/planning/early-access-monetization.md` §Telemetry. Sizing: S.
+Phases are the narrative; the Groomed backlog below is the buildable ticket-level order. Wave 0 is in flight; waves 4–6 are groomed and ready to arm; wave 7+ is directional.
 
-Exit criteria: ≥1 real venue runs ≥2 real nights; feedback arrives, gets triaged by the agent loop, and at least one user-reported item ships.
+### Phase 1 — Karaoke-core hardening (wave 4)
 
-### Phase 2 — PMF (grow and listen)
+Goal: the live product survives a real crowded night with hostile or clumsy traffic, and the known debt is paid before the platform grows on top of it.
 
-Goal: venues come back weekly on their own; we learn which pro features they'd pay for.
+Why first: every v2 pillar (identity, payments, menus) multiplies traffic and stakes; races, quota burn, and bot exposure get more expensive to fix later. This phase also folds in the honest debt: the PR #14 hardening batch, the #16 telemetry completions, and the LOW/MED board items.
 
-1. **Venue accounts + rooms** — named venues, multiple rooms/sessions, reusable QR; the unit of retention (and of future billing) is the venue.
-2. **Close-the-loop notifications + public changelog** — "your suggestion shipped" keyed to uuid; turns feedback into loyalty and more feedback.
-3. **Venue analytics (free during early access)** — songs/night, peak hours, top songs; doubles as our own pro-feature validation.
-4. **Realtime upgrade if proven needed** — move polling/SSE to websockets/hosted realtime only if session sizes demand it (TICKET-0 constraint).
-5. **i18n hardening (pt-BR/en) + mobile polish** — the room is dark, the phones are cheap, the patrons are tipsy; UX must be forgiving.
-6. **Embeddable venue page / OBS-friendly TV view** — meet venues where their screens already are.
+Includes the identity **foundation** (anonymous registration, TICKET-26) because the TL directive is "register anonymous users from the start" — every day without it is unclaimable history.
 
-Exit criteria: N venues with ≥4 weeks consecutive usage (N set by TL); telemetry answers the ads-vs-paid question with data.
+### Phase 2 — Accounts & identity (wave 5)
 
-### Phase 3 — 1.0 (monetize without breaking the promise)
+Goal: hosts can sign up (Google OAuth), retroactively claim every room and stat they created anonymously, and see their history (karaoke days, songs played, what's happening now). Guests stay anonymous unless they choose otherwise.
 
-Goal: flip on the pro plan without degrading the free tier that got us here.
+Also carries the experience layer the TL asked for — personality/customization, dark/light mode, multi-language — because accounts and theming/i18n together are the prerequisites for venue generalization (a wedding host needs the product to look and speak like a wedding, and needs an account to own the event).
 
-1. **Pro plan + billing** — per the recommendation in `work/planning/early-access-monetization.md`: venue-side freemium subscription, no patron-side ads.
-2. **Pro features** — custom branding / remove "powered by cantai", multi-room, advanced analytics, priority host tools; free tier keeps the full core (queue, modes, feedback).
-3. **Grandfathering** — early-access venues get a founding-venue deal; the "everything free" promise is honored, not rug-pulled.
-4. **Ops hardening** — ToS/privacy pages, LGPD posture (anonymous uuid design already helps), abuse controls, uptime.
+Spec: `work/planning/accounts-and-identity.md`.
 
-## Groomed backlog (ordered, post TICKET-5)
+### Phase 3 — Venue-type generalization (wave 6)
 
-Filed as buildable ticket files in the TICKET-19 batch (2026-07-05) where noted; wave = parallel-dev grouping (see `work/tickets/TICKET-19-pmf-wave-tickets.md`). Renumbering note: the old backlog #12 (house-side feedback-intake agent) is framework work per D-046 — it gets NO cantai ticket number and is filed with the framework TM; telemetry (old #13) therefore took ticket number 12. #18 was appended as a TL follow-up (design ratification, prompt 004).
+Goal: the product stops assuming "bar". A host picks a venue type (party/event, condo/community, corporate — the three highest-leverage beyond bars) and gets the right copy, theme preset, rotation defaults, and feature flags. The admin dashboard grows into the rich management surface the TL asked for (host adds songs, stats, links to guest screens).
 
-| # | Ticket (proposed) | One-line rationale | Filed / status |
-|---|---|---|---|
-| 6 | Durable persistence for queue + sessions | Vercel serverless kills in-memory state between invocations; nothing real ships until state survives — hard prerequisite for every item below. | TICKET-6 filed — wave 1 |
-| 7 | Host controls (skip / remove / reorder / pause, host token) | A venue can't run a night without a kill switch; also unblocks no-show handling in the rotation spec. | TICKET-7 filed — wave 2 |
-| 8 | In-app YouTube search (server-side Data API key) | Paste-a-link is the #1 patron friction; search-and-tap is table stakes for tipsy users on phones. | TICKET-8 filed — wave 1; needs-user: API key |
-| 9 | QR join + table number capture (+ multi-room) | The physical onboarding moment; table identity feeds 2-per-table fairness. | TICKET-9 filed — wave 2 |
-| 10 | Wire rotation modes + sing/listen-dance into UI (consumes TICKET-3 lib) | The fairness engine is the product's differentiating brain; spec in `work/planning/rotation-modes-fair-queue.md`. | TICKET-10 filed — wave 3; folds PR #3 spec↔lib alignment |
-| 11 | Feedback widget + `/api/feedback` + durable feedback store | Zero-friction capture with uuid+nickname; the raw material for the whole feedback loop (depends on #6). | TICKET-11 filed — wave 2 |
-| — | Feedback-intake agent loop (house side: mine → triage → proposals → close loop) | The progressive-development differentiator; turns feedback into tickets automatically, human-gated. | framework-side (D-046) — file with framework TM; no cantai ticket number |
-| 12 | Telemetry baseline (anonymous product events + weekly rollup) | We must collect NOW the data that decides ads-vs-paid later; retrofitting loses the early-access window. | TICKET-12 filed — wave 2 (was backlog #13) |
-| 14 | Venue accounts + rooms model | Retention and (later) billing attach to the venue, not the session; prerequisite for PMF-phase features. | not filed yet |
-| 15 | Close-the-loop notifications + public changelog | "You asked, we shipped" converts feedback into loyalty; completes the loop TICKET-11 + the framework intake loop open. | not filed yet |
-| 16 | Venue analytics view (free during early access) | Validates the top pro-feature candidate with real usage before we price it. | not filed yet |
-| 17 | Realtime upgrade evaluation (polling/SSE → ws) | Only if telemetry shows session sizes hurting; deliberate deferral per TICKET-0. | not filed yet |
-| 18 | TV mode: bigger type + fullscreen (TL follow-up) | The TV is the venue's recruitment poster; readable-across-the-bar type + chrome-free fullscreen. | TICKET-18 filed — wave 1 |
+Spec: `work/planning/venue-generalization.md`.
 
-Dependency notes: #6 blocks #7, #9, #11, #12 (durable state). #8 blocks #9 (route restructure ordering). #10 depends on TICKET-3 (lib), #7 (admin page), #9 (table identity). #15 depends on the framework intake loop. #8 needs the YouTube Data API key and #6 needs Upstash provisioning via the W7 needs-user round.
+### Phase 4 — Platform aggregation (wave 7+)
+
+Goal: the QR the guest already scanned becomes the venue's interaction rail: menu ordering, pay-to-boost songs, tips, dedications. Payments land on **Pix via Mercado Pago** (house has MP experience from desapega).
+
+First paid feature recommendation: **pay-to-boost ("Destaque") — a fairness-bounded paid priority slot, venue-opt-in, Pix one-tap**. Full scoring and the fairness-preserving design: `work/planning/platform-aggregation.md`.
+
+### Phase 5 — Monetization activation (1.0)
+
+Goal: flip on revenue without breaking the promise. Two rails, activated in this order:
+
+1. **Guest-side additive payments** (pay-to-boost, dedications, tips) — venue-opt-in, live as soon as Phase 4 ships them; these are extras, so they don't violate free-early-access.
+2. **Venue-side pro plan** (branding removal, multi-room, advanced analytics, revenue-share configuration) — per `early-access-monetization.md`, flipped only when PMF-phase telemetry supports pricing; founding-venue grandfathering honored.
+
+Ops hardening lands here too: ToS/privacy pages (started in Phase 2 with LGPD groundwork), abuse controls at scale, uptime posture.
+
+## Groomed backlog — next 3 waves (TICKET-19 wave discipline)
+
+Rules carried from TICKET-19: one worktree per ticket, explicit file-ownership boundaries so wave-mates never collide, dependency edges explicit, waves merge in order within themselves when boundaries touch.
+
+Preconditions: wave 4 arms only after TICKET-20 and TICKET-21 merge (they own `app/**` UX surfaces and `lib/store/**` respectively). TICKET-23's design spec should land before TICKET-29/30 start (soft dependency — flagged per-ticket).
+
+### Wave 4 — hardening + identity foundation
+
+| # | Ticket (proposed) | What / why | Owns (files) | Depends on |
+|---|---|---|---|---|
+| 24 | Hardening batch (board follow-ups) | Pays the recorded debt in one mechanical pass: strip patronUuid from public GET /api/queue (hashed own-row marker), advance-guard for the ENDED-vs-skip double-advance, setQueue if-changed diff on /tv, rotation.ts JSDoc + grace-path check, host-login throttle → Upstash, search cache + rate buckets → Upstash (the biggest YT-quota lever). | `lib/store/**` (post-21), `lib/rotation.ts`, `app/api/queue/**`, `app/api/search/**`, `app/tv/**` | TICKET-21 merged (Upstash ✅ live since 2026-07-07) |
+| 25 | Telemetry completions + e2e deflake | The #16 follow-ups (patron_joined client beacon, noshow emitter) so retention data is complete before accounts launch, plus the MED CI-flake fix (shared memory-driver e2e helper: warmUp + seed-after-compile, bounded /tv waits). | `lib/telemetry/**`, `e2e/**` | none (parallel-safe with 24) |
+| 26 | Anonymous identity registry | The anon-first foundation: server-issued uuid identity record for every visitor from first touch, rooms stamped with creatorUuid, activity keyed server-side — so signup can later claim it all retroactively. TL directive: "register anonymous users from the start". | `lib/identity/**`, `app/api/identity/**`, middleware, room-creation write path (coordinate one-file seam with 24's queue projection — merge 24 first) | Upstash ✅ (hard dep — satisfied 2026-07-07); merge 24 first (shared seam) |
+| 27 | Bot prevention + abuse controls | CAPTCHA-class protection (recommend Cloudflare Turnstile: free, invisible-first, LGPD-friendlier than reCAPTCHA — TL said "reCAPTCHA" as intent, not vendor; TL confirms vendor) on room creation, join, feedback POST; per-uuid velocity caps. | `lib/abuse/**`, guard call-sites in `app/api/rooms|feedback/**`, join UI widget slot | none; touches api/rooms after 26 stamps creatorUuid — merge 26 before 27 |
+
+### Wave 5 — accounts + experience
+
+| # | Ticket (proposed) | What / why | Owns (files) | Depends on |
+|---|---|---|---|---|
+| 28 | Host accounts: Google OAuth + retroactive claim | Sign-in (Auth.js + the existing Google client), account ↔ anon-uuid linking, retroactive claim of rooms/stats created under that uuid, legacy pre-26 rooms claimable via host-token proof, account page skeleton, LGPD groundwork (privacy page, deletion path). | `lib/auth/**`, `app/api/auth/**`, `app/account/**`, `app/(legal)/privacy` | 26 (identity registry), 27 (signup endpoints need bot guards) |
+| 29 | Theming: dark/light + personality | Theme provider + token-based dark/light modes, venue personality presets (foundation for per-type theming in 32), the TICKET-23 design direction made real. Design-token consolidation (tv CSS module) folds in here. | `styles/**`, theme provider, CSS modules (visual layer only — no string changes) | TICKET-23 spec (soft) |
+| 30 | i18n: multi-language framework | String extraction to locale files, pt-BR + en + es at launch, framework ready for "all main languages" (fr/de/it/ja follow as translation-only PRs), locale switcher + browser detection. | `locales/**`, string-extraction touches across components (text layer only) | TICKET-23 spec (soft). ⚠️ 29 and 30 both touch every component file on different lines — same-wave OK but **merge 29 first, 30 rebases** (string extraction is the more mechanical rebase) |
+
+### Wave 6 — admin power + venue generalization + rebrand
+
+| # | Ticket (proposed) | What / why | Owns (files) | Depends on |
+|---|---|---|---|---|
+| 31 | Admin dashboard v2 | The rich management surface the TL asked for: host adds songs directly, full queue management upgrades, stats/history views (all karaoke days, songs played, live-now), prominent links/QRs to guest and TV screens. | `app/admin/**` (new dashboard routes), `app/api/admin/**`, reads `lib/telemetry` | 28 (stats ownership), 25 (complete telemetry) |
+| 32 | Venue types v1 | Venue-type selection at room creation (bar / party-event / condo / corporate), per-type copy packs, theme presets, rotation-mode defaults, feature-flag matrix. | `lib/venue-types/**`, room-creation flow, copy/locale additions (translation files shared with 30 — additive keys only) | 29 + 30 (theming + i18n are the delivery vehicles), spec in `venue-generalization.md` |
+| 33 | Rename/rebrand execution — **EXECUTE: rebrand to Boraoke** | Domain bought (boraoke.com), rename greenlit by the TL; assets in generation. New name across product, boraoke.com cutover with redirects from cantai-snowy, QR continuity for existing rooms, full copy sweep. | repo-wide copy/config sweep — **solo ticket, no wave-mates during its merge window** | DNS pending TL (cutover step only); brand assets delivered |
+
+### Wave 7+ (directional — groom after wave 5 ships, before arming)
+
+| # | Candidate | One-line |
+|---|---|---|
+| 34 | Payments foundation: Mercado Pago + Pix | MP integration lib, Pix checkout (QR + copia-e-cola), webhook confirmation, venue payout model — the rail everything paid rides on. |
+| 35 | Pay-to-boost v1 ("Destaque") | The recommended first paid feature: fairness-bounded paid priority, venue-opt-in, venue revenue share. |
+| 36 | Song dedications | Paid message on the TV with a song ("parabéns, Ana!") — wedding/party killer feature, near-zero marginal build after 34. |
+| 37 | Menu ordering pilot | Guest orders from the same QR; start with a single pilot venue, order-to-WhatsApp/printer before any POS dream. |
+| 38 | Realtime upgrade evaluation | Carried from v1 backlog (#17): polling/SSE → ws only if telemetry shows session sizes hurting. |
+| 39 | Close-the-loop notifications + public changelog | Carried from v1 backlog (#15): "your suggestion shipped", keyed to uuid; depends on the framework-side feedback-intake loop (D-046) and its BINDING intake-contract condition (lagging watermark + id-dedupe, PR #11 opus). |
+
+Retired from the v1 backlog: #14 "venue accounts + rooms model" is superseded by TICKET-26/28 (the anon-first model is a different and better shape); #16 "venue analytics view" is absorbed into TICKET-31 (admin dashboard v2 IS the analytics view).
+
+### Dependency edges (summary)
+
+- Upstash ✅ provisioned 2026-07-07 — 24 and 26 fully unblocked; 26 → 28 → 31.
+- 27 → 28 (signup surfaces need bot guards live first).
+- TICKET-23 design spec → 29, 30 (soft); 29 + 30 → 32.
+- 25 → 31 (stats need complete telemetry).
+- Naming decision ✅ (Boraoke) → 33 executes; only the DNS/cutover step waits on the TL; 33 still runs solo.
+- Nothing in waves 4–6 blocks on payments; the platform-aggregation wave (34+) is cleanly detachable if the TL resequences.
 
 ## Open questions (for the Tech Lead)
 
-- Venue-count target (N) for the PMF exit criterion.
-- Whether "powered by cantai" branding on the free TV view is acceptable from day one (recommended — it's the growth loop) or deferred.
-- YouTube Data API key provisioning timing (needs-user round, blocks #8).
+- **Bot-prevention vendor:** Turnstile (recommended) vs reCAPTCHA — see TICKET-27 rationale.
+- **Language set for i18n launch:** proposal is pt-BR/en/es first, others as follow-up translation PRs — confirm or extend.
+- **Venue-type shortlist:** proposal is party/event + condo + corporate as the first three beyond bars (schools/churches deferred — content-moderation prerequisite); see `venue-generalization.md`.
+- **First paid feature + rail:** pay-to-boost via Pix/Mercado Pago recommended — see `platform-aggregation.md` for the scoring; the fairness-bounding design needs TL sign-off since it touches the product's soul.
+- **Payments business setup (blocks TICKET-34 arming):** receiving money needs TL decisions — CNPJ vs MEI, which Mercado Pago account receives, fiscal/refund posture, and the venue revenue-share % (proposed 50/50). One needs-user round before the payments wave.
+- **Rename timing:** name decided (Boraoke) — TICKET-33 can pull forward from wave 6 to any solo merge window once brand assets land; DNS remains on the TL for the cutover step.

@@ -301,6 +301,37 @@ export default function PatronRoom({
         </form>
       </section>
 
+      {/* Player hint (TICKET-20). DESIGN DECISION: the patron page has NO video
+          player by design — the karaoke video plays on the venue's shared TV
+          screen (/[room]/tv), not on every customer's phone (that would mean N
+          overlapping audio streams). The TL's "the yt screen isn't showing on
+          the customer page" is answered here: it is intentional, and this hint
+          points patrons at the TV view. */}
+      <a
+        href={`/${roomId}/tv`}
+        target="_blank"
+        rel="noreferrer"
+        data-testid="patron-player-hint"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.6rem",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          padding: "0.75rem 1rem",
+          marginBottom: "1.5rem",
+          color: "var(--text)",
+          textDecoration: "none",
+        }}
+      >
+        <span style={{ fontSize: "1.4rem" }}>🖥️</span>
+        <span style={{ fontSize: "0.9rem", lineHeight: 1.4 }}>
+          O vídeo toca na <strong>tela do bar</strong>.{" "}
+          <span style={{ color: "var(--accent)" }}>Assistir na TV ↗</span>
+        </span>
+      </a>
+
       {/* Live queue */}
       <section>
         <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>

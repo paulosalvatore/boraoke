@@ -50,6 +50,8 @@ Driver resolution:
 
 The Upstash driver uses [Upstash Redis](https://upstash.com/) via the Vercel Marketplace integration (HTTP-based, serverless-safe). Provision the database on the Vercel project, which sets `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` in the deployment env. Copy `.env.example` to `.env` to run the Upstash driver locally. All keys are room-scoped (`room:<roomId>:*`), ready for multi-room without a schema change.
 
+**Atomic writes (no lost submits).** The queue is a Redis LIST: submits are an atomic `RPUSH` and playback advance is an atomic `LPOP`. The ordering ops that must read the whole queue, re-order it, and write it back — the rotation re-lay (`rewrite`) plus the host `removeEntry`/`reorder` — run their read-modify-write **atomically server-side via a single Lua `EVAL`** (`MERGE_SCRIPT` in `lib/store/upstash.ts`). This closes a lost-update window where a concurrent submit landing between a re-lay's read and its write-back could be silently dropped. The script re-lays the desired order while **preserving any entry appended after the caller's read** and dropping any entry removed under it, so a racing submit can never vanish. (Upstash's REST transport has no `WATCH`/optimistic-locking and its `MULTI` only pipelines a fixed command list, so Lua is the atomic primitive.) The in-memory driver is single-process and implements the same merge contract, so both drivers pass one shared conformance + concurrency-regression suite (`__tests__/store.test.ts`).
+
 ## Prototype limitations
 
 - **Single room** — one shared queue for the whole venue. Multi-room / venue codes are scope-out.

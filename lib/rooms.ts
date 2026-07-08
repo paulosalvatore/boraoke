@@ -81,6 +81,45 @@ export function isValidRoomId(id: unknown): id is string {
   return typeof id === "string" && ROOM_ID_RE.test(id);
 }
 
+/**
+ * Room ids that a minted slug must NEVER equal (TICKET-20). These are real
+ * top-level Next.js routes (`/new`, `/api`, `/tv`, `/admin`) plus the legacy
+ * single-queue room (`default`). SECURITY-CRITICAL: TICKET-20 drops the old
+ * always-on random suffix in favour of the clean slug, and that suffix was what
+ * previously made a `tv`/`admin`/`api`/`new` collision impossible. With the
+ * clean slug, a venue literally named "TV" would slugify to `tv` and shadow the
+ * `/tv` route — so `createRoom` forces a suffix whenever the clean slug is
+ * reserved (see below).
+ */
+export const RESERVED_ROOM_IDS: ReadonlySet<string> = new Set([
+  "new",
+  "api",
+  "tv",
+  "admin",
+  DEFAULT_ROOM, // "default" — the legacy global queue; never re-mintable.
+]);
+
+/** Whether `id` collides with a reserved static route / legacy room. */
+export function isReservedRoomId(id: string): boolean {
+  return RESERVED_ROOM_IDS.has(id);
+}
+
+/**
+ * Best-effort human name recovered from a room id (TICKET-20) — used to prefill
+ * the "recriar sala com este nome" path on the room-404 page. Drops a trailing
+ * 4-char base32 collision/legacy suffix, turns hyphens into spaces, and
+ * title-cases. Purely cosmetic (the user can edit before recreating).
+ */
+export function deriveRoomName(id: string): string {
+  const parts = id.split("-").filter(Boolean);
+  if (parts.length > 1 && /^[0-9a-hjkmnp-tv-z]{4}$/.test(parts[parts.length - 1])) {
+    parts.pop();
+  }
+  const name = parts.join(" ").trim();
+  if (!name) return "";
+  return name.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 // ─── Slug + host-code generation ─────────────────────────────────────────────
 
 /** Crockford base32 alphabet (no I/L/O/U — avoids ambiguity when typed). */
@@ -94,9 +133,11 @@ function randomBase32(len: number): string {
 }
 
 /**
- * Slugify a venue name into a short, human room id + a 4-char suffix for
- * uniqueness. Strips accents, lowercases, keeps [a-z0-9], collapses runs of
+ * Slugify a venue name into a short, human, CLEAN room id (TICKET-20 \u2014 no random
+ * suffix). Strips accents, lowercases, keeps [a-z0-9], collapses runs of
  * non-alnum to single hyphens. Empty/degenerate names fall back to "sala".
+ * `createRoom` is the sole place that appends a `-<suffix>` \u2014 and only on a
+ * reserved-id or existing-id collision.
  */
 export function slugify(name: string): string {
   const base = name
@@ -106,8 +147,7 @@ export function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
-  const stem = base || "sala";
-  return `${stem}-${randomBase32(4)}`;
+  return base || "sala";
 }
 
 /** One-time host code: 8-char Crockford base32 (~40 bits). Shown once. */
@@ -197,6 +237,26 @@ function createBackend(): RoomBackend {
 /** Process-wide room backend singleton (mirrors the queue store singleton). */
 export const roomBackend: RoomBackend = createBackend();
 
+/**
+ * The active room-store driver ("memory" | "upstash"), TICKET-20. Mirrors the
+ * queue store's driver selection.
+ */
+export function roomStoreDriver(): "memory" | "upstash" {
+  return resolveDriver();
+}
+
+/**
+ * Whether rooms are EPHEMERAL in the current deployment (TICKET-20). True when a
+ * production build is running on the memory driver — i.e. Upstash is not
+ * provisioned, so a created room lives only on the lambda that made it and any
+ * other lambda 404s it. Drives the honest "salas ainda são temporárias" notice
+ * on `/new` (success) and the room-404 page. In dev/CI (memory but NOT
+ * production) this stays false, so it never leaks into local UX or tests.
+ */
+export function isEphemeralRoomStore(): boolean {
+  return resolveDriver() === "memory" && process.env.NODE_ENV === "production";
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /** Fetch a room record (server-side; includes the host-code hash). */
@@ -246,10 +306,19 @@ export interface CreatedRoom {
 export async function createRoom(name: string): Promise<CreatedRoom | null> {
   if ((await roomBackend.count()) >= roomMax()) return null;
   const trimmed = name.trim().slice(0, 60);
-  let id = slugify(trimmed);
-  // Extremely unlikely 4-char suffix collision — retry a few times.
-  for (let attempt = 0; attempt < 5 && (await roomBackend.get(id)); attempt++) {
-    id = slugify(trimmed);
+  const base = slugify(trimmed);
+  // TICKET-20: use the CLEAN slug by default. Append a `-<4-char>` suffix ONLY
+  // when the clean id is reserved (would shadow a static route — see
+  // RESERVED_ROOM_IDS) or already taken. The loop condition is checked BEFORE
+  // the body, so a free, non-reserved base keeps its clean id; the bound guards
+  // against a pathological suffix-collision streak (resolves in 1 in practice).
+  let id = base;
+  for (
+    let attempt = 0;
+    attempt < 8 && (isReservedRoomId(id) || (await roomBackend.get(id)) !== null);
+    attempt++
+  ) {
+    id = `${base}-${randomBase32(4)}`;
   }
   const hostCode = generateHostCode();
   const room: Room = {

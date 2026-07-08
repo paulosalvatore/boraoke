@@ -1,12 +1,15 @@
 # cantai — Board
 
-_Last updated: 2026-07-07 (v2 wave launched from TL live-usage feedback)_
+_Last updated: 2026-07-07 (TICKET-20/21/22 merged + live; awaiting TL ratifications for design/brand; wave 4 ready)_
 
 ## Needs user (TL)
 
+- 🟡 **DNS for boraoke.com** — domain attached to the Vercel project but still on Hostinger parking NS. Add A record `boraoke.com → 76.76.21.21` (or switch NS to ns1/ns2.vercel-dns.com). Vercel auto-verifies + SSL.
+- 🟡 **TL ratification pending**: design v2 (PR #18, 6 questions, mockups :3123) + brand kit direction (PR #19 PNGs).
+
 - 🟢 RESOLVED-FOR-NOW: GitHub Actions billing — TL made the repo PUBLIC (prompt 007, 2026-07-06); CI runs free and is GREEN (PR #10 merged on a real green build-and-test run; PR #4 exception condition satisfied). If the repo goes private again, fix account billing first. 🔴 Account billing itself still broken (affects other private repos).
-- 🔴 **URGENT — now CONFIRMED user-facing (TL room-404 2026-07-07): Upstash Redis provisioning** on the Vercel project (Marketplace → Storage → add UPSTASH_REDIS_REST_URL/TOKEN env). Until then, LIVE user feedback AND queues silently evaporate per-lambda — the feedback widget promises "um robô lê cada um" but memory-driver feedback is lost. One dashboard action makes queues + feedback durable, zero code changes.
-- 🟡 YouTube Data API v3 key → Vercel env — unblocks TICKET-8 live search. ⚠️ QUOTA REALITY (opus PR #8 finding, binding condition): default quota = 10,000 units/day and each search costs ~101 units → ~99 searches/day TOTAL across ALL venues; one modest bar night ≈ 80% of it. Before provisioning the key: file a YouTube quota-increase request (or accept day-one degraded fallback), and consider the filed follow-up (move search cache + rate limits onto Upstash so caching actually reduces burn).
+- 🟢 RESOLVED 2026-07-07: Upstash provisioned via CLI (TM), aliased env names, redeployed, live-verified durable. YouTube key + Google OAuth + NextAuth + HOST_TOKEN all set in Vercel prod (TM via CLI).
+- 🟢 key SET in prod (2026-07-07). Still open: quota-increase request (~99 searches/day default). Original note: YouTube Data API v3 key → Vercel env — unblocks TICKET-8 live search. ⚠️ QUOTA REALITY (opus PR #8 finding, binding condition): default quota = 10,000 units/day and each search costs ~101 units → ~99 searches/day TOTAL across ALL venues; one modest bar night ≈ 80% of it. Before provisioning the key: file a YouTube quota-increase request (or accept day-one degraded fallback), and consider the filed follow-up (move search cache + rate limits onto Upstash so caching actually reduces burn).
 
 ## Follow-ups (filed by gates, unscheduled)
 
@@ -38,9 +41,9 @@ _Last updated: 2026-07-07 (v2 wave launched from TL live-usage feedback)_
 | TICKET-7 | Host controls (wave 2) | DONE | PR #10 merged: full chain + FIRST real CI-green gate (190/190 local, Actions pass). Public-repo security recheck clean. Needs HOST_TOKEN env to go live |
 | TICKET-9 | Rooms + QR + table (wave 2) | DONE | PR #13 merged: full chain incl. Security FAIL→fix→PASS (creation flood), opus deploy-moment analysis clean. Root URL is now a landing page; legacy queue at /default |
 | TICKET-12 | Telemetry (wave 2) | DONE | PR #12 merged: full chain, C1 verified single-source, fail-open airtight by construction, CI green on merged tip (292/292). #16 follow-ups: patron_joined client beacon, noshow emitter |
-| TICKET-20 | P0 UX fixes + render/link test suite | IN PROGRESS | Dev (opus), .worktrees/ticket-20 — room-404 honesty, join-code input bug, YT-embed report, clean slugs, admin→customer links |
-| TICKET-21 | Atomic store RMW (HIGH) | IN PROGRESS | Dev (opus), lib/store/** only — lost-submit fix + concurrency regression test |
-| TICKET-22 | Roadmap v2 (platform vision) | IN PROGRESS | PO (fable) — venues beyond bars, menu/pay-to-queue aggregation, anon-first identity, next 3 waves |
+| TICKET-20 | P0 UX fixes + render/link test suite | DONE | PR #17 merged (348/348, CI green). Opus TL-trust ruling: suite would MISS contrast-class bugs → HIGH follow-up F/A (computed-style contrast assertion) filed for wave 4 |
+| TICKET-21 | Atomic store RMW (HIGH) | DONE | PR #16 merged: Lua merge-on-write, opus verified against REAL Upstash (byte-fidelity + races). Lost-submit window closed |
+| TICKET-22 | Roadmap v2 (platform vision) | DONE | PR #15 merged (Reviewer APPROVE + patches; opus-skip docs-only) |
 | TICKET-23 | Design v2 | IN PROGRESS | Designer (fable) — full UX audit of live product, theming dark/light, i18n, admin analytics UX |
 | (research) | Naming + domain availability | IN PROGRESS | fable agent — cantai.com taken; shortlist w/ whois checks |
 | TICKET-10 | Rotation modes UI (wave 3) | DONE | PR #14 merged: full chain (App Tester ordering proofs, Security fix round + re-audit, sonnet+opus APPROVE; lost-submit race quantified + HIGH atomic-RMW follow-up filed). KICKOFF SCOPE COMPLETE |

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import QrCode from "@/components/QrCode";
 
@@ -9,6 +9,8 @@ interface Created {
   name: string;
   hostCode: string;
   joinPath: string;
+  /** TICKET-20: prod-on-memory-driver → rooms are ephemeral. */
+  ephemeral?: boolean;
 }
 
 /**
@@ -18,12 +20,25 @@ interface Created {
  * the host code EXACTLY ONCE (it is never retrievable again; possession = venue
  * identity until accounts arrive in #14). Links straight to the room's admin
  * and TV screens.
+ *
+ * TICKET-20: accepts `?name=<venue>` to prefill the create form — the room-404
+ * page's "recriar sala com este nome" path lands here prefilled.
  */
 export default function NewRoomPage() {
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [room, setRoom] = useState<Created | null>(null);
+
+  // Prefill from `?name=` (recreate path). Read from location to avoid the
+  // useSearchParams Suspense-boundary requirement in a client page.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const preset = params.get("name");
+      if (preset) setName(preset.slice(0, 60));
+    } catch { /* no-op */ }
+  }, []);
 
   const joinUrl =
     room && typeof window !== "undefined"
@@ -77,6 +92,22 @@ export default function NewRoomPage() {
             Mostre esse QR no bar ou deixe na tela /tv.
           </p>
         </section>
+
+        {/* TICKET-20: honest temporary-room notice when prod is on the memory
+            driver (Upstash unprovisioned). The real fix is Upstash; until then
+            we tell the truth instead of letting the link 404 silently. */}
+        {room.ephemeral && (
+          <section
+            data-testid="ephemeral-notice"
+            style={{ background: "#f59e0b12", border: "1px solid #f59e0b55", borderRadius: "var(--radius)", padding: "1rem 1.25rem", marginBottom: "1.25rem" }}
+          >
+            <p style={{ fontSize: "0.85rem", lineHeight: 1.5, color: "#fbbf24" }}>
+              ⚠️ As salas ainda são <strong>temporárias</strong> — elas podem
+              expirar quando o servidor reinicia. Use a sala agora e recrie se o
+              link parar de funcionar. Salas permanentes estão a caminho.
+            </p>
+          </section>
+        )}
 
         {/* Host code — shown once */}
         <section style={{ background: "#f59e0b12", border: "1px solid #f59e0b55", borderRadius: "var(--radius)", padding: "1.25rem", marginBottom: "1.25rem" }}>

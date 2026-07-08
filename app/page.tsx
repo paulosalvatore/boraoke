@@ -53,16 +53,23 @@ export default function Landing() {
       </Link>
 
       <section style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: "1.25rem" }}>
-        <h2 style={{ fontSize: "1.05rem", marginBottom: "0.75rem" }}>Já tem um código?</h2>
+        <h2 style={{ fontSize: "1.05rem", marginBottom: "0.25rem" }}>Já tem um código?</h2>
+        <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+          Digite o código da sala (ou cole o link que você recebeu).
+        </p>
         <form onSubmit={join} style={{ display: "flex", gap: "0.5rem" }}>
           <input
             aria-label="Código da sala"
-            placeholder="ex.: bar-do-ze-k7q2"
+            placeholder="ex.: bar-do-ze"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            style={{ flex: 1 }}
+            // TICKET-20: the input's default fill is var(--surface) — the SAME
+            // as this card — so it was camouflaged (looked like there was no
+            // field until you clicked it). Force a darker fill + clearer border
+            // so it visibly reads as an input.
+            style={{ flex: 1, background: "var(--bg)", borderColor: "var(--text-muted)" }}
           />
-          <button className="btn-primary" type="submit" disabled={!code.trim()} style={{ minWidth: 90 }}>
+          <button className="btn-primary" type="submit" disabled={!code.trim()} style={{ minWidth: 90, width: "auto" }}>
             Entrar
           </button>
         </form>

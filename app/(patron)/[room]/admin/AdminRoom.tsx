@@ -212,7 +212,24 @@ export default function AdminRoom({
           <span className={styles.chipLive}>AO VIVO</span>
         )}
         <span className={styles.spacer} />
-        <a className={styles.tvLink} href={`/${roomId}/tv`} target="_blank" rel="noreferrer">
+        {/* TICKET-20: quick jumps to the two customer-facing screens of THIS
+            room, both in a new tab so the host keeps the admin open. */}
+        <a
+          className={styles.tvLink}
+          data-testid="admin-patron-link"
+          href={`/${roomId}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Sala do público ↗
+        </a>
+        <a
+          className={styles.tvLink}
+          data-testid="admin-tv-link"
+          href={`/${roomId}/tv`}
+          target="_blank"
+          rel="noreferrer"
+        >
           Abrir /tv ↗
         </a>
       </header>

@@ -6,6 +6,8 @@ import {
   generateHostCode,
   hashHostCode,
   isValidRoomId,
+  isReservedRoomId,
+  deriveRoomName,
   createRoom,
   getRoom,
   getPublicRoom,
@@ -42,27 +44,47 @@ describe("isValidRoomId", () => {
   });
 });
 
-describe("slugify", () => {
-  it("produces a valid, hyphenated, suffixed slug", () => {
+describe("slugify (TICKET-20 — clean, no random suffix)", () => {
+  it("produces a clean, valid, hyphenated slug", () => {
     const slug = slugify("Bar do Zé");
-    expect(slug).toMatch(/^bar-do-ze-[0-9a-hjkmnp-tv-z]{4}$/);
+    expect(slug).toBe("bar-do-ze");
     expect(isValidRoomId(slug)).toBe(true);
   });
 
   it("strips accents and collapses non-alnum runs", () => {
-    const slug = slugify("Açaí & Cia!!!");
-    expect(slug.startsWith("acai-cia-")).toBe(true);
-    expect(isValidRoomId(slug)).toBe(true);
+    expect(slugify("Açaí & Cia!!!")).toBe("acai-cia");
   });
 
   it("falls back to 'sala' for a degenerate name", () => {
-    const slug = slugify("!!! ###");
-    expect(slug.startsWith("sala-")).toBe(true);
-    expect(isValidRoomId(slug)).toBe(true);
+    expect(slugify("!!! ###")).toBe("sala");
   });
 
-  it("gives distinct slugs for the same name (random suffix)", () => {
-    expect(slugify("Bar do Zé")).not.toBe(slugify("Bar do Zé"));
+  it("is deterministic — the same name yields the same clean slug", () => {
+    expect(slugify("Bar do Zé")).toBe(slugify("Bar do Zé"));
+  });
+});
+
+describe("isReservedRoomId (TICKET-20 — reserved-path safety)", () => {
+  it("reserves the static routes and the legacy default room", () => {
+    for (const id of ["new", "api", "tv", "admin", "default"]) {
+      expect(isReservedRoomId(id)).toBe(true);
+    }
+  });
+  it("does not reserve ordinary slugs", () => {
+    expect(isReservedRoomId("bar-do-ze")).toBe(false);
+    expect(isReservedRoomId("television")).toBe(false); // substring, not equal
+  });
+});
+
+describe("deriveRoomName (TICKET-20 — recreate-path prefill)", () => {
+  it("de-slugifies a clean id", () => {
+    expect(deriveRoomName("bar-do-ze")).toBe("Bar Do Ze");
+  });
+  it("drops a trailing 4-char base32 collision/legacy suffix", () => {
+    expect(deriveRoomName("bar-do-paulin-hjj2")).toBe("Bar Do Paulin");
+  });
+  it("keeps a non-suffix tail", () => {
+    expect(deriveRoomName("bar")).toBe("Bar");
   });
 });
 
@@ -108,6 +130,30 @@ describe("createRoom / getRoom / getPublicRoom", () => {
     expect(await getRoom("no-such-room")).toBeNull();
     expect(await getRoom("bad id!")).toBeNull();
     expect(await getPublicRoom("no-such-room")).toBeNull();
+  });
+
+  it("mints a CLEAN slug (no suffix) for a fresh name (TICKET-20)", async () => {
+    const { room } = await mustCreateRoom("Boteco Único da Sorte");
+    expect(room.id).toBe("boteco-unico-da-sorte");
+  });
+
+  it("appends a suffix ONLY on collision with an existing room (TICKET-20)", async () => {
+    const first = await mustCreateRoom("Bar Repetido");
+    expect(first.room.id).toBe("bar-repetido");
+    const second = await mustCreateRoom("Bar Repetido");
+    expect(second.room.id).toMatch(/^bar-repetido-[0-9a-hjkmnp-tv-z]{4}$/);
+    expect(second.room.id).not.toBe(first.room.id);
+  });
+
+  it("never mints a reserved static-route slug — forces a suffix (TICKET-20)", async () => {
+    for (const reserved of ["TV", "Admin", "API", "New", "Default"]) {
+      const { room } = await mustCreateRoom(reserved);
+      expect(isReservedRoomId(room.id)).toBe(false);
+      expect(room.id).toMatch(
+        new RegExp(`^${reserved.toLowerCase()}-[0-9a-hjkmnp-tv-z]{4}$`),
+      );
+      expect(isValidRoomId(room.id)).toBe(true);
+    }
   });
 });
 

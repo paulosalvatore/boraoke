@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRoom, getPublicRoom, isValidRoomId } from "@/lib/rooms";
+import {
+  createRoom,
+  getPublicRoom,
+  isValidRoomId,
+  isEphemeralRoomStore,
+} from "@/lib/rooms";
 import { clientIpFrom } from "@/lib/host-auth";
 import {
   isRoomCreateThrottled,
@@ -106,6 +111,10 @@ export async function POST(req: NextRequest) {
       name: created.room.name,
       hostCode: created.hostCode,
       joinPath: `/${created.room.id}`,
+      // TICKET-20: tell the client whether rooms are ephemeral in this
+      // deployment (prod on the memory driver) so /new shows the honest
+      // temporary-room notice. Never true in dev/CI.
+      ephemeral: isEphemeralRoomStore(),
     },
     { status: 201 },
   );
