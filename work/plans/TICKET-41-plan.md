@@ -62,6 +62,21 @@ Follow-up candidate after TICKET-40 merges: server-side `status.embeddable` chec
 - YT type surface: `getPlayerState/getCurrentTime/seekTo/playVideo` added to the local `YTPlayer` interface; all calls try/catch-wrapped.
 - e2e determinism: onError path only (stall windows are unit-tested); player stubbed via the TICKET-18 `addInitScript` prototype-stub pattern.
 
+## Advance-auth design (scope addition — decision recorded, implementation deferred to follow-up)
+
+The TL bug exposed a second issue on the same surface: `POST /api/queue/advance` is unauthenticated (TICKET-1 security INFO, accepted-for-prototype) — any patron who reads the QR knows the room slug and can curl-skip the current singer. Decision requested: **screen-token vs host-session**.
+
+**Constraints:** the TV is a zero-login public URL (`/[room]/tv` — venue staff just opens it; that UX must survive); Vercel serverless + memory/Upstash store duality → verification must be stateless; the existing host-session cookie is `httpOnly` and **path-scoped to `/api/host`**, so it is not even sent on `/api/queue/advance` today.
+
+**Options weighed:**
+
+1. **Host-session (`requireHost`) on advance** — strongest, but breaks the zero-login TV: the venue would have to host-login the TV browser, and the cookie path would need re-scoping. Friction on the core "open a URL on the TV" flow. Rejected as the primary gate.
+2. **Screen-token (RECOMMENDED)** — the `/[room]/tv` server component already resolves the room server-side; it additionally mints a stateless HMAC token: `HMAC-SHA256(key = room.hostCodeHash (server-only, never leaves the server), msg = "boraoke-screen-v1|roomId|<24h expiry bucket>")`, passes it to `TvScreen` as a prop; the TV sends it as an `X-Boraoke-Screen` header on advance. The route recomputes + `timingSafeEqual`s (accepting current + previous bucket for rollover), and ALSO accepts a valid host session (host tools keep working). Legacy `default` room keys off `HOST_TOKEN`; when no key material exists (dev/CI), enforcement is off. Rollout flag-gated: log-only first, then enforce.
+   - Honest threat note: `/[room]/tv` is a public page, so a determined attacker can scrape a token from its HTML. The screen-token raises the bar from "one curl" to "fetch + parse the TV page", which kills the casual/patron-prank class — the class that actually threatens a venue night.
+3. **Rate-limit-only** — no auth change; per-room throttle on advance (e.g. min 5s between advances, per the existing `queue-rate-limit.ts` pattern). Cheapest, blunts skip-spam, stops nothing targeted.
+
+**Decision: 2 + 3 combined** (screen-token, flag-gated, plus a per-room advance throttle as defense-in-depth), implemented as a **follow-up ticket, not in PR #24**: enforcing auth on advance breaks every e2e helper that drains the queue via bare `POST /api/queue/advance` (all spec files) and needs its own migration/test rework — bolting that onto a delivery-time merge is how a live venue TV breaks mid-night. The watchdog (this PR) is independent of it and ships now.
+
 ## Test strategy
 
 Unit (jest): error-code table; ladder transitions incl. benign PAUSED/buffering-with-progress; progress resets; backoff schedule; search params; advance reason → song_skipped. e2e (playwright, PORT=3042): stub `window.YT`, seed 2-entry queue, fire onError(150), assert skip notice + advance call with `reason=unplayable` + next entry becomes hero.

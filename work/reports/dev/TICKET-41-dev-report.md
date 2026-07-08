@@ -1,8 +1,12 @@
 # Dev Report — TICKET-41 (TV player watchdog + embeddable-only search)
 
-- **Status:** implemented + self-verified; draft PR being opened
+- **Status:** delivered — PR #24 open (draft), CI `build-and-test` SUCCESS, MERGEABLE/CLEAN, awaiting gate chain
 - **Worktree:** `.worktrees/ticket-41` · **Branch:** `ticket/41-tv-watchdog` (upstream `origin/ticket/41-tv-watchdog`) · **Port:** 3042
-- **PR:** (see PR thread — opened via pr-deliver right after this report)
+- **PR:** https://github.com/paulosalvatore/boraoke/pull/24
+
+## Post-merge note (2026-07-08)
+
+PR was initially CONFLICTING with main (events-log), which silently suppresses Actions. Merged `origin/main` (conflict: `work/events/2026-07.jsonl` → UNION resolution, 172+172→175 unique lines, no markers; `BOARD.md` auto-merged; zero code overlap — main had moved only on status/events). Post-merge re-verify: `npm test` 25 suites / 380 tests green; `PORT=3042 npm run test:e2e` 30/30 green. CI then ran: `build-and-test` SUCCESS, PR MERGEABLE/CLEAN. Advance-auth design (screen-token vs host-session scope addition) recorded in `work/plans/TICKET-41-plan.md` — decision: screen-token + advance rate-limit as a follow-up ticket, NOT bundled into PR #24 (rationale in plan).
 
 ## Picking up from
 
