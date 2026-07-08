@@ -2,6 +2,7 @@
 
 - **Dev:** Dev agent (session 2026-07-08) · **Worktree:** `.worktrees/ticket-41` · **Branch:** `ticket/41-tv-watchdog` · **App port:** 3042
 - **Status:** implemented per TM-directed scope (the ticket text prescribed the design; treating the TM scope directive as the plan approval — noted for the record)
+- **APPROVED-BY:** auto-approved (no plan-gate escalation — design prescribed by the TM scope directive) — validated downstream by gates + TL merge of PR #24
 
 ## Approach
 
