@@ -1,6 +1,6 @@
 # TICKET-40 — Dev Report: patron search UX
 
-Status: IMPLEMENTED — draft PR open, running local verification (unit green, build green, e2e pending)
+Status: IMPLEMENTED + VERIFIED — all local CI gates green; opening draft PR
 Branch: `ticket/40-search-ux` · Worktree: `.worktrees/ticket-40` · App/e2e port: 3040
 Repo: paulosalvatore/boraoke
 
@@ -23,11 +23,14 @@ Repo: paulosalvatore/boraoke
 - `e2e/search.spec.ts` — +2 e2e tests.
 - `work/tickets/TICKET-40-search-ux.md` (new).
 
-## Self-verification
-- Unit: `npx jest` → **369 passed / 369 total, 25 suites** (baseline 354 + 15 new). SHA of impl commit recorded below.
-- Build: `npx next build` → success (lint + typecheck + compile green).
-- E2E: PORT=3040, pending — output appended below.
-- `tsc --noEmit` shows pre-existing errors in `__tests__/*.test.ts` (jest globals not in app tsconfig) — NOT introduced here; the Next build (proper tsconfig) is green.
+## Self-verification (all four CI gates run locally against the worktree)
+- **Unit** `npm test` (jest) → **369 passed / 369 total, 25 suites** (baseline 354 + 15 new search-query tests).
+- **Build** `npm run build` → success (lint + typecheck + compile green).
+- **Rotation engine** `node --test` (working-dir `packages/rotation-engine`) → **59 passed / 0 failed**.
+- **E2E** `PORT=3040 npx playwright test` → **30 passed** (baseline 28 + 2 new: focus-jump §1, sing-mode karaoke query §2). search.spec alone re-run green (4/4).
+- Evidence (mobile 390px, mocked search): `work/evidence/ticket-40/01-sing-mode-results-390px.png`, `02-cta-focused-after-select-390px.png`, `03-listen-mode-results-390px.png`. Capture confirmed sing query = `"evidencias karaoke"` and `document.activeElement` = the Add-to-queue CTA after select.
+- Note: `tsc --noEmit` from repo root shows PRE-EXISTING errors in `__tests__/*.test.ts` (jest globals not in the app tsconfig include path) — not introduced here; the Next build uses the correct tsconfig and is green. This repo has no framework `verify-green-local.sh`; CI is GitHub Actions (`ci.yml`) whose four gates are all reproduced green above.
 
 ## Implementation log
-- (SHA appended by commit skill) impl + tests + ticket + report.
+- `e021689` — impl (`lib/search-query.ts`, `SongSearch`, `PatronRoom`) + unit tests + e2e + ticket + dev report.
+- (evidence commit) — mobile screenshots + `scripts/capture-ticket-40.mjs`.
