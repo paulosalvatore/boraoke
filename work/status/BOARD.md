@@ -1,11 +1,11 @@
 # cantai — Board
 
-_Last updated: 2026-07-07 (TICKET-20/21/22 merged + live; awaiting TL ratifications for design/brand; wave 4 ready)_
+_Last updated: 2026-07-08 (design v2 MERGED; rebrand PR #20 fully gated + ready; PR #19 awaits EN/ES cards; boraoke.com LIVE)_
 
 ## Needs user (TL)
 
-- 🟡 **DNS for boraoke.com** — domain attached to the Vercel project but still on Hostinger parking NS. Add A record `boraoke.com → 76.76.21.21` (or switch NS to ns1/ns2.vercel-dns.com). Vercel auto-verifies + SSL.
-- 🟡 **TL ratification pending**: design v2 (PR #18, 6 questions, mockups :3123) + brand kit direction (PR #19 PNGs).
+- 🟢 RESOLVED 2026-07-08: boraoke.com DNS live (TL). NEXTAUTH_URL switched to https://boraoke.com (TM).
+- 🟡 **TL: one choice on PR #19** — ⌘Q Chrome (1 min) so EN/ES OG cards generate, OR waive to ship pt-BR-only now with cards as follow-up. Also: add boraoke.com to Google OAuth origins/redirects (console) + YouTube quota form (text delivered).
 
 - 🟢 RESOLVED-FOR-NOW: GitHub Actions billing — TL made the repo PUBLIC (prompt 007, 2026-07-06); CI runs free and is GREEN (PR #10 merged on a real green build-and-test run; PR #4 exception condition satisfied). If the repo goes private again, fix account billing first. 🔴 Account billing itself still broken (affects other private repos).
 - 🟢 RESOLVED 2026-07-07: Upstash provisioned via CLI (TM), aliased env names, redeployed, live-verified durable. YouTube key + Google OAuth + NextAuth + HOST_TOKEN all set in Vercel prod (TM via CLI).
@@ -44,7 +44,9 @@ _Last updated: 2026-07-07 (TICKET-20/21/22 merged + live; awaiting TL ratificati
 | TICKET-20 | P0 UX fixes + render/link test suite | DONE | PR #17 merged (348/348, CI green). Opus TL-trust ruling: suite would MISS contrast-class bugs → HIGH follow-up F/A (computed-style contrast assertion) filed for wave 4 |
 | TICKET-21 | Atomic store RMW (HIGH) | DONE | PR #16 merged: Lua merge-on-write, opus verified against REAL Upstash (byte-fidelity + races). Lost-submit window closed |
 | TICKET-22 | Roadmap v2 (platform vision) | DONE | PR #15 merged (Reviewer APPROVE + patches; opus-skip docs-only) |
-| TICKET-23 | Design v2 | IN PROGRESS | Designer (fable) — full UX audit of live product, theming dark/light, i18n, admin analytics UX |
+| TICKET-23 | Design v2 | DONE | PR #18 merged, TL-ratified ("approved, go ahead and build"); 8-wave build order armed |
+| TICKET-33a | Brand asset kit | GATED-READY | PR #19: pt-BR OG done; EN/ES cards blocked on debug-Chrome (TL ⌘Q needed) or TL waiver to ship pt-BR-only |
+| TICKET-33 | Code rebrand + publish metadata | GATED-READY | PR #20: full chain (App Tester launch-review PASS, sonnet+opus APPROVE, R1 salt-guard landed). Merges AFTER #19 (OG file dependency) |
 | (research) | Naming + domain availability | IN PROGRESS | fable agent — cantai.com taken; shortlist w/ whois checks |
 | TICKET-10 | Rotation modes UI (wave 3) | DONE | PR #14 merged: full chain (App Tester ordering proofs, Security fix round + re-audit, sonnet+opus APPROVE; lost-submit race quantified + HIGH atomic-RMW follow-up filed). KICKOFF SCOPE COMPLETE |
 | TICKET-11 | Feedback widget (wave 2) | DONE | PR #11 merged (151/151 on merged tree). Intake-contract condition + Upstash URGENT recorded |
