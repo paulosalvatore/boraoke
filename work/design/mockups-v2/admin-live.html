@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark" data-vibe="bar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cantai v2 — admin · ao vivo (host sem conta)</title>
+<link rel="stylesheet" href="cantai-v2.css">
+<style>
+  .grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+  .now-hero { display: flex; gap: 20px; align-items: center; }
+  .now-thumb { width: 200px; aspect-ratio: 16/9; border-radius: 12px; background: linear-gradient(140deg, #33253F, #0D0A14); flex: none; display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
+  .prog { height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-top: 12px; }
+  .prog > div { height: 100%; width: 62%; background: var(--g-brand); }
+  .addsong { border: 1px dashed var(--border); border-radius: var(--r-card); padding: 16px 20px; }
+  .copyfield { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-control); padding: 10px 14px; font-size: 14px; }
+  .copyfield code { font-family: ui-monospace, monospace; color: var(--accent-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copyfield button { margin-inline-start: auto; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Shell: identidade do lugar + abas + utilidades -->
+  <div class="topbar spread wrap">
+    <div class="row" style="gap: 12px;">
+      <span class="venue-mono">B</span>
+      <div>
+        <div class="venue-name" style="font-size: 22px;">Boteco da Lua</div>
+        <div class="venue-sub">🍻 clima bar · <span class="wordmark" style="font-size: 12px;">cantai</span></div>
+      </div>
+      <span class="chip chip-live">AO VIVO</span>
+    </div>
+    <div class="row wrap">
+      <a class="util-pill" href="#">Tela do público ↗</a>
+      <a class="util-pill" href="#">Tela da TV ↗</a>
+      <button class="util-pill">⚙ Sala</button>
+      <button class="util-pill">🌐 PT</button>
+      <button class="util-pill">☾</button>
+    </div>
+  </div>
+
+  <div class="row spread wrap" style="margin: 8px 0 20px;">
+    <div class="tabs">
+      <button class="tab active">Ao vivo</button>
+      <button class="tab">Histórico 🔒</button>
+    </div>
+  </div>
+
+  <!-- Gancho de conta (host sem login) -->
+  <div class="hook-banner" style="margin-bottom: 24px;">
+    <div class="grow">
+      <strong>Crie sua conta para guardar o histórico.</strong>
+      <div class="meta" style="font-size: 14px;">Sem conta, a noite de hoje some em 7 dias — com conta, cada noite vira relatório: músicas, cantores, horários de pico.</div>
+    </div>
+    <button class="btn btn-primary btn-sm">Criar conta grátis</button>
+    <button class="btn btn-secondary btn-sm">Já tenho conta</button>
+  </div>
+
+  <div class="grid">
+    <div class="col" style="gap: 24px;">
+
+      <!-- Tocando agora -->
+      <div class="card card-warm">
+        <div class="label" style="color: var(--accent-2); margin-bottom: 10px;">Tocando agora</div>
+        <div class="now-hero">
+          <div class="now-thumb">▶</div>
+          <div class="grow">
+            <div class="display" style="font-size: 26px;">Evidências (Ao Vivo)</div>
+            <div class="meta" style="font-size: 15px;">🎤 Marina · Mesa 7 · entrou 22:14</div>
+            <div class="prog"><div></div></div>
+            <div class="row spread meta" style="margin-top: 4px;"><span>2:52</span><span>4:38</span></div>
+          </div>
+          <div class="col" style="gap: 8px;">
+            <button class="btn btn-secondary btn-sm">⏭ Pular</button>
+            <button class="btn btn-secondary btn-sm">🙅 Não veio</button>
+            <button class="btn btn-secondary btn-sm">⏸ Pausar fila</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Host adiciona música direto -->
+      <div class="addsong">
+        <div class="row spread wrap">
+          <div>
+            <strong>+ Adicionar música na fila</strong>
+            <div class="meta" style="font-size: 14px;">Pedido gritado no balcão? Busca aqui e entra direto — com nome e mesa de quem pediu.</div>
+          </div>
+        </div>
+        <div class="row wrap" style="margin-top: 12px;">
+          <input class="input grow" placeholder="Busca ou cola o link do YouTube" style="min-width: 220px;">
+          <input class="input" placeholder="Quem canta?" style="max-width: 150px;">
+          <input class="input" placeholder="Mesa" style="max-width: 90px;">
+          <button class="btn btn-primary btn-sm" style="min-height: 52px;">Adicionar</button>
+        </div>
+      </div>
+
+      <!-- Fila com superpoderes -->
+      <div>
+        <div class="row spread" style="margin-bottom: 10px;">
+          <span class="label">Fila · 4 músicas</span>
+          <span class="chip chip-neutral">Modo: 🎤 Karaokê completo</span>
+        </div>
+        <div class="col" style="gap: 8px;">
+          <div class="queue-row playing"><span class="pos">▶</span><div class="grow"><div class="who">Marina <span class="meta">· Mesa 7</span></div><div class="song">Evidências (Ao Vivo)</div></div></div>
+          <div class="queue-row"><span class="drag-handle">⋮⋮</span><span class="pos">2</span><div class="grow"><div class="who">Careca <span class="meta">· Mesa 3</span></div><div class="song">Despacito</div></div><button class="util-pill" style="min-height: 32px; font-size: 13px;">▶ Cantar agora</button><button class="btn btn-ghost-danger btn-sm">Remover</button></div>
+          <div class="queue-row"><span class="drag-handle">⋮⋮</span><span class="pos">3</span><div class="grow"><div class="who">Dudu <span class="meta">· Mesa 7</span></div><div class="song">Gangnam Style</div></div><button class="util-pill" style="min-height: 32px; font-size: 13px;">▶ Cantar agora</button><button class="btn btn-ghost-danger btn-sm">Remover</button></div>
+          <div class="queue-row mine"><span class="drag-handle">⋮⋮</span><span class="pos">4</span><div class="grow"><div class="who">Paulo <span class="meta">· Mesa 7 · adicionado pelo host</span></div><div class="song">Bohemian Rhapsody</div></div><button class="util-pill" style="min-height: 32px; font-size: 13px;">▶ Cantar agora</button><button class="btn btn-ghost-danger btn-sm">Remover</button></div>
+        </div>
+        <p class="meta" style="margin-top: 10px;">Arraste pela alça ⋮⋮ para reordenar · "Cantar agora" põe em seguida, sem furar quem já está no palco.</p>
+      </div>
+    </div>
+
+    <!-- Coluna direita: hoje em números + entrada -->
+    <div class="col" style="gap: 16px;">
+      <div class="label">Hoje em números</div>
+      <div class="row" style="gap: 12px;">
+        <div class="stat grow"><div class="n">12</div><div class="k">na fila hoje</div></div>
+        <div class="stat grow"><div class="n">9</div><div class="k">cantores</div></div>
+      </div>
+      <div class="row" style="gap: 12px;">
+        <div class="stat grow"><div class="n">5</div><div class="k">mesas</div></div>
+        <div class="stat grow"><div class="n">8</div><div class="k">já tocaram</div></div>
+      </div>
+      <div class="card">
+        <div class="label" style="margin-bottom: 10px;">Entrada do público</div>
+        <div style="display: flex; justify-content: center; margin-bottom: 12px;"><div class="qr" style="width: 120px; height: 120px; border-width: 6px; border-radius: 10px; background-size: 20px 20px;"></div></div>
+        <div class="copyfield"><code>cantai.app/boteco-da-lua</code><button class="util-pill" style="min-height: 30px; font-size: 12px;">Copiar</button></div>
+        <div class="copyfield" style="margin-top: 8px;"><span class="meta">código do host</span><code>z4tt·····</code><button class="util-pill" style="min-height: 30px; font-size: 12px;">Copiar</button></div>
+      </div>
+      <div class="card" style="border-style: dashed;">
+        <div class="label" style="margin-bottom: 8px;">Modo da noite</div>
+        <div class="col" style="gap: 6px;">
+          <span class="chip chip-accent">🎤 Karaokê completo · ATIVO</span>
+          <span class="chip chip-neutral">🍻 2 por mesa</span>
+          <span class="chip chip-neutral">🙋 1 por pessoa</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

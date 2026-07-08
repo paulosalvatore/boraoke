@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark" data-vibe="bar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cantai v2 — idioma, tema e clima (switchers)</title>
+<link rel="stylesheet" href="cantai-v2.css">
+<style>
+  .demo { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; align-items: start; }
+  .toggle { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-pill); padding: 4px; gap: 4px; }
+  .toggle button { border: none; background: transparent; color: var(--text-muted); font: 600 14px/1 inherit; padding: 8px 16px; border-radius: var(--r-pill); cursor: pointer; }
+  .toggle button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+  .vibe-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .vibe-opt { border: 2px solid var(--border); border-radius: var(--r-card); padding: 12px; cursor: pointer; background: var(--surface); }
+  .vibe-opt.selected { border-color: var(--accent); }
+  .vibe-opt .sw { height: 36px; border-radius: 8px; margin-bottom: 8px; }
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+  .swatch { width: 36px; height: 36px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+  .swatch.selected { border-color: var(--text); box-shadow: 0 0 0 3px var(--accent-tint); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1 class="display">Preferências de exibição — padrões v2</h1>
+  <p class="mock-note" style="max-width: 760px; margin-top: 8px;">O trio 🌐 idioma + ☾ tema fica junto no topo de landing/patron/admin. A TV não tem switcher na tela: segue o idioma e o tema definidos pela sala (admin → ⚙ Sala). O clima (vibe) e a cor são da sala, não do usuário.</p>
+
+  <div class="demo" style="margin-top: 32px;">
+
+    <div class="col">
+      <span class="mock-h">1 · Idioma — folha (mobile) / popover (desktop)</span>
+      <div class="row" style="margin-bottom: 8px;"><button class="util-pill">🌐 PT</button><span class="meta">← gatilho no topo</span></div>
+      <div class="sheet" style="max-width: 320px;">
+        <div class="sheet-row" style="cursor: default;"><span class="label">Idioma / Language</span></div>
+        <div class="sheet-row"><span class="native">Português (Brasil)</span><span class="check">✓</span></div>
+        <div class="sheet-row"><span class="native">English</span></div>
+        <div class="sheet-row"><span class="native">Español</span></div>
+        <div class="sheet-row" style="cursor: default;"><span class="meta">detectado do navegador · a sala pode definir um padrão</span></div>
+      </div>
+      <p class="mock-note">Nomes SEMPRE nativos, nunca bandeiras (bandeira ≠ idioma). Ordem de resolução: escolha do usuário → padrão da sala → navegador → pt-BR.</p>
+    </div>
+
+    <div class="col">
+      <span class="mock-h">2 · Tema — segmentado de 3</span>
+      <div class="toggle">
+        <button>☀ Claro</button>
+        <button class="on">☾ Escuro</button>
+        <button>Auto</button>
+      </div>
+      <p class="mock-note">Patron/admin: padrão "Auto" (sistema), persistido por aparelho. TV: escuro por padrão nos climas bar/festa; claro permitido em casamento/corporativo (evento diurno).</p>
+      <div class="card" style="max-width: 340px;">
+        <div class="label" style="margin-bottom: 8px;">Prévia claro</div>
+        <div data-theme="light" style="background: #FAF7FD; border-radius: 12px; padding: 16px; color: #231A31;">
+          <div style="font-weight: 800; font-family: var(--font-display);">Boteco da Lua</div>
+          <div style="font-size: 13px; color: #6A5D80;">Você é o 4º da fila 🔥</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <span class="mock-h">3 · Clima da sala + cor (admin → ⚙ Sala)</span>
+      <div class="vibe-pick">
+        <div class="vibe-opt selected"><div class="sw" style="background: linear-gradient(135deg, #FF3D71, #FFC24B);"></div><strong>🍻 Bar</strong><div class="meta">neon, "bora cantar!"</div></div>
+        <div class="vibe-opt"><div class="sw" style="background: linear-gradient(135deg, #8B5CF6, #22D3EE);"></div><strong>🎉 Festa</strong><div class="meta">balada, aniversário</div></div>
+        <div class="vibe-opt"><div class="sw" style="background: linear-gradient(135deg, #C99A5B, #E8B4B8);"></div><strong>💍 Casamento</strong><div class="meta">elegante, dourado</div></div>
+        <div class="vibe-opt"><div class="sw" style="background: linear-gradient(135deg, #3B82F6, #64748B);"></div><strong>💼 Empresa</strong><div class="meta">sóbrio, sem emoji</div></div>
+      </div>
+      <div class="field" style="margin-top: 8px;">
+        <span class="label">Cor do lugar</span>
+        <div class="swatches">
+          <div class="swatch selected" style="background: #FF3D71;"></div>
+          <div class="swatch" style="background: #8B5CF6;"></div>
+          <div class="swatch" style="background: #C99A5B;"></div>
+          <div class="swatch" style="background: #3B82F6;"></div>
+          <div class="swatch" style="background: #2EE6A8;"></div>
+          <div class="swatch" style="background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); font-size: 0;"></div>
+        </div>
+        <span class="meta">Cores fora do contraste mínimo são ajustadas automaticamente (mostramos a cor corrigida, nunca falhamos em silêncio).</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

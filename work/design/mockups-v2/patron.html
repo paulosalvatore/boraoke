@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark" data-vibe="bar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cantai v2 — patron flow (3 telas)</title>
+<link rel="stylesheet" href="cantai-v2.css">
+<style>
+  .flow { display: flex; gap: 32px; justify-content: center; align-items: flex-start; flex-wrap: wrap; padding: 40px 24px; }
+  .mode-card { flex: 1; border: 2px solid var(--border); border-radius: var(--r-card); padding: 16px; text-align: center; cursor: pointer; background: var(--surface); }
+  .mode-card.selected { border-color: var(--accent); background: linear-gradient(var(--accent-tint), var(--accent-tint)), var(--surface); }
+  .song-row { display: flex; gap: 12px; align-items: center; background: var(--surface); border: 2px solid var(--border); border-radius: var(--r-control); padding: 10px; cursor: pointer; }
+  .song-row.selected { border-color: var(--accent); }
+  .thumb { width: 64px; height: 48px; border-radius: 8px; background: linear-gradient(140deg, #33253F, #171021); flex: none; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 11px; }
+  .song-row .t { font-size: 15px; font-weight: 700; line-height: 1.25; }
+  .song-row .m { font-size: 13px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<div class="page" style="text-align: center;">
+  <h1 class="display">Patron v2 — o fluxo de 3 telas volta</h1>
+  <p class="mock-note" style="max-width: 720px; margin: 8px auto 0;">Entrar → escolher música → "você é o 4º". 100% pt-BR (i18n: EN/ES via 🌐), nome do lugar sempre visível, slug nunca. Sem campo de título manual: metadados vêm da busca/resolução do link.</p>
+</div>
+
+<div class="flow">
+
+  <!-- ── Tela 1: entrar ── -->
+  <div class="col" style="gap: 10px;">
+    <div class="phone"><div class="screen">
+      <div class="topbar spread">
+        <div class="row" style="gap: 10px;"><span class="venue-mono">B</span><div><div class="venue-name">Boteco da Lua</div><div class="venue-sub">fila por <span class="wordmark" style="font-size: 12px;">cantai</span></div></div></div>
+        <button class="util-pill">🌐 PT</button>
+      </div>
+      <div class="stack-24" style="margin-top: 20px;">
+        <h1 class="display">Bora cantar! 🎤</h1>
+        <div class="field">
+          <span class="label">Seu nome ou apelido</span>
+          <input class="input" placeholder="ex.: Marina" value="Paulo">
+        </div>
+        <div class="field">
+          <span class="label">Mesa <span style="text-transform: none; opacity: .7;">(opcional)</span></span>
+          <input class="input" placeholder="ex.: 7" style="max-width: 120px;">
+        </div>
+        <div class="field">
+          <span class="label">Como você quer entrar?</span>
+          <div class="row">
+            <div class="mode-card selected"><div style="font-size: 28px;">🎤</div><strong>Cantar</strong><div class="meta">entro na fila</div></div>
+            <div class="mode-card"><div style="font-size: 28px;">🎶</div><strong>Só curtir</strong><div class="meta">peço sem cantar</div></div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: auto; padding-top: 24px;">
+        <button class="btn btn-primary" style="width: 100%;">Bora cantar!</button>
+      </div>
+    </div></div>
+    <p class="mock-note">1 · Entrar — apelido lembrado do último acesso; mesa opcional já aqui (não enterrada no formulário de música).</p>
+  </div>
+
+  <!-- ── Tela 2: escolher música ── -->
+  <div class="col" style="gap: 10px;">
+    <div class="phone"><div class="screen">
+      <div class="topbar spread">
+        <div class="row" style="gap: 8px;"><span class="chip chip-accent">🎤 Paulo</span><span class="chip chip-warm">Mesa 7</span></div>
+        <span class="venue-sub">Boteco da Lua</span>
+      </div>
+      <div class="stack-12" style="margin-top: 12px;">
+        <h2 class="title">Manda tua música</h2>
+        <input class="input" value="evidências" placeholder="Busca ou cola o link do YouTube">
+        <div class="song-row selected">
+          <div class="thumb">▶ 16:9</div>
+          <div class="grow"><div class="t">Evidências (Ao Vivo)</div><div class="m">Chitãozinho & Xororó · 4:38</div></div>
+          <span style="color: var(--accent); font-weight: 800;">✓</span>
+        </div>
+        <div class="song-row">
+          <div class="thumb">▶ 16:9</div>
+          <div class="grow"><div class="t">Evidências — Karaokê com letra</div><div class="m">Karaokê Brasil · 4:41</div></div>
+        </div>
+        <div class="song-row">
+          <div class="thumb">▶ 16:9</div>
+          <div class="grow"><div class="t">EVIDÊNCIAS (cover sertanejo)</div><div class="m">Ana & João · 4:12</div></div>
+        </div>
+        <div class="card" style="padding: 12px 16px; border-style: dashed;">
+          <span class="meta">Busca fora do ar? <a href="#">Cola o link do YouTube</a> que a gente resolve o resto.</span>
+        </div>
+      </div>
+      <div style="margin-top: auto; padding-top: 16px;" class="col">
+        <button class="btn btn-primary" style="width: 100%;">Entrar na fila 🎤</button>
+        <button class="btn btn-ghost-danger" style="color: var(--text-muted);">← Voltar</button>
+      </div>
+    </div></div>
+    <p class="mock-note">2 · Escolher — resultados com capa/canal/duração; caminho de link colado sempre visível; título NUNCA digitado à mão.</p>
+  </div>
+
+  <!-- ── Tela 3: na fila (o momento) ── -->
+  <div class="col" style="gap: 10px;">
+    <div class="phone"><div class="screen">
+      <div class="topbar spread">
+        <div class="row" style="gap: 8px;"><span class="chip chip-accent">🎤 Paulo</span><span class="chip chip-warm">Mesa 7</span></div>
+        <span class="venue-sub">Boteco da Lua</span>
+      </div>
+      <div class="stack-12" style="margin-top: 12px;">
+        <div class="card card-warm" style="padding: 14px 16px;">
+          <div class="label" style="color: var(--accent-2);">Tocando agora</div>
+          <div class="title" style="font-size: 18px;">Evidências (Ao Vivo)</div>
+          <div class="row spread"><span class="meta">🎤 Marina · Mesa 7</span><span class="chip chip-live">AGORA</span></div>
+        </div>
+        <div class="card card-accent" style="text-align: center; padding: 22px 16px;">
+          <div class="label" style="color: var(--accent);">Sua posição</div>
+          <div class="display" style="font-size: 44px;">Você é o 4º 🔥</div>
+          <div class="meta">Bohemian Rhapsody · ~15 min</div>
+        </div>
+        <div class="label" style="margin-top: 4px;">A fila</div>
+        <div class="queue-row playing"><span class="pos">▶</span><div class="grow"><div class="who">Marina <span class="meta">· Mesa 7</span></div><div class="song">Evidências (Ao Vivo)</div></div><span class="chip chip-warm">🎤</span></div>
+        <div class="queue-row"><span class="pos">2</span><div class="grow"><div class="who">Careca <span class="meta">· Mesa 3</span></div><div class="song">Despacito</div></div><span class="chip chip-accent">🎤</span></div>
+        <div class="queue-row"><span class="pos">3</span><div class="grow"><div class="who">Dudu <span class="meta">· Mesa 7</span></div><div class="song">Gangnam Style</div></div><span class="chip chip-accent">🎤</span></div>
+        <div class="queue-row mine"><span class="pos">4</span><div class="grow"><div class="who">Você <span class="meta">· Mesa 7</span></div><div class="song">Bohemian Rhapsody</div></div><span class="chip chip-accent">🎤</span></div>
+      </div>
+      <div style="margin-top: auto; padding-top: 16px;">
+        <button class="btn btn-secondary" style="width: 100%;">+ Outra música</button>
+      </div>
+    </div></div>
+    <p class="mock-note">3 · Na fila — o momento de brilho: posição gigante, ETA, minha linha marcada. É por isso que o convidado volta a olhar o celular.</p>
+  </div>
+
+</div>
+
+</body>
+</html>

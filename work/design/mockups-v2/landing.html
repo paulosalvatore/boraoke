@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark" data-vibe="bar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cantai — fila de karaokê para o seu evento</title>
+<link rel="stylesheet" href="cantai-v2.css">
+<style>
+  .hero { text-align: center; padding: 72px 24px 48px; max-width: 780px; margin: 0 auto; }
+  .hero .wordmark { font-size: 64px; }
+  .hero h1 { font-size: 40px; line-height: 1.15; margin: 24px 0 16px; font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; }
+  .hero p { color: var(--text-muted); font-size: 18px; max-width: 560px; margin: 0 auto 32px; }
+  .join-box { max-width: 460px; margin: 20px auto 0; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 900px; margin: 0 auto; }
+  .step .n { font-family: var(--font-display); font-size: 28px; font-weight: 800; background: var(--g-brand); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .vibes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 1000px; margin: 0 auto; }
+  .vibe-card { border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; background: var(--surface); }
+  .vibe-swatch { height: 72px; }
+  .vibe-card .body { padding: 14px 16px; }
+  section { padding: 40px 24px; }
+  section h2 { text-align: center; font-size: 26px; margin-bottom: 28px; font-family: var(--font-display); font-weight: 800; }
+  .preview { display: flex; gap: 24px; justify-content: center; align-items: flex-end; flex-wrap: wrap; }
+  .mini-tv { width: 480px; aspect-ratio: 16/9; border-radius: 12px; border: 1px solid var(--border); background: linear-gradient(160deg, #171021, #0D0A14); padding: 20px; display: flex; flex-direction: column; justify-content: space-between; }
+  .mini-phone { width: 180px; height: 300px; border-radius: 24px; border: 6px solid #000; background: var(--surface); padding: 14px; box-shadow: var(--shadow); }
+  footer { text-align: center; color: var(--text-dim); font-size: 13px; padding: 48px 24px; }
+</style>
+</head>
+<body>
+
+<div class="page" style="max-width: 1100px;">
+  <div class="topbar spread">
+    <span class="wordmark" style="font-size: 26px;">cantai</span>
+    <div class="row">
+      <button class="util-pill">🌐 PT</button>
+      <button class="util-pill" title="Tema">☾</button>
+      <button class="util-pill">Já tenho uma sala</button>
+    </div>
+  </div>
+</div>
+
+<div class="hero">
+  <span class="wordmark">cantai</span>
+  <h1>A fila de karaokê no celular de cada convidado.</h1>
+  <p>Crie a sala em 1 minuto, mostre o QR na TV e todo mundo pede música do próprio celular — sem app, sem cadastro, sem papelzinho.</p>
+  <a class="btn btn-primary" href="#" style="min-width: 280px;">Criar minha sala grátis</a>
+  <div class="join-box card">
+    <div class="label" style="margin-bottom: 10px;">Já tem um código da sala?</div>
+    <div class="row">
+      <input class="input grow" placeholder="ex.: boteco-da-lua" aria-label="Código da sala">
+      <button class="btn btn-secondary btn-sm" style="min-height: 52px;">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<section>
+  <h2>Como funciona</h2>
+  <div class="steps">
+    <div class="card step"><div class="n">1</div><h3 class="title" style="margin: 8px 0 6px;">Crie a sala</h3><p class="meta" style="font-size: 15px;">Dê o nome do lugar ou do evento e escolha o clima da noite. Pronto — link, QR e tela de TV gerados.</p></div>
+    <div class="card step"><div class="n">2</div><h3 class="title" style="margin: 8px 0 6px;">Mostre o QR</h3><p class="meta" style="font-size: 15px;">A TV vira o palco: mostra quem canta agora, quem vem depois e o QR para entrar na fila.</p></div>
+    <div class="card step"><div class="n">3</div><h3 class="title" style="margin: 8px 0 6px;">Todo mundo canta</h3><p class="meta" style="font-size: 15px;">Cada convidado pede do próprio celular e acompanha sua posição. Você controla tudo do admin.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Do boteco ao casamento</h2>
+  <div class="vibes">
+    <div class="vibe-card"><div class="vibe-swatch" style="background: linear-gradient(135deg, #FF3D71, #FFC24B);"></div><div class="body"><strong>🍻 Bar</strong><p class="meta">Neon, palco, "bora cantar!"</p></div></div>
+    <div class="vibe-card"><div class="vibe-swatch" style="background: linear-gradient(135deg, #8B5CF6, #22D3EE);"></div><div class="body"><strong>🎉 Festa</strong><p class="meta">Balada, aniversário, energia.</p></div></div>
+    <div class="vibe-card"><div class="vibe-swatch" style="background: linear-gradient(135deg, #C99A5B, #E8B4B8);"></div><div class="body"><strong>💍 Casamento</strong><p class="meta">Elegante, dourado, memorável.</p></div></div>
+    <div class="vibe-card"><div class="vibe-swatch" style="background: linear-gradient(135deg, #3B82F6, #64748B);"></div><div class="body"><strong>💼 Empresa</strong><p class="meta">Sóbrio, com a sua marca.</p></div></div>
+  </div>
+  <p class="meta" style="text-align: center; margin-top: 16px; font-size: 14px;">Cada sala tem o nome do seu lugar, a sua cor e o seu clima — a TV é sua, não nossa.</p>
+</section>
+
+<section>
+  <h2>A noite inteira, numa tela</h2>
+  <div class="preview">
+    <div class="mini-tv">
+      <div class="row spread"><span class="wordmark" style="font-size: 16px;">cantai</span><span class="meta">Boteco da Lua</span></div>
+      <div>
+        <div class="tv-label" style="font-size: 11px;">Tocando agora</div>
+        <div style="font-family: var(--font-display); font-weight: 800; font-size: 26px;">Evidências</div>
+        <div class="meta" style="font-size: 14px;">🎤 Marina · Mesa 7</div>
+      </div>
+      <div class="row"><span class="chip chip-accent">2 · Careca</span><span class="chip chip-neutral">3 · Dudu</span><span class="chip chip-neutral">4 · Lia</span></div>
+    </div>
+    <div class="mini-phone">
+      <div class="meta" style="margin-bottom: 8px;">Boteco da Lua</div>
+      <div class="card card-accent" style="padding: 12px;"><div class="label" style="color: var(--accent);">Sua vez chega em</div><div style="font-family: var(--font-display); font-size: 24px; font-weight: 800;">3 músicas</div></div>
+      <div class="queue-row mine" style="margin-top: 10px; padding: 8px 10px;"><span class="pos">4</span><div class="grow"><div class="who" style="font-size: 13px;">Você</div><div class="song" style="font-size: 11px;">Bohemian Rhapsody</div></div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span class="wordmark" style="font-size: 15px;">cantai</span> — acesso antecipado · grátis durante o beta<br>
+  <span style="opacity: .7;">Sua fila, seu palco, sua marca.</span>
+</footer>
+
+</body>
+</html>
