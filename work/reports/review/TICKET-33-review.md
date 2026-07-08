@@ -60,3 +60,68 @@ Branch is 0 behind `origin/main`. File overlap with PR #19 is only `work/events/
 - `work/reports/dev/TICKET-33.md` (current: status, inventory, self-verification — matches the diff).
 - `work/reports/testing/TICKET-33-app-test.md` + `work/evidence/ticket-33/apptester-0{1,3}*.png` (viewed).
 - PR #20 thread: verbatim CI-green ×2, reconciliation note for #19's per-locale OG filename.
+
+---
+
+# D-022 OPUS SECOND PASS (merge-counting) — 2026-07-08
+
+Second (opus, judgment-layer) pass over the sonnet APPROVE above. Reviewed at `origin/ticket/33-code-rebrand` tip `72d0728`, diff read locally against merge-base `e2977f4` (git-local-first). This is the identity the product ships to boraoke.com — reviewed as the last set of eyes.
+
+## Verdict: APPROVE — merge-counting — with ONE required one-line condition (salt guard comment)
+
+The rebrand is correct, complete, and safe to ship. I independently re-verified every gate claim and loaded the running app as a first-time visitor. The single required condition below is a one-line safety comment on an already-shipping, deliberately-unchanged file — it does not change behavior and does not warrant a re-review round; the TM may require the Dev to add it as a fast follow before or with merge and confirm the one-liner landed.
+
+## Independent verification (my own runs, tip `72d0728`)
+
+- `npx jest`: **24 suites / 354 tests PASS** (incl. `__tests__/metadata.test.ts`).
+- Rotation engine `node --test`: **59 pass / 0 fail**.
+- `npm run build`: PASS — `/icon.png` + `/apple-icon.png` static routes emitted, all API/dynamic routes present.
+- Ran the app on `next dev` (dev script hardcodes `-p 3040`; `PORT` env is ignored — pre-existing, not a PR concern). Loaded landing, `/tv`, and a patron room; extracted the live DOM + `<head>`.
+
+## The cutover moment — walked the deploy
+
+- **QR / join-path shape.** Join URLs are built client-side as `${window.location.origin}/${roomId}` (`AdminRoom.tsx:60`) and `${origin}${path}` (`TvScreen.tsx:87`) — always at the apex, path `/<room>`. So:
+  - **Post-DNS printed QRs** already encode `boraoke.com/<room>` (origin = the live host) — no redirect needed.
+  - **Pre-cutover printed QRs** encode `cantai-snowy.vercel.app/<room>` → I live-tested `Host: cantai-snowy.vercel.app` `/bar-do-ze?x=1` → **308** → `location: https://boraoke.com/bar-do-ze?x=1`. Path AND query preserved. The redirect's `/:path*` → `/:path*` shape exactly covers the join-path shape. Old posters keep working. Confirmed.
+- **No loop:** `Host: boraoke.com` → 200 (host matcher is the old vercel apex only). A live venue with phones/TVs already on `boraoke.com` is never redirected onto itself.
+- **No open redirect:** `X-Forwarded-Host: evil.com` on a matching request still yields `location: https://boraoke.com/a` — destination host is a fixed literal, only `:path*` interpolates. Confirmed live.
+- **SEO / social caching:** OG/Twitter absolute URLs render `https://boraoke.com/brand/og-image-pt-BR.png` and `og:url = https://boraoke.com` on every environment (metadataBase pin). A social scrape of the canonical host caches the canonical card; scrapes of the old vercel apex get 308'd to the canonical URL before the card is read. No stale-brand card can be cached from the canonical host.
+
+## metadataBase pin — verified nothing else derives URLs from request host
+
+`metadataBase = https://boraoke.com` is a hard literal in `app/metadata.ts` (`SITE_URL`). I grepped the URL-deriving surfaces: OG/canonical/Twitter URLs all flow through Next's metadata resolver off this pin — none read the request host. The only request-host consumers are the CLIENT-side join-URL builders (`window.location.origin`), which is exactly what you want (a phone joining a preview deploy joins that preview; a phone joining prod joins prod). The pin therefore breaks nothing: preview deploys emit prod-absolute OG URLs (shares of a preview point at prod — acceptable and arguably desirable), and no functional URL derivation depends on the request host in a way the pin corrupts.
+
+## Brand-integrity — judged as a first-time visitor (live app)
+
+- **Landing:** title `Boraoke — a fila de karaokê do seu bar`, `🎤 Boraoke` wordmark, strong pt-BR description ("no celular de cada cliente… Grátis para começar"), byline "Boraoke — early access". Reads as a finished, confident product identity.
+- **TV:** `powered by Boraoke` byline (the growth-loop footer, formerly `powered by cantai` ×2), wordmark `Boraoke`, title `TV · Boraoke` (`%s · Boraoke` template working).
+- **Patron room:** `🎤 Boraoke`; `/cantai/i.test(documentElement.innerHTML)` === **false** over the entire rendered HTML.
+- Judgment: nothing feels unbranded, half-migrated, or unfinished. Wordmark placement is consistent across all three surfaces. Title/description copy quality is genuinely good, not placeholder. This identity is ready to be the face of the product.
+
+## Kept `cantai_` internals — guard sufficiency
+
+Guard comments present and sufficient at `PatronRoom.tsx`, `app/page.tsx`, `useFeedbackContext.ts`, `lib/host-auth.ts` (the cookie + `cantai-host-session-v1` salt). **One insufficient site — REQUIRED CONDITION:**
+
+**R1 (required, one line).** `lib/rooms.ts:67` — `createHmac("sha256", "cantai-hostcode-v1")` in `hashHostCode`. This file is NOT touched by this PR, so it carries no `STORAGE-KEY NOTE`. The docstring at lines 60–65 explains it is a keyed HMAC that "doubles as the room's session-derivation secret in `lib/host-auth.ts`" but does NOT warn against renaming the salt. This salt is load-bearing twice over: rotating it invalidates every stored `hostCodeHash` (every room's host can no longer log in) AND breaks host-session derivation. host-auth.ts's note explicitly scopes itself to "in this file", so it does not protect rooms.ts from a future well-meaning "finish the rebrand" cleanup. Add one line at `hashHostCode`:
+> `// STORAGE-KEY NOTE (TICKET-33): the "cantai-hostcode-v1" salt is DELIBERATELY kept — rotating it invalidates every stored hostCodeHash (all host logins) and breaks host-session derivation. Do NOT rename in the rebrand. See lib/host-auth.ts + work/tickets/TICKET-33-code-rebrand.md.`
+
+This is the one comment that, if missing, lets a later cleanup silently brick all host codes. Trivial to add; required before this ships.
+
+## Concurring with sonnet's non-blocking items (not conditions)
+
+- **favicon.ico follow-up:** raw `/favicon.ico` falls into the `[room]` catch-all (200 HTML) until a real ICO ships. Browsers use the linked PNG icons, so UX is unaffected; ICO needs the brand source from PR #19. Ride PR #19 or an immediate follow-up ticket. Non-blocking — agreed.
+- **rotation-engine prose** (`description`/keyword/README still say cantai): internal-only, fold into the favicon follow-up. Non-blocking.
+- **manifest `purpose: "any maskable"`** combined: Lighthouse prefers split `any` + `maskable` entries. Optional polish, non-blocking.
+- **`www.boraoke.com` apex redirect + `NEXTAUTH_URL`/OAuth origins:** Vercel domain-config + env, TM-owned, out of code scope. Correctly flagged.
+
+## Merge sequencing (unchanged, load-bearing)
+
+**Merge PR #19 (brand-assets) before or together with PR #20**, else `og-image-pt-BR.png` (and the favicon source) 404 at runtime. The metadata + tests are correct now; only the asset is cross-PR. Branch is 0 behind main; only `work/events/2026-07.jsonl` overlaps #19 (append-only) — clean.
+
+## Security waiver — concur
+
+TM-waived, sonnet-verified. My own live tests reconfirm: fixed-target 308, no open redirect, no loop, previews excluded, no new inputs/endpoints/secrets, storage keys/salts deliberately unchanged (zero session invalidation). Waiver holds.
+
+## Bottom line
+
+APPROVE (merge-counting). All three suites green + build green (verified myself). Cutover is safe — old QRs 308 with path preserved, no loop, no open redirect, OG cards resolve canonical. Brand identity is complete and polished as judged live. Ship it with the one-line R1 salt-guard comment added (fast follow, no re-review round required — TM confirms the line landed), and merge #19 first/with it.
