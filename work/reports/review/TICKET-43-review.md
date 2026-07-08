@@ -221,3 +221,53 @@ Default flipped: only a probe that POSITIVELY returned expired (`hostValid[room.
 ## Final verdict: APPROVE
 
 All round-1 items resolved and confirmed by direct code read + independent test run. Sequential-merge constraint with TICKET-40 (shared `PatronRoom.tsx`) still applies at merge time.
+
+---
+
+# Opus judgment pass (D-022 merge-counting) — 2026-07-08
+
+Second, judgment-tier pass over what the sonnet pass could miss: the load-bearing wave-28 seam, venue-tablet privacy reality, the probe-as-oracle question, UX honesty. Independently re-verified: **374/374 unit** (25 suites), **`next build` clean** (22 pages, type-check clean), **saved-rooms e2e 3/3 green on PORT=3043**, evidence screenshots (`01-landing-suas-salas.png`, `02-admin-session-expired.png`) watched.
+
+## 1. THE WAVE-28 SEAM — the load-bearing ruling
+
+**Question posed:** is `claimable: true` from localStorage alone sufficient evidence for the server to hand room ownership to an account? If a stolen/synced localStorage blob could claim someone else's room, the seam is designed wrong.
+
+**Ruling: the seam is designed RIGHT, and does not need a breaking `_v2` later — PROVIDED wave 28 honors one invariant that must be pinned now (below). Reasoning:**
+
+- I verified directly that room creation persists **no** server-side creator linkage today (`grep creatorUuid|identity: app/api/rooms lib/store.ts` → empty; correct — that is TICKET-26 scope). So the *only* record that "this device created room X" today lives in this localStorage blob.
+- The claim model (accounts-and-identity.md I-2) resolves ownership through a **server-side** `identity:{uuid}:rooms` index written at *room-creation time* (TICKET-26 acceptance criterion 3), plus host-token proof for legacy pre-26 rooms (I-4). Crucially, that index is server-authored — it is NOT derived from this localStorage blob.
+- Therefore: **`claimable: true` in localStorage is a client-side hint of INTENT to claim, never server-side PROOF of ownership.** A synced/stolen blob presented to `/api/account/claim-rooms` proves nothing on its own — the server must independently confirm the requesting device's registered anon uuid appears in `identity:{room}:...`/`identity:{uuid}:rooms`, or that the caller presents host-token proof. A blob copied to another device carries no valid identity cookie for those rooms, so it fails that server check. The seam is sound.
+- The `syncLocalRooms()` stub's TODO already gestures at this ("server verifies ownership via the device's registered anonymous uuid, TICKET-26, or host-token proof for legacy rooms") — good. But it is a *comment gesture*, not a pinned contract, and a future implementer skimming `claimable: true` could naively trust the flag as authorization. That is the one redesign-later risk, and it is cheap to close now with a note.
+
+**What wave 28 (TICKET-28) MUST add — pin this as a claim-path acceptance criterion (a note now, not a redesign later):**
+
+> **The server MUST treat the localStorage `claimable` flag / the client's posted room-id list as an untrusted request, never as ownership evidence.** Ownership for the claim is authorized ONLY by (a) the requesting device's server-registered anon uuid appearing in the server-side `identity:{uuid}:rooms` index (rooms created after TICKET-26), or (b) valid host-token proof (legacy pre-26 rooms, I-4). A `claimable: true` blob with no matching server-side uuid→room link (a synced/copied/stolen blob) MUST be rejected. `syncLocalRooms()` POSTs a *claim request*; the server adjudicates.
+
+This is consistent with I-2 and needs no shape change to what TICKET-43 persists — hence **no `_v2` migration is forced by the seam.** The persisted `{id, name, role, lastTouched, claimable}` shape is a correct forward-compatible client cache. Filing this as a TICKET-28 claim-path AC (and I recommend echoing the one-line "flag is intent, not proof" invariant into the `syncLocalRooms` doc comment as a NIT follow-up) closes the only latent trap. **Seam quality: correct. Verdict unaffected.**
+
+## 2. Venue-tablet privacy — shared-device multi-user reality
+
+Real scenario: a bar tablet where patron A joins rooms, then patron B picks up the same tablet and sees A's "Suas salas". My judgment: **acceptable device-memory semantics for this ticket — NOT a blocker.**
+
+- The exposure is bounded and low-sensitivity: room ids/names A joined (public join slugs) + one-tap re-entry. No PII is stored at this layer by design (accounts-and-identity.md keeps nickname room-scoped/ephemeral; this ticket persists no nickname). "Suas salas" leaks "rooms this browser touched," which on a shared tablet is genuinely shared-browsing state — the same semantics as browser history, not an account.
+- The honest copy ("Salvas neste dispositivo") sets the correct mental model, and every row has a working ✕ to forget. The primary venue-tablet actor is the *host* (their own station), for whom this is the intended, desirable recovery affordance.
+- The real "not you?" affordance belongs to the accounts wave (sign-out returns the device to a working anon state — TICKET-28 AC 4) and to a future shared-kiosk mode, not here. **Filed as a follow-up nit for the accounts wave (NIT-3 below), not a change request.** Shipping device memory without it is the honest MVP.
+
+## 3. Probe as room-existence oracle — assessed, NOT a new oracle
+
+`GET /api/host/session?room=<id>` is **pre-existing and untouched by this PR** (confirmed: the route is not in the diff). TICKET-43 only *calls* it from the landing page. It returns `{authed, configured}`; `configured` reveals whether host controls exist for a room — but this is already public surface (the admin page calls the same endpoint on load for any visitor, and `roomIdFromRequest` validates the id via `isValidRoomId`, returning 400 on malformed). The client (`SavedRooms.tsx`) reads only `res.ok` (200 vs 401). **No new oracle capability is introduced** — a landing page can only probe rooms it already remembers touching (ids already in its own localStorage), so it learns nothing it didn't already know. The bounded top-3 fan-out (MAX_HOST_PROBES=3) further caps request volume. No security finding.
+
+## 4. UX honesty — confirmed on evidence
+
+Watched `01-landing-suas-salas.png`: "Suas salas / Salvas neste dispositivo — volte rápido pra uma sala que você criou ou entrou." Created rooms show Entrar/Admin/TV; joined show only Entrar; ✕ present per row. `02-admin-session-expired.png`: "Sua sessão expirou — entre com o código da sala." in amber on the login gate — honest, actionable, never claims the code is recoverable. Copy sets exactly the right expectation for a per-device, no-login bridge. Approved.
+
+## Follow-up nits (non-blocking, do NOT gate merge)
+
+- **[NIT-3 — wave 28] Pin the claim-authorization invariant.** Add to TICKET-28 a claim-path AC: the server treats `claimable`/posted room-ids as an untrusted request and authorizes only via server-side uuid→room link or host-token proof (see §1). Optionally echo "flag is intent, not proof" into the `syncLocalRooms()` doc comment. Cheap now; prevents a genuine ownership-transfer bug later.
+- **[NIT-4 — accounts/kiosk] Shared-tablet "not you?" affordance.** Device memory on a shared venue tablet exposes prior patrons' touched-room list. Acceptable now; the accounts wave should ship sign-out-clears-device (TICKET-28 AC 4 already covers this) and consider a kiosk/clear-all control. Follow-up, not this ticket.
+
+## Opus verdict: APPROVE (merge-counting)
+
+The implementation is correct, cleanly scoped, honestly copied, and well-tested; the security invariant (host code never persisted) is type-forbidden + runtime-stripped + test-asserted + App-Tester-verified; the wave-28 seam is soundly designed and forces no future migration. The two nits above are follow-ups for the accounts wave, not conditions on this merge. All gates align.
+
+**Merge constraint (unchanged):** sequential merge with PR #21 / TICKET-40 — both touch `PatronRoom.tsx`; #21 merges first, this rebases. Non-conflicting regions but a textual merge conflict is inevitable; TM to sequence.
