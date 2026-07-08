@@ -54,7 +54,7 @@ test("a created room appears under Suas salas with working links", async ({ page
 
   // The patron quick-link navigates into the room.
   await row.getByTestId("saved-room-patron").click();
-  await page.getByLabel("Your nickname").waitFor();
+  await page.getByLabel("Seu apelido").waitFor();
   await expect(page).toHaveURL(new RegExp(`/${roomId}$`));
 });
 
@@ -67,9 +67,9 @@ test("joining a room as a patron remembers it (joined role)", async ({ page }) =
   await page.evaluate(() => window.localStorage.removeItem("cantai_rooms_v1"));
 
   await page.goto(`/${roomId}`);
-  await page.getByLabel("Your nickname").fill("Convidada");
-  await page.getByRole("button", { name: /join queue/i }).click();
-  await page.getByRole("heading", { name: /add a song/i }).waitFor();
+  await page.getByLabel("Seu apelido").fill("Convidada");
+  await page.getByRole("button", { name: /entrar na fila/i }).click();
+  await page.getByRole("heading", { name: /adicionar música/i }).waitFor();
 
   await page.goto("/");
   const row = page.getByTestId("saved-room").filter({ hasText: "Bar Convidado" });

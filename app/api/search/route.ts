@@ -9,6 +9,7 @@ import {
   YouTubeQuotaError,
 } from "@/lib/youtube-search";
 import { track } from "@/lib/telemetry";
+import { getTranslations } from "next-intl/server";
 
 /**
  * GET /api/search?q=<query>&uuid=<patronUuid>
@@ -77,8 +78,10 @@ export async function GET(req: NextRequest) {
   // Dual rate limit (quota hygiene): per-uuid AND per-IP — rotating uuids from
   // one host is capped by the IP bucket. Reject politely; paste-link keeps working.
   if (!rateLimitOk(uuid, clientIp(req))) {
+    // i18n (TICKET-30): user-facing copy follows the request locale.
+    const te = await getTranslations("Errors");
     return NextResponse.json(
-      { error: "Muitas buscas — aguarde um instante e tente de novo." },
+      { error: te("searchRateLimited") },
       { status: 429 },
     );
   }

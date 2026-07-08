@@ -1,4 +1,9 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { NextIntlClientProvider } from "next-intl";
+import { getTranslations } from "next-intl/server";
+import { isLocale, normalizeLocale, LOCALE_COOKIE } from "@/i18n/locales";
+import { loadMessages } from "@/i18n/request";
 import {
   getPublicRoom,
   DEFAULT_ROOM,
@@ -39,6 +44,22 @@ export default async function RoomPage({
   }
 
   const venueName = record?.name ?? "Boraoke";
+
+  // i18n (TICKET-30, design §3): room default language sits BETWEEN the user
+  // cookie and Accept-Language. When the visitor carries NO explicit locale
+  // cookie and the venue set a default language, this page scopes its subtree
+  // to the ROOM language; an explicit user cookie always wins (handled by the
+  // app-wide request config, so no override is mounted).
+  const cookieLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
+  const roomLanguage = record?.settings.language;
+  if (!isLocale(cookieLocale) && roomLanguage) {
+    const locale = normalizeLocale(roomLanguage);
+    return (
+      <NextIntlClientProvider locale={locale} messages={await loadMessages(locale)}>
+        <PatronRoom roomId={room} venueName={venueName} />
+      </NextIntlClientProvider>
+    );
+  }
   return <PatronRoom roomId={room} venueName={venueName} />;
 }
 
@@ -48,19 +69,20 @@ export default async function RoomPage({
  * when `ephemeral` it also states the honest reason (prod on the memory driver,
  * rooms are temporary until Upstash lands).
  */
-function RoomNotFound({
+async function RoomNotFound({
   roomId,
   ephemeral,
 }: {
   roomId?: string;
   ephemeral: boolean;
 }) {
+  const t = await getTranslations("Patron");
   const suggestedName = roomId ? deriveRoomName(roomId) : "";
   return (
     <main style={{ maxWidth: 480, margin: "0 auto", padding: "3rem 1rem", textAlign: "center" }}>
       <h1 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🎤 Boraoke</h1>
       <p style={{ color: "var(--text-muted)", marginBottom: "1.25rem" }}>
-        Essa sala não existe (ou o link está errado).
+        {t("notFoundLead")}
       </p>
 
       {ephemeral && (
@@ -78,9 +100,9 @@ function RoomNotFound({
             textAlign: "left",
           }}
         >
-          ⚠️ As salas ainda são <strong>temporárias</strong> e podem expirar
-          quando o servidor reinicia. Recurso de salas permanentes está a
-          caminho.
+          {t.rich("notFoundEphemeral", {
+            b: (chunks) => <strong>{chunks}</strong>,
+          })}
         </p>
       )}
 
@@ -91,13 +113,13 @@ function RoomNotFound({
           href={`/new?name=${encodeURIComponent(suggestedName)}`}
           style={{ display: "inline-block", marginBottom: "0.85rem" }}
         >
-          Recriar sala “{suggestedName}”
+          {t("notFoundRecreate", { name: suggestedName })}
         </Link>
       )}
 
       <p>
         <Link href="/" style={{ color: "var(--accent)", fontSize: "0.9rem" }}>
-          Voltar ao início
+          {t("notFoundBack")}
         </Link>
       </p>
     </main>

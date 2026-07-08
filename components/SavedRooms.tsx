@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   loadRooms,
   forgetRoom,
@@ -30,6 +31,8 @@ import {
  * "salvas neste dispositivo" note says so plainly.
  */
 export default function SavedRooms() {
+  // i18n (TICKET-30): copy from the `Landing.saved*` catalog keys.
+  const t = useTranslations("Landing");
   const [rooms, setRooms] = useState<RememberedRoom[] | null>(null);
   // roomId → whether the host cookie is currently valid (undefined = probing).
   const [hostValid, setHostValid] = useState<Record<string, boolean>>({});
@@ -74,7 +77,7 @@ export default function SavedRooms() {
         marginBottom: "1.5rem",
       }}
     >
-      <h2 style={{ fontSize: "1.05rem", marginBottom: "0.25rem" }}>Suas salas</h2>
+      <h2 style={{ fontSize: "1.05rem", marginBottom: "0.25rem" }}>{t("savedTitle")}</h2>
       <p
         style={{
           fontSize: "0.8rem",
@@ -82,7 +85,7 @@ export default function SavedRooms() {
           marginBottom: "0.9rem",
         }}
       >
-        Salvas neste dispositivo — volte rápido pra uma sala que você criou ou entrou.
+        {t("savedHint")}
       </p>
 
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.6rem" }}>
@@ -134,7 +137,7 @@ export default function SavedRooms() {
                     style={{ color: "var(--accent)" }}
                     data-testid="saved-room-patron"
                   >
-                    Entrar
+                    {t("savedEnter")}
                   </Link>
                   {room.role === "created" && (
                     <>
@@ -143,14 +146,14 @@ export default function SavedRooms() {
                         style={{ color: "var(--accent)" }}
                         data-testid="saved-room-admin"
                       >
-                        Admin
+                        {t("savedAdmin")}
                       </Link>
                       <Link
                         href={`/${room.id}/tv`}
                         style={{ color: "var(--accent)" }}
                         data-testid="saved-room-tv"
                       >
-                        TV
+                        {t("savedTv")}
                       </Link>
                     </>
                   )}
@@ -159,7 +162,7 @@ export default function SavedRooms() {
               <button
                 type="button"
                 onClick={() => forget(room.id)}
-                aria-label={`Esquecer ${room.name}`}
+                aria-label={t("savedForget", { name: room.name })}
                 data-testid="saved-room-forget"
                 style={{
                   background: "transparent",

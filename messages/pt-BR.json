@@ -20,7 +20,13 @@
     "codePlaceholder": "ex.: bar-do-ze",
     "enter": "Entrar",
     "lastRoom": "Última sala:",
-    "footer": "Boraoke — early access · uma sala por bar, filas isoladas"
+    "footer": "Boraoke — early access · uma sala por bar, filas isoladas",
+    "savedTitle": "Suas salas",
+    "savedHint": "Salvas neste dispositivo — volte rápido pra uma sala que você criou ou entrou.",
+    "savedEnter": "Entrar",
+    "savedAdmin": "Admin",
+    "savedTv": "TV",
+    "savedForget": "Esquecer {name}"
   },
   "New": {
     "createTitle": "Criar sala",
@@ -43,7 +49,7 @@
     "viewPublicRoom": "Ver a sala do público →"
   },
   "Patron": {
-    "queueForVenue": "Fila de karaokê do {venue}",
+    "queueForVenue": "Fila de karaokê do <v>{venue}</v>",
     "roomLabel": "Sala: {room}",
     "nicknameLabel": "Seu apelido",
     "nicknamePlaceholder": "ex.: Maria, Mesa 4…",
@@ -63,7 +69,7 @@
     "errorEnterNickname": "Digite um apelido primeiro.",
     "errorAddFailed": "Não deu para adicionar a música.",
     "adding": "Adicionando…",
-    "addToQueue": "Entrar na fila",
+    "addToQueue": "Adicionar à fila",
     "songAdded": "✓ Música na fila!",
     "playerHint": "O vídeo toca na <b>tela do bar</b>. <a>Assistir na TV ↗</a>",
     "liveQueue": "Fila ao vivo",
@@ -75,12 +81,15 @@
     "badgeDance": "Curtir",
     "venueScreen": "Tela do bar ↗",
     "footer": "Protótipo (early access) — filas por sala",
-    "positionHero": "Você é o {position, selectordinal, one {#º} other {#º}} da fila 🔥"
+    "notFoundLead": "Essa sala não existe (ou o link está errado).",
+    "notFoundEphemeral": "⚠️ As salas ainda são <b>temporárias</b> e podem expirar quando o servidor reinicia. Recurso de salas permanentes está a caminho.",
+    "notFoundRecreate": "Recriar sala “{name}”",
+    "notFoundBack": "Voltar ao início"
   },
   "Tv": {
     "venueFallback": "noite de karaokê",
     "nowPlaying": "Tocando agora",
-    "micCall": "🎤 {nickname}{table, select, none {} other {, Mesa {table}}} — vá para o microfone! {seconds}s",
+    "micCall": "🎤 {nickname}{table, select, none {} other {, Mesa {table}}} — vá para o microfone! <s>{seconds}s</s>",
     "reorderNotice": "Fila reordenada — modo mudou",
     "upNext": "A SEGUIR",
     "qrTitle": "Escaneia para entrar na fila",
@@ -89,7 +98,9 @@
     "poweredBy": "powered by",
     "skip": "Pular ⏭",
     "fullscreen": "Tela cheia (F)",
-    "exitFullscreen": "Esc para sair"
+    "exitFullscreen": "Esc para sair",
+    "skipNotice": "Pulando vídeo indisponível…",
+    "table": "Mesa {table}"
   },
   "Admin": {
     "adminTitle": "Boraoke · admin",
@@ -126,7 +137,8 @@
     "qrTitle": "QR da sala",
     "modeChanged": "Modo alterado para {mode} — fila reordenada.",
     "languageLabel": "Idioma da sala",
-    "languageHint": "A TV e o padrão do público seguem este idioma."
+    "languageHint": "A TV e o padrão do público seguem este idioma.",
+    "sessionExpired": "Sua sessão expirou — entre com o código da sala."
   },
   "Modes": {
     "sectionLabel": "Modo da noite",
@@ -140,16 +152,13 @@
     "perPersonRule": "Cada pessoa mantém 1 música na fila; rodízio justo por identidade."
   },
   "Search": {
-    "label": "O que você quer cantar?",
+    "label": "Buscar música ou colar link do YouTube *",
     "aria": "Buscar música ou colar link do YouTube",
     "placeholder": "Ex.: evidências — ou cole um link do YouTube",
     "rateLimited": "Muitas buscas — aguarde um instante.",
     "youtubeLink": "Link do YouTube",
     "pastedLink": "Link colado",
-    "degradedNoKey": "Busca indisponível agora — cole um link do YouTube.",
-    "degradedQuota": "Busca no limite por hoje — cole um link do YouTube.",
-    "degradedError": "Busca falhou — cole um link do YouTube.",
-    "noResults": "Nada encontrado — tente outras palavras ou cole um link."
+    "degraded": "Busca indisponível — cola o link do YouTube"
   },
   "Feedback": {
     "trigger": "Enviar feedback",
@@ -180,8 +189,14 @@
     "searchRateLimited": "Muitas buscas — aguarde um instante e tente de novo.",
     "roomsRateLimited": "Muitas salas criadas — tente de novo em uma hora.",
     "roomsFull": "Estamos lotados por enquanto — tente de novo mais tarde.",
-    "submitRateLimited": "Você está mandando música rápido demais — respira e tenta de novo em instantes.",
-    "hostNotConfigured": "Controles do host ainda não configurados para este bar."
+    "submitRateLimited": "Calma, cantor! Muitos pedidos em pouco tempo — espere um minutinho e tente de novo.",
+    "hostNotConfigured": "Controles do host ainda não configurados para este bar.",
+    "queueFull": "A fila tá cheia (máx. {max} músicas) — tente de novo daqui a pouco.",
+    "submitTableRequired": "Informe o número da sua mesa — o bar está no modo 2 por mesa.",
+    "submitListenCap": "Você já tem {cap} pedidos de música na fila — espere um tocar.",
+    "submitDuplicate": "Você já pediu essa música — ela já está na fila.",
+    "submitTableCap": "Sua mesa já tem {cap} músicas na fila — espere uma tocar.",
+    "submitPersonCap": "Você já tem {cap} músicas na fila — espere uma tocar para adicionar outra."
   },
   "Meta": {
     "title": "Boraoke — a fila de karaokê do seu bar",

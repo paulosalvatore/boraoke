@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import type { QueueEntry } from "@/lib/store";
 import QrCode from "@/components/QrCode";
 import styles from "./tv.module.css";
@@ -74,6 +75,11 @@ export default function TvScreen({
   /** Venue display name for the top bar (falls back to a generic label). */
   venueName?: string;
 }) {
+  // i18n (TICKET-30): the TV follows the ROOM language, never a per-user
+  // cookie — the server page wraps this component in a NextIntlClientProvider
+  // scoped to the room locale, so these hooks resolve against it.
+  const t = useTranslations("Tv");
+  const tCommon = useTranslations("Common");
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [ytReady, setYtReady] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -195,7 +201,7 @@ export default function TvScreen({
       const nextMode: string | null = data.mode ?? null;
       if (nextMode) {
         if (prevModeRef.current && prevModeRef.current !== nextMode) {
-          setReorderNotice("Fila reordenada — modo mudou");
+          setReorderNotice(t("reorderNotice"));
           window.setTimeout(() => setReorderNotice(""), 5000);
         }
         prevModeRef.current = nextMode;
@@ -203,6 +209,8 @@ export default function TvScreen({
     } catch {
       // network hiccup — retry on next poll
     }
+    // t is stable per locale (locale change re-renders the provider subtree).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomQuery]);
 
   useEffect(() => {
@@ -547,7 +555,7 @@ export default function TvScreen({
       {/* top bar */}
       <div className={styles.topBar}>
         <span className={styles.wordmark}>Boraoke</span>
-        <span className={styles.venue}>{venueName || "noite de karaokê"}</span>
+        <span className={styles.venue}>{venueName || t("venueFallback")}</span>
       </div>
 
       {nowPlaying ? (
@@ -558,21 +566,24 @@ export default function TvScreen({
               <div ref={playerDivRef} id="yt-player" className={styles.playerHost} />
             </div>
             <div className={styles.meta}>
-              <span className={styles.label}>Tocando agora</span>
+              <span className={styles.label}>{t("nowPlaying")}</span>
               <h1 className={styles.hero} data-testid="tv-hero">
                 {nowPlaying.title ?? `youtu.be/${nowPlaying.videoId}`}
               </h1>
               <div className={styles.singer} data-testid="tv-singer">
                 🎤 {singerLine(nowPlaying)}
                 {nowPlaying.table ? (
-                  <span className={styles.mesa}> · Mesa {nowPlaying.table}</span>
+                  <span className={styles.mesa}> · {t("table", { table: nowPlaying.table })}</span>
                 ) : null}
               </div>
               {micCallSecs !== null && (
                 <div className={styles.micCall} data-testid="tv-mic-call" role="status">
-                  🎤 {nowPlaying.nickname}
-                  {nowPlaying.table ? `, Mesa ${nowPlaying.table}` : ""} — vá para o
-                  microfone! <strong>{micCallSecs}s</strong>
+                  {t.rich("micCall", {
+                    nickname: nowPlaying.nickname,
+                    table: nowPlaying.table ?? "none",
+                    seconds: micCallSecs,
+                    s: (chunks) => <strong>{chunks}</strong>,
+                  })}
                 </div>
               )}
             </div>
@@ -584,7 +595,7 @@ export default function TvScreen({
           )}
           {skipNotice && (
             <div className={styles.skipNotice} data-testid="tv-skip-notice" role="status">
-              Pulando vídeo indisponível…
+              {t("skipNotice")}
             </div>
           )}
 
@@ -592,7 +603,7 @@ export default function TvScreen({
           <div className={styles.rail}>
             {upcoming.length > 0 && (
               <>
-                <span className={styles.railLabel}>A SEGUIR</span>
+                <span className={styles.railLabel}>{t("upNext")}</span>
                 {upcoming.map((entry, idx) => (
                   <div className={styles.nextCard} key={entry.id}>
                     <span className={styles.n}>{idx + 2}</span>
@@ -603,7 +614,7 @@ export default function TvScreen({
                       </div>
                     </div>
                     {entry.table ? (
-                      <span className={styles.mesa}>Mesa {entry.table}</span>
+                      <span className={styles.mesa}>{t("table", { table: entry.table })}</span>
                     ) : null}
                   </div>
                 ))}
@@ -615,13 +626,13 @@ export default function TvScreen({
                   className={styles.qr}
                   value={joinUrl}
                   size={120}
-                  title="Escaneia para entrar na fila"
+                  title={t("qrTitle")}
                 />
                 <div>
-                  <div className={styles.cta}>Escaneia e canta!</div>
+                  <div className={styles.cta}>{t("scanAndSing")}</div>
                   <div className={styles.url}>{joinLabel}</div>
                   <div className={styles.poweredBy}>
-                    powered by <span className={styles.pbMark}>Boraoke</span>
+                    {t("poweredBy")} <span className={styles.pbMark}>{tCommon("brand")}</span>
                   </div>
                 </div>
               </div>
@@ -631,18 +642,18 @@ export default function TvScreen({
       ) : (
         /* idle state — the recruitment poster */
         <div className={styles.idle} data-testid="tv-idle">
-          <span className={styles.wordmark}>Boraoke</span>
-          <div className={styles.idleCta}>Escaneia e canta! 🎤</div>
+          <span className={styles.wordmark}>{tCommon("brand")}</span>
+          <div className={styles.idleCta}>{t("scanAndSingIdle")}</div>
           <QrCode
             className={styles.idleQr}
             value={joinUrl}
             size={280}
-            title="Escaneia para entrar na fila"
+            title={t("qrTitle")}
           />
           <div className={styles.idleUrl}>{joinLabel}</div>
           {poweredByFooter && (
             <div className={styles.poweredBy} data-testid="tv-powered-by">
-              powered by <span className={styles.pbMark}>Boraoke</span>
+              {t("poweredBy")} <span className={styles.pbMark}>{tCommon("brand")}</span>
             </div>
           )}
         </div>
@@ -660,7 +671,7 @@ export default function TvScreen({
             data-testid="tv-skip"
             onClick={() => void advance()}
           >
-            Pular ⏭
+            {t("skip")}
           </button>
         )}
         {fullscreenSupported && !isFullscreen ? (
@@ -670,11 +681,11 @@ export default function TvScreen({
             data-testid="tv-fullscreen"
             onClick={requestAppFullscreen}
           >
-            Tela cheia (F)
+            {t("fullscreen")}
           </button>
         ) : null}
         {isFullscreen ? (
-          <span className={styles.chromeHint}>Esc para sair</span>
+          <span className={styles.chromeHint}>{t("exitFullscreen")}</span>
         ) : null}
       </div>
     </div>

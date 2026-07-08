@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from "uuid";
 import { store, DEFAULT_ROOM, QUEUE_MAX, type Mode, type QueueEntry } from "@/lib/store";
 import { isValidRoomId, getRoomMode } from "@/lib/rooms";
 import { checkSubmit, orderQueue, relayQueue } from "@/lib/rotation";
-import { submitRateLimitOk, SUBMIT_RATE_MESSAGE } from "@/lib/queue-rate-limit";
+import { submitRateLimitOk } from "@/lib/queue-rate-limit";
+import { getTranslations } from "next-intl/server";
 import { clientIpFrom } from "@/lib/host-auth";
 import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
 import { track } from "@/lib/telemetry";
@@ -120,7 +121,12 @@ export async function POST(req: NextRequest) {
   // caller never triggers a queue read or re-lay.
   if (!submitRateLimitOk(patronUuid.trim().toLowerCase(), clientIpFrom(req))) {
     void track("submit_rejected", { roomId, uuid: patronUuid.trim(), props: { reason: "rate" } }); // fire-and-forget, fail-open
-    return NextResponse.json({ error: SUBMIT_RATE_MESSAGE, reason: "rate" }, { status: 429 });
+    // i18n (TICKET-30): user-facing copy follows the request locale.
+    const te = await getTranslations("Errors");
+    return NextResponse.json(
+      { error: te("submitRateLimited"), reason: "rate" },
+      { status: 429 },
+    );
   }
 
   if (typeof title === "string" && title.trim().length > MAX_TITLE) {
@@ -160,7 +166,20 @@ export async function POST(req: NextRequest) {
   const check = checkSubmit(currentQueue, entry, roomMode);
   if (!check.ok) {
     void track("submit_rejected", { roomId, uuid: entry.patronUuid, props: { reason: check.reason } }); // TICKET-12: fire-and-forget, fail-open
-    return NextResponse.json({ error: check.message, reason: check.reason }, { status: 409 });
+    // i18n (TICKET-30): translate by the lib's fine-grained refusal code (the
+    // lib's `message` stays the pt-BR source of truth / test surface).
+    const te = await getTranslations("Errors");
+    const CODE_KEY = {
+      "table-required": "submitTableRequired",
+      "listen-cap": "submitListenCap",
+      duplicate: "submitDuplicate",
+      "table-cap": "submitTableCap",
+      "person-cap": "submitPersonCap",
+    } as const;
+    return NextResponse.json(
+      { error: te(CODE_KEY[check.code], { cap: check.cap ?? 0 }), reason: check.reason },
+      { status: 409 },
+    );
   }
 
   // Queue-depth cap — stop unauthenticated storage exhaustion. addEntry returns
@@ -168,9 +187,10 @@ export async function POST(req: NextRequest) {
   const added = await store.addEntry(roomId, entry);
   if (!added) {
     void track("submit_rejected", { roomId, uuid: entry.patronUuid, props: { reason: "cap" } }); // TICKET-12: fire-and-forget, fail-open
+    const te = await getTranslations("Errors");
     return NextResponse.json(
-      { error: `Queue is full (max ${QUEUE_MAX} entries) — try again later` },
-      { status: 429 }
+      { error: te("queueFull", { max: QUEUE_MAX }) },
+      { status: 429 },
     );
   }
 

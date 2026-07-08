@@ -20,7 +20,13 @@
     "codePlaceholder": "e.g. joes-bar",
     "enter": "Go in",
     "lastRoom": "Last room:",
-    "footer": "Boraoke — early access · one room per bar, queues kept separate"
+    "footer": "Boraoke — early access · one room per bar, queues kept separate",
+    "savedTitle": "Your rooms",
+    "savedHint": "Saved on this device — jump back into a room you created or joined.",
+    "savedEnter": "Join",
+    "savedAdmin": "Admin",
+    "savedTv": "TV",
+    "savedForget": "Forget {name}"
   },
   "New": {
     "createTitle": "Create a room",
@@ -43,7 +49,7 @@
     "viewPublicRoom": "See the guest room →"
   },
   "Patron": {
-    "queueForVenue": "Karaoke queue for {venue}",
+    "queueForVenue": "Karaoke queue for <v>{venue}</v>",
     "roomLabel": "Room: {room}",
     "nicknameLabel": "Your nickname",
     "nicknamePlaceholder": "e.g. Maria, Table 4…",
@@ -63,7 +69,7 @@
     "errorEnterNickname": "Enter a nickname first.",
     "errorAddFailed": "Couldn't add the song.",
     "adding": "Adding…",
-    "addToQueue": "Join the queue",
+    "addToQueue": "Add to queue",
     "songAdded": "✓ You're in the queue!",
     "playerHint": "The video plays on the <b>bar's screen</b>. <a>Watch on the TV ↗</a>",
     "liveQueue": "Live queue",
@@ -75,12 +81,15 @@
     "badgeDance": "Vibe",
     "venueScreen": "Bar screen ↗",
     "footer": "Early-access prototype — queues are per-room",
-    "positionHero": "You're {position, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} in line 🔥"
+    "notFoundLead": "That room doesn't exist (or the link is wrong).",
+    "notFoundEphemeral": "⚠️ Rooms are still <b>temporary</b> and can expire when the server restarts. Permanent rooms are on the way.",
+    "notFoundRecreate": "Recreate room “{name}”",
+    "notFoundBack": "Back to start"
   },
   "Tv": {
     "venueFallback": "karaoke night",
     "nowPlaying": "Now playing",
-    "micCall": "🎤 {nickname}{table, select, none {} other {, Table {table}}} — get to the mic! {seconds}s",
+    "micCall": "🎤 {nickname}{table, select, none {} other {, Table {table}}} — get to the mic! <s>{seconds}s</s>",
     "reorderNotice": "Queue reshuffled — mode changed",
     "upNext": "UP NEXT",
     "qrTitle": "Scan to join the queue",
@@ -89,7 +98,9 @@
     "poweredBy": "powered by",
     "skip": "Skip ⏭",
     "fullscreen": "Fullscreen (F)",
-    "exitFullscreen": "Esc to exit"
+    "exitFullscreen": "Esc to exit",
+    "skipNotice": "Skipping unavailable video…",
+    "table": "Table {table}"
   },
   "Admin": {
     "adminTitle": "Boraoke · admin",
@@ -126,7 +137,8 @@
     "qrTitle": "Room QR",
     "modeChanged": "Mode changed to {mode} — queue reshuffled.",
     "languageLabel": "Room language",
-    "languageHint": "The TV and the guest default follow this language."
+    "languageHint": "The TV and the guest default follow this language.",
+    "sessionExpired": "Your session expired — sign in with the room code."
   },
   "Modes": {
     "sectionLabel": "Tonight's mode",
@@ -140,16 +152,13 @@
     "perPersonRule": "Each person keeps 1 song queued; a fair rotation by identity."
   },
   "Search": {
-    "label": "What do you want to sing?",
+    "label": "Search a song or paste a YouTube link *",
     "aria": "Search for a song or paste a YouTube link",
     "placeholder": "e.g. Bohemian Rhapsody — or paste a YouTube link",
     "rateLimited": "Too many searches — hang on a sec.",
     "youtubeLink": "YouTube link",
     "pastedLink": "Pasted link",
-    "degradedNoKey": "Search is down right now — paste a YouTube link.",
-    "degradedQuota": "Search hit its limit for today — paste a YouTube link.",
-    "degradedError": "Search failed — paste a YouTube link.",
-    "noResults": "Nothing found — try other words or paste a link."
+    "degraded": "Search is down — paste a YouTube link"
   },
   "Feedback": {
     "trigger": "Send feedback",
@@ -180,8 +189,14 @@
     "searchRateLimited": "Too many searches — hang on a sec and try again.",
     "roomsRateLimited": "Too many rooms created — try again in an hour.",
     "roomsFull": "We're packed right now — try again a little later.",
-    "submitRateLimited": "You're adding songs too fast — take a breath and try again in a moment.",
-    "hostNotConfigured": "Host controls aren't set up for this bar yet."
+    "submitRateLimited": "Easy there, superstar! Too many requests at once — give it a minute and try again.",
+    "hostNotConfigured": "Host controls aren't set up for this bar yet.",
+    "queueFull": "The queue is packed (max {max} songs) — try again in a bit.",
+    "submitTableRequired": "Tell us your table number — the bar is in 2-per-table mode.",
+    "submitListenCap": "You already have {cap} song requests in the queue — wait for one to play.",
+    "submitDuplicate": "You already requested that song — it's in the queue.",
+    "submitTableCap": "Your table already has {cap} songs in the queue — wait for one to play.",
+    "submitPersonCap": "You already have {cap} songs in the queue — wait for one to play before adding another."
   },
   "Meta": {
     "title": "Boraoke — your bar's karaoke queue",

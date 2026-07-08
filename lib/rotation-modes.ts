@@ -70,3 +70,15 @@ export const MODE_META: readonly {
 export function modeLabel(mode: RoomMode): string {
   return MODE_META.find((m) => m.mode === mode)?.name ?? "🎤 Karaokê completo";
 }
+
+/**
+ * i18n (TICKET-30): message-key prefix per mode in the `Modes` namespace.
+ * Components render `t(`${MODE_MESSAGE_KEY[mode]}Name`)` / `…Rule`, so the
+ * card copy lives in the catalogs (pt-BR values verbatim from MODE_META /
+ * the design mockup). MODE_META stays as the pt-BR source + server-side label.
+ */
+export const MODE_MESSAGE_KEY: Record<RoomMode, string> = {
+  "full-karaoke": "fullKaraoke",
+  "per-table-2": "perTable",
+  "per-person-1": "perPerson",
+};
