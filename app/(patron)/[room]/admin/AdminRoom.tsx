@@ -26,6 +26,10 @@ export default function AdminRoom({
 }) {
   const [auth, setAuth] = useState<Auth>("checking");
   const [configured, setConfigured] = useState(true);
+  // TICKET-43: landing "Suas salas" routes here with ?expired=1 when a remembered
+  // created room's host cookie has lapsed — surface honest recovery copy on the
+  // gate. Read from location to avoid the useSearchParams Suspense boundary.
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // Login gate state
   const [token, setToken] = useState("");
@@ -57,7 +61,12 @@ export default function AdminRoom({
 
   useEffect(() => {
     checkSession();
-    if (typeof window !== "undefined") setJoinUrl(`${window.location.origin}/${roomId}`);
+    if (typeof window !== "undefined") {
+      setJoinUrl(`${window.location.origin}/${roomId}`);
+      try {
+        setSessionExpired(new URLSearchParams(window.location.search).get("expired") === "1");
+      } catch { /* no-op */ }
+    }
   }, [checkSession, roomId]);
 
   // Poll queue + paused while authed (reuses the public queue endpoint)
@@ -169,6 +178,11 @@ export default function AdminRoom({
       <main className={styles.gate}>
         <h1>🎤 Boraoke · admin</h1>
         <p style={{ marginBottom: "0.25rem" }}>{venueName ?? roomId}</p>
+        {sessionExpired && configured && (
+          <p data-testid="session-expired-notice" style={{ color: "#fbbf24", fontSize: "0.9rem", marginBottom: "0.25rem" }}>
+            Sua sessão expirou — entre com o código da sala.
+          </p>
+        )}
         <p>
           {configured
             ? "Entre com o código do host para controlar a fila."

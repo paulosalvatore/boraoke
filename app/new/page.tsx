@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import QrCode from "@/components/QrCode";
+import { rememberCreatedRoom } from "@/lib/room-memory";
 
 interface Created {
   id: string;
@@ -61,7 +62,12 @@ export default function NewRoomPage() {
         setError(data.error ?? "Não deu para criar a sala. Tente de novo.");
         return;
       }
-      setRoom(data as Created);
+      const created = data as Created;
+      setRoom(created);
+      // TICKET-43: remember this device created the room (id + name only — NEVER
+      // the host code, which stays shown-once). Powers the landing "Suas salas"
+      // recovery section so a host who loses the tab can find their room again.
+      rememberCreatedRoom({ id: created.id, name: created.name });
     } catch {
       setError("Erro de rede — tente de novo.");
     } finally {

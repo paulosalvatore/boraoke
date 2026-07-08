@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { QueueEntry, Mode } from "@/lib/store";
 import { modeLabel, type RoomMode } from "@/lib/rotation-modes";
 import SongSearch, { type SongSelection } from "@/components/SongSearch";
+import { rememberJoinedRoom } from "@/lib/room-memory";
 
 const POLL_INTERVAL = 3000;
 
@@ -77,6 +78,11 @@ export default function PatronRoom({
 
     // Remember this as the last room joined (landing prefill).
     try { ls.setItem("cantai_last_room", roomId); } catch { /* sandboxed */ }
+
+    // TICKET-43: add this room to the device's remembered-rooms list (joined
+    // role) so it shows under the landing "Suas salas" section for quick
+    // re-entry after a refresh. Uses the venue name for a friendly label.
+    rememberJoinedRoom({ id: roomId, name: venueName || roomId });
 
     // Per-room nickname, falling back to the global prefill.
     const savedNick = ls.getItem(nickKey) ?? ls.getItem("cantai_nickname");

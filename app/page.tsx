@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import SavedRooms from "@/components/SavedRooms";
 
 /**
  * Landing (TICKET-9) — replaces the old global patron flow (which moved to
@@ -54,6 +55,9 @@ export default function Landing() {
       >
         Criar a sala do seu bar
       </Link>
+
+      {/* TICKET-43: device-level remembered rooms (renders nothing when empty). */}
+      <SavedRooms />
 
       <section style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: "1.25rem" }}>
         <h2 style={{ fontSize: "1.05rem", marginBottom: "0.25rem" }}>Já tem um código?</h2>
