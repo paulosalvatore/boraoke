@@ -51,6 +51,11 @@ Read the queue/host/store/i18n/telemetry/test areas directly + one Explore fan-o
 - Worktrees carry no `node_modules` — needed `npm ci` in the worktree before build/e2e (expected; noted for the App Tester who reuses this worktree).
 - The visually-hidden switch checkbox (`opacity:0`) is unclickable by Playwright; added `data-testid="moderation-track"` on the visible track span as the click target. Standard a11y-switch pattern gotcha.
 
+## Deferred follow-ups (non-blocking)
+
+- **Rejected-entry TTL.** A rejected pending entry is kept so the patron's poll can show the polite rejected state; it currently persists until the room is cleared (fine for the prototype — bounded by the room being ephemeral). A short TTL / "dismiss" so old rejected cards age out is a clean follow-up (mirrors telemetry's retention TTL). File as a ticket if desired.
+- **Approve-time 409 UX.** On a caps-at-approval refusal the host sees `pendingApproveFailed`; a per-entry reason (duplicate vs queue-full) could be surfaced. Low priority.
+
 ## Overlap notes (TICKET-45)
 
 No shared-file edits. Pending lives outside the queue → no TvScreen / advance / host-auth changes. e2e ships self-contained helpers → no shared e2e-helper edit. Clean parallel merge.
