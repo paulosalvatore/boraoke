@@ -1,6 +1,6 @@
 # cantai — Board
 
-_Last updated: 2026-07-08 (22 PRs merged; TV watchdog LIVE; i18n final sweep running; 45/44 next)_
+_Last updated: 2026-07-09 (WAVE CLOSED — 23 PRs; trilingual live; 45+44 building)_
 
 ## Needs user (TL)
 
@@ -54,8 +54,9 @@ _Last updated: 2026-07-08 (22 PRs merged; TV watchdog LIVE; i18n final sweep run
 | TICKET-40 | Search UX (select-jump + karaoke keyword) | DONE | PR #21 merged (App Tester FAIL→fix→PASS focus race; opus product judgments recorded) |
 | TICKET-41 | TV watchdog + embeddable search | DONE | PR #24 merged (415/415; opus all-night walk blessed 12s ladder; skip-AUTH deferred by design → TICKET-45) |
 | TICKET-43 | Session recovery (local room memory) | DONE | PR #22 merged (probe bounded top-3; claim-path AC binding for TICKET-28 recorded) |
-| TICKET-44 | Optional moderation mode | QUEUED (next wave) | TL 2026-07-08: venue-optional song approval before queue entry ("wrong oriented stuff" guard); touches queue POST + admin + patron — launches after 40/41 merge. Related: roadmap content-filter prerequisite for schools/churches venue types |
-| TICKET-30 | i18n pt-BR/en/es + switcher | FINAL SWEEP | Rebase window open; mechanical t() sweep of merged components running |
+| TICKET-44 | Optional moderation mode | IN PROGRESS | Dev (opus), .worktrees/ticket-44 — pending-list store pattern, approval at addEntry time |
+| TICKET-45 | Advance/skip authorization | IN PROGRESS | Dev (opus), .worktrees/ticket-45 — implements the TICKET-41 plan (screen token, log→enforce) + e2e drain-helper migration |
+| TICKET-30 | i18n pt-BR/en/es + switcher | DONE | PR #23 merged (443/443; zero stragglers; opus locale-matrix + bundle rulings clean). TRILINGUAL LIVE |
 | TICKET-33 | Code rebrand + publish metadata | DONE | PR #20 merged; boraoke.com live-verified (title, OG 200, 308 redirect w/ path+query) |
 | (research) | Naming + domain availability | IN PROGRESS | fable agent — cantai.com taken; shortlist w/ whois checks |
 | TICKET-10 | Rotation modes UI (wave 3) | DONE | PR #14 merged: full chain (App Tester ordering proofs, Security fix round + re-audit, sonnet+opus APPROVE; lost-submit race quantified + HIGH atomic-RMW follow-up filed). KICKOFF SCOPE COMPLETE |
