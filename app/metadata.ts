@@ -53,3 +53,24 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#0D0A14",
 };
+
+// ─── Per-locale OG image lookup (TICKET-30 i18n wave) ────────────────────────
+// NOTE: this file must stay free of `next-intl/server` (ESM) imports so it can
+// be unit-tested under ts-jest/CJS. The async, locale-aware `generateMetadata`
+// lives in `app/generate-metadata.ts`; only these pure helpers live here.
+
+import type { Locale } from "@/i18n/locales";
+
+/**
+ * OG images that actually exist in `public/brand/`. og-image-pt-BR.png ships
+ * today; en/es cards are in flight (design). Until a variant lands here, the
+ * lookup falls back to the pt-BR image — never a 404 social card. When the
+ * en/es PNGs land, add their locales to this set (single edit).
+ */
+const OG_IMAGE_LOCALES: ReadonlySet<Locale> = new Set<Locale>(["pt-BR"]);
+
+/** Resolve the OG image path for a locale, falling back to pt-BR. */
+export function ogImageForLocale(locale: Locale): string {
+  const l = OG_IMAGE_LOCALES.has(locale) ? locale : "pt-BR";
+  return `/brand/og-image-${l}.png`;
+}

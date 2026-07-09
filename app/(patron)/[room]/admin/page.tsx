@@ -1,4 +1,4 @@
-import { getPublicRoom } from "@/lib/rooms";
+import { getPublicRoom, getRoomLanguage } from "@/lib/rooms";
 import AdminRoom from "./AdminRoom";
 
 /**
@@ -15,5 +15,13 @@ export default async function RoomAdminPage({
 }) {
   const { room } = await params;
   const record = await getPublicRoom(room);
-  return <AdminRoom roomId={room} venueName={record?.name} />;
+  // TICKET-30: seed the room-language selector with the persisted value.
+  const initialLanguage = await getRoomLanguage(room);
+  return (
+    <AdminRoom
+      roomId={room}
+      venueName={record?.name}
+      initialLanguage={initialLanguage}
+    />
+  );
 }

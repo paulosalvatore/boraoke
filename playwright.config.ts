@@ -18,6 +18,11 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     headless: true,
+    // i18n (TICKET-30): pin the browser locale to the product's source locale so
+    // the suite exercises the pt-BR baseline deterministically (Playwright's
+    // default en-US would resolve the app to English via Accept-Language).
+    // Locale-specific specs override per-file/describe via test.use().
+    locale: "pt-BR",
   },
   projects: [
     {

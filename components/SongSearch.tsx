@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { parseYouTubeVideoId } from "@/lib/youtube";
 import { augmentQuery } from "@/lib/search-query";
 import type { Mode } from "@/lib/store";
@@ -31,8 +32,6 @@ interface SongSearchProps {
   onSelect: (selection: SongSelection | null) => void;
 }
 
-const FALLBACK_COPY = "Busca indisponível — cola o link do YouTube";
-
 /**
  * Dual-behavior song picker (TICKET-8 / design §2 patron-02-pick-song):
  *   - Free text (≥3 chars) → debounced call to /api/search → tappable result rows.
@@ -40,6 +39,8 @@ const FALLBACK_COPY = "Busca indisponível — cola o link do YouTube";
  * Degraded (no key / quota / error) shows the fallback copy; paste-link still works.
  */
 export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchProps) {
+  // i18n (TICKET-30): all user-facing copy from the `Search` catalog.
+  const t = useTranslations("Search");
   const [input, setInput] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -71,7 +72,7 @@ export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchPro
         if (res.status === 429) {
           const data = await res.json().catch(() => ({}));
           setResults([]);
-          setRateLimitMsg(data.error ?? "Muitas buscas — aguarde um instante.");
+          setRateLimitMsg(data.error ?? t("rateLimited"));
           return;
         }
         const data = await res.json().catch(() => ({}));
@@ -119,8 +120,8 @@ export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchPro
       setResults([
         {
           videoId: pastedId,
-          title: "Link do YouTube",
-          channelTitle: "Link colado",
+          title: t("youtubeLink"),
+          channelTitle: t("pastedLink"),
           duration: "",
           thumbnailUrl: `https://i.ytimg.com/vi/${pastedId}/mqdefault.jpg`,
         },
@@ -156,7 +157,7 @@ export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchPro
     setSelectedId(r.videoId);
     onSelect({
       videoId: r.videoId,
-      title: r.title && r.title !== "Link do YouTube" ? r.title : undefined,
+      title: r.title && r.title !== t("youtubeLink") ? r.title : undefined,
     });
   }
 
@@ -166,12 +167,12 @@ export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchPro
         htmlFor="song-search-input"
         style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem", color: "var(--text-muted)" }}
       >
-        Buscar música ou colar link do YouTube *
+        {t("label")}
       </label>
       <input
         id="song-search-input"
-        aria-label="Buscar música ou colar link do YouTube"
-        placeholder="Ex.: evidências — ou cole um link do YouTube"
+        aria-label={t("aria")}
+        placeholder={t("placeholder")}
         value={input}
         onChange={(e) => setInput(e.target.value)}
         autoComplete="off"
@@ -211,7 +212,7 @@ export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchPro
           role="status"
           style={{ marginTop: "0.6rem", fontSize: "0.85rem", color: "var(--text-muted)" }}
         >
-          {FALLBACK_COPY}
+          {t("degraded")}
         </p>
       )}
 

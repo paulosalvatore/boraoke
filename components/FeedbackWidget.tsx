@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { FeedbackSheet } from "./feedback/FeedbackSheet";
 import styles from "./feedback/FeedbackWidget.module.css";
 
@@ -15,6 +16,7 @@ import styles from "./feedback/FeedbackWidget.module.css";
  */
 export function FeedbackWidget() {
   const pathname = usePathname();
+  const t = useTranslations("Feedback");
   const [open, setOpen] = useState(false);
 
   // Close on Escape for keyboard/desktop users.
@@ -39,13 +41,13 @@ export function FeedbackWidget() {
         <button
           type="button"
           className={styles.fab}
-          aria-label="Enviar feedback"
+          aria-label={t("trigger")}
           onClick={() => setOpen(true)}
         >
           <span className={styles.fabIcon} aria-hidden>
             💬
           </span>
-          Feedback
+          {t("trigger")}
         </button>
       )}
 
@@ -54,7 +56,7 @@ export function FeedbackWidget() {
           className={styles.overlay}
           role="dialog"
           aria-modal="true"
-          aria-label="Enviar feedback"
+          aria-label={t("trigger")}
           onClick={(e) => {
             if (e.target === e.currentTarget) setOpen(false);
           }}

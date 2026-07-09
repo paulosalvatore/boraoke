@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { useTranslations } from "next-intl";
 import type { QueueEntry, Mode } from "@/lib/store";
-import { modeLabel, type RoomMode } from "@/lib/rotation-modes";
+import { MODE_MESSAGE_KEY, type RoomMode } from "@/lib/rotation-modes";
 import SongSearch, { type SongSelection } from "@/components/SongSearch";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { rememberJoinedRoom } from "@/lib/room-memory";
 
 const POLL_INTERVAL = 3000;
@@ -29,6 +31,14 @@ export default function PatronRoom({
   roomId: string;
   venueName: string;
 }) {
+  // i18n (TICKET-30): this page was the string audit's headline finding (~26
+  // English strings on a pt-BR product). All user-facing copy now follows the
+  // request locale via the `Patron` catalog.
+  const t = useTranslations("Patron");
+  const tCommon = useTranslations("Common");
+  const tModes = useTranslations("Modes");
+  const localizedMode = (m: RoomMode) => tModes(`${MODE_MESSAGE_KEY[m]}Name`);
+
   // Identity — persisted in localStorage
   const [patronUuid, setPatronUuid] = useState<string>("");
   const [nickname, setNickname] = useState<string>("");
@@ -107,7 +117,7 @@ export default function PatronRoom({
         setRoomMode(nextMode);
         // Toast on a live mode change (skip the very first load).
         if (prevModeRef.current && prevModeRef.current !== nextMode) {
-          setReorderNotice(`Fila reordenada — modo mudou para ${modeLabel(nextMode)}.`);
+          setReorderNotice(t("reorderNotice", { mode: localizedMode(nextMode) }));
           window.setTimeout(() => setReorderNotice(""), 5000);
         }
         prevModeRef.current = nextMode;
@@ -115,6 +125,8 @@ export default function PatronRoom({
     } catch {
       // network hiccup — next poll retries
     }
+    // t/localizedMode are stable per locale (locale change remounts the tree).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
   useEffect(() => {
@@ -177,11 +189,11 @@ export default function PatronRoom({
     setSubmitSuccess(false);
 
     if (!parsedVideoId) {
-      setSubmitError("Paste a valid YouTube URL first.");
+      setSubmitError(t("errorPasteUrl"));
       return;
     }
     if (!nickname.trim()) {
-      setSubmitError("Enter a nickname first.");
+      setSubmitError(t("errorEnterNickname"));
       return;
     }
 
@@ -202,7 +214,7 @@ export default function PatronRoom({
       });
       if (!res.ok) {
         const err = await res.json();
-        setSubmitError(err.error ?? "Failed to add song.");
+        setSubmitError(err.error ?? t("errorAddFailed"));
         return;
       }
       setSubmitSuccess(true);
@@ -211,7 +223,7 @@ export default function PatronRoom({
       setSearchKey((k) => k + 1);
       fetchQueue();
     } catch {
-      setSubmitError("Network error — please try again.");
+      setSubmitError(tCommon("networkError"));
     } finally {
       setSubmitting(false);
     }
@@ -221,22 +233,29 @@ export default function PatronRoom({
   if (!nicknameSet) {
     return (
       <main style={{ maxWidth: 480, margin: "0 auto", padding: "2rem 1rem" }}>
-        <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>🎤 Boraoke</h1>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
+          <LanguageSwitcher />
+        </div>
+        <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>🎤 {tCommon("brand")}</h1>
         <p style={{ color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-          Karaoke queue for{" "}
-          <span style={{ color: "var(--accent)", fontWeight: 600 }}>{venueName}</span>
+          {t.rich("queueForVenue", {
+            venue: venueName,
+            v: (chunks) => (
+              <span style={{ color: "var(--accent)", fontWeight: 600 }}>{chunks}</span>
+            ),
+          })}
         </p>
         <p style={{ color: "var(--text-muted)", marginBottom: "2rem", fontSize: "0.85rem" }}>
-          Sala: {roomId}
+          {t("roomLabel", { room: roomId })}
         </p>
         <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600 }}>
-          Your nickname
+          {t("nicknameLabel")}
         </label>
         <input
           id="nickname-input"
-          aria-label="Your nickname"
+          aria-label={t("nicknameLabel")}
           autoFocus
-          placeholder="e.g. Maria, Table 4 Guy…"
+          placeholder={t("nicknamePlaceholder")}
           maxLength={30}
           value={nickname}
           onChange={(e) => setNickname(e.target.value)}
@@ -244,7 +263,7 @@ export default function PatronRoom({
           style={{ marginBottom: "1rem" }}
         />
         <button className="btn-primary" onClick={saveNickname} disabled={!nickname.trim()}>
-          Join queue
+          {t("joinQueue")}
         </button>
       </main>
     );
@@ -253,9 +272,10 @@ export default function PatronRoom({
   return (
     <main style={{ maxWidth: 540, margin: "0 auto", padding: "1.5rem 1rem" }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "1rem" }}>
-        <h1 style={{ fontSize: "1.75rem" }}>🎤 Boraoke</h1>
-        <span style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-          Hi,{" "}
+        <h1 style={{ fontSize: "1.75rem" }}>🎤 {tCommon("brand")}</h1>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.6rem", color: "var(--text-muted)", fontSize: "0.875rem" }}>
+          <LanguageSwitcher />
+          {t("greeting")}{" "}
           <button
             onClick={() => setNicknameSet(false)}
             style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "0.875rem", padding: 0 }}
@@ -280,13 +300,13 @@ export default function PatronRoom({
           }}
         >
           📍 {venueName}
-          {table.trim() ? ` · Mesa ${table.trim()}` : ""}
+          {table.trim() ? ` · ${tCommon("table")} ${table.trim()}` : ""}
         </span>
       </div>
 
       {/* Submit form */}
       <section style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: "1.25rem", marginBottom: "2rem" }}>
-        <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>Add a song</h2>
+        <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>{t("addSong")}</h2>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <SongSearch
             key={searchKey}
@@ -295,15 +315,15 @@ export default function PatronRoom({
             onSelect={handleSelect}
           />
           {parsedVideoId && (
-            <p style={{ fontSize: "0.8rem", color: "#4ade80" }}>✓ Selected: {parsedVideoId}</p>
+            <p style={{ fontSize: "0.8rem", color: "#4ade80" }}>{t("selected", { videoId: parsedVideoId })}</p>
           )}
 
           <div>
             <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem", color: "var(--text-muted)" }}>
-              Song title (optional)
+              {t("songTitleLabel")}
             </label>
             <input
-              placeholder="e.g. Bohemian Rhapsody"
+              placeholder={t("songTitlePlaceholder")}
               maxLength={120}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -313,11 +333,11 @@ export default function PatronRoom({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
             <div>
               <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem", color: "var(--text-muted)" }}>
-                Table # (optional)
+                {t("tableLabel")}
               </label>
               <input
-                placeholder="e.g. 7"
-                aria-label="Table number"
+                placeholder={t("tablePlaceholder")}
+                aria-label={t("tableAria")}
                 maxLength={10}
                 value={table}
                 onChange={(e) => updateTable(e.target.value)}
@@ -325,17 +345,17 @@ export default function PatronRoom({
             </div>
             <div>
               <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem", color: "var(--text-muted)" }}>
-                Mode
+                {t("modeLabel")}
               </label>
-              <select value={mode} onChange={(e) => setMode(e.target.value as Mode)} aria-label="Mode">
-                <option value="sing">🎤 Sing</option>
-                <option value="listen-dance">💃 Listen / Dance</option>
+              <select value={mode} onChange={(e) => setMode(e.target.value as Mode)} aria-label={t("modeLabel")}>
+                <option value="sing">{t("modeSing")}</option>
+                <option value="listen-dance">{t("modeListen")}</option>
               </select>
             </div>
           </div>
 
           {submitError && <p style={{ color: "var(--accent)", fontSize: "0.875rem" }}>{submitError}</p>}
-          {submitSuccess && <p style={{ color: "#4ade80", fontSize: "0.875rem" }}>✓ Song added to the queue!</p>}
+          {submitSuccess && <p style={{ color: "#4ade80", fontSize: "0.875rem" }}>{t("songAdded")}</p>}
 
           <button
             ref={submitBtnRef}
@@ -343,7 +363,7 @@ export default function PatronRoom({
             type="submit"
             disabled={submitting || !parsedVideoId}
           >
-            {submitting ? "Adding…" : "Add to queue"}
+            {submitting ? t("adding") : t("addToQueue")}
           </button>
         </form>
       </section>
@@ -374,17 +394,19 @@ export default function PatronRoom({
       >
         <span style={{ fontSize: "1.4rem" }}>🖥️</span>
         <span style={{ fontSize: "0.9rem", lineHeight: 1.4 }}>
-          O vídeo toca na <strong>tela do bar</strong>.{" "}
-          <span style={{ color: "var(--accent)" }}>Assistir na TV ↗</span>
+          {t.rich("playerHint", {
+            b: (chunks) => <strong>{chunks}</strong>,
+            a: (chunks) => <span style={{ color: "var(--accent)" }}>{chunks}</span>,
+          })}
         </span>
       </a>
 
       {/* Live queue */}
       <section>
         <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
-          Live queue{" "}
+          {t("liveQueue")}{" "}
           <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: "0.875rem" }}>
-            ({queue.length} {queue.length === 1 ? "song" : "songs"})
+            {t("queueCount", { count: queue.length })}
           </span>
         </h2>
         {roomMode && (
@@ -392,7 +414,7 @@ export default function PatronRoom({
             data-testid="patron-mode-hint"
             style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.5rem" }}
           >
-            Modo: {modeLabel(roomMode)}
+            {t("modeHint", { mode: localizedMode(roomMode) })}
           </p>
         )}
         {reorderNotice && (
@@ -413,7 +435,7 @@ export default function PatronRoom({
         )}
 
         {queue.length === 0 ? (
-          <p style={{ color: "var(--text-muted)" }}>No songs yet — be the first!</p>
+          <p style={{ color: "var(--text-muted)" }}>{t("emptyQueue")}</p>
         ) : (
           <ol style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
             {queue.map((entry, idx) => (
@@ -444,11 +466,11 @@ export default function PatronRoom({
                   </p>
                   <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
                     {entry.nickname}
-                    {entry.table ? ` · Table ${entry.table}` : ""}
+                    {entry.table ? ` · ${tCommon("table")} ${entry.table}` : ""}
                   </p>
                 </div>
                 <span className={`badge ${entry.mode === "sing" ? "badge-sing" : "badge-listen"}`}>
-                  {entry.mode === "sing" ? "Sing" : "Dance"}
+                  {entry.mode === "sing" ? t("badgeSing") : t("badgeDance")}
                 </span>
               </li>
             ))}
@@ -457,9 +479,9 @@ export default function PatronRoom({
       </section>
 
       <footer style={{ marginTop: "3rem", color: "var(--text-muted)", fontSize: "0.75rem", textAlign: "center" }}>
-        <a href={`/${roomId}/tv`} target="_blank" rel="noreferrer">Venue screen ↗</a>
+        <a href={`/${roomId}/tv`} target="_blank" rel="noreferrer">{t("venueScreen")}</a>
         {" · "}
-        <span>Early-access prototype — queues are per-room</span>
+        <span>{t("footer")}</span>
       </footer>
     </main>
   );

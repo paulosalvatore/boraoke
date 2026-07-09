@@ -16,28 +16,28 @@ test("patron submits a song and it appears in the queue", async ({ page }) => {
   await page.goto("/default");
 
   // Nickname gate — enter nickname and join
-  await page.getByLabel("Your nickname").waitFor();
-  await page.getByPlaceholder(/nickname|e\.g\. Maria/i).fill("TestUser");
-  await page.getByRole("button", { name: /join queue/i }).click();
+  await page.getByLabel("Seu apelido").waitFor();
+  await page.getByPlaceholder(/ex\.: Maria/i).fill("TestUser");
+  await page.getByRole("button", { name: /entrar na fila/i }).click();
 
   // Wait for the main form to appear
-  await page.getByRole("heading", { name: /add a song/i }).waitFor();
+  await page.getByRole("heading", { name: /adicionar música/i }).waitFor();
 
   // Paste a YouTube URL into the dual-behavior search input (TICKET-8):
   // a pasted link is resolved locally without hitting the search API.
   await page.getByLabel(/Buscar música/i).fill("https://youtu.be/dQw4w9WgXcQ");
 
   // Wait for the resolved-selection confirmation
-  await expect(page.getByText(/Selected: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
+  await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
 
   // Optionally add a title
-  await page.getByPlaceholder(/Bohemian Rhapsody/i).fill("Rick Roll");
+  await page.getByPlaceholder(/^ex\.: Evidências$/).fill("Rick Roll");
 
   // Submit
-  await page.getByRole("button", { name: /add to queue/i }).click();
+  await page.getByRole("button", { name: /adicionar à fila/i }).click();
 
   // Confirmation message
-  await expect(page.getByText(/song added to the queue/i)).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText(/música na fila/i)).toBeVisible({ timeout: 5000 });
 
   // The song should appear in the live queue list
   await expect(page.getByText("Rick Roll")).toBeVisible({ timeout: 6000 });

@@ -11,6 +11,7 @@ import {
   registerRoomCreation,
 } from "@/lib/room-create-throttle";
 import { track } from "@/lib/telemetry";
+import { getTranslations } from "next-intl/server";
 
 const MAX_BODY_BYTES = 1024;
 const MAX_NAME = 60;
@@ -61,8 +62,12 @@ export async function POST(req: NextRequest) {
   // rejected cheaply.
   const ip = clientIpFrom(req);
   if (throttleEnforced() && isRoomCreateThrottled(ip)) {
+    // i18n (TICKET-30): user-facing copy localized to the request locale (cookie
+    // / Accept-Language via i18n/request.ts). Technical 4xx guards below stay in
+    // English — a normal UI never surfaces them (see string audit).
+    const te = await getTranslations("Errors");
     return NextResponse.json(
-      { error: "Muitas salas criadas — tente de novo em uma hora." },
+      { error: te("roomsRateLimited") },
       { status: 429 },
     );
   }
@@ -97,8 +102,9 @@ export async function POST(req: NextRequest) {
   const created = await createRoom(name);
   if (!created) {
     // Global ROOM_MAX ceiling reached (HIGH-1) — polite, non-technical copy.
+    const te = await getTranslations("Errors");
     return NextResponse.json(
-      { error: "Estamos lotados por enquanto — tente de novo mais tarde." },
+      { error: te("roomsFull") },
       { status: 503 },
     );
   }

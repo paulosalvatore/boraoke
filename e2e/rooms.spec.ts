@@ -46,15 +46,15 @@ async function joinAndSubmit(
   table?: string,
 ) {
   await page.goto(`/${roomId}`);
-  await page.getByLabel("Your nickname").fill(nick);
-  await page.getByRole("button", { name: /join queue/i }).click();
-  await page.getByRole("heading", { name: /add a song/i }).waitFor();
-  if (table) await page.getByLabel("Table number").fill(table);
+  await page.getByLabel("Seu apelido").fill(nick);
+  await page.getByRole("button", { name: /entrar na fila/i }).click();
+  await page.getByRole("heading", { name: /adicionar música/i }).waitFor();
+  if (table) await page.getByLabel("Número da mesa").fill(table);
   await page.getByLabel(/Buscar música/i).fill("https://youtu.be/dQw4w9WgXcQ");
-  await expect(page.getByText(/Selected: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
-  await page.getByPlaceholder(/Bohemian Rhapsody/i).fill(song);
-  await page.getByRole("button", { name: /add to queue/i }).click();
-  await expect(page.getByText(/song added to the queue/i)).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
+  await page.getByPlaceholder(/^ex\.: Evidências$/).fill(song);
+  await page.getByRole("button", { name: /adicionar à fila/i }).click();
+  await expect(page.getByText(/música na fila/i)).toBeVisible({ timeout: 5000 });
   await expect(page.getByText(song)).toBeVisible({ timeout: 6000 });
 }
 
@@ -72,8 +72,8 @@ test("two rooms stay isolated and the TV shows the room's song", async ({ page }
 
   // Room B stays empty — isolated queue (AC2).
   await page.goto(`/${roomB}`);
-  await page.getByRole("heading", { name: /add a song/i }).waitFor();
-  await expect(page.getByText(/no songs yet/i)).toBeVisible();
+  await page.getByRole("heading", { name: /adicionar música/i }).waitFor();
+  await expect(page.getByText(/ninguém na fila/i)).toBeVisible();
   await expect(page.getByText("Musica da Sala A")).toHaveCount(0);
 
   // Room A's TV shows the song + table metadata (AC3/AC4).
@@ -96,7 +96,7 @@ test("landing join-by-code navigates into the room", async ({ page }) => {
   await page.getByRole("button", { name: /^entrar$/i }).click();
 
   // Lands on the room's patron page (nickname gate, then the venue chip).
-  await page.getByLabel("Your nickname").waitFor();
+  await page.getByLabel("Seu apelido").waitFor();
   await expect(page).toHaveURL(new RegExp(`/${room}$`));
 });
 

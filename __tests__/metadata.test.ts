@@ -1,4 +1,4 @@
-import { metadata, viewport } from "@/app/metadata";
+import { metadata, viewport, ogImageForLocale } from "@/app/metadata";
 
 /**
  * Publish-readiness metadata (TICKET-33). Guards the Boraoke rebrand + the
@@ -43,5 +43,18 @@ describe("root layout metadata (TICKET-33 publish readiness)", () => {
 
   it("sets the brand theme color", () => {
     expect(viewport.themeColor).toBe("#0D0A14");
+  });
+});
+
+describe("per-locale OG image lookup (TICKET-30 i18n)", () => {
+  it("returns the pt-BR image for pt-BR (the shipped variant)", () => {
+    expect(ogImageForLocale("pt-BR")).toBe("/brand/og-image-pt-BR.png");
+  });
+
+  it("falls back to the pt-BR image for en/es (variants not shipped yet)", () => {
+    // en/es OG cards are in flight; until they land the lookup MUST fall back to
+    // the pt-BR image rather than emit a 404 social card.
+    expect(ogImageForLocale("en")).toBe("/brand/og-image-pt-BR.png");
+    expect(ogImageForLocale("es")).toBe("/brand/og-image-pt-BR.png");
   });
 });

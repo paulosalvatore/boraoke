@@ -124,7 +124,23 @@ export function orderQueue(items: QueueEntry[], mode: RoomMode): QueueEntry[] {
 
 export type SubmitCheck =
   | { ok: true }
-  | { ok: false; reason: "cap" | "table-required" | "duplicate"; message: string };
+  | {
+      ok: false;
+      reason: "cap" | "table-required" | "duplicate";
+      message: string;
+      /**
+       * i18n (TICKET-30): fine-grained refusal code + cap value so the API layer
+       * can translate the user-facing copy per request locale. `message` stays
+       * the pt-BR source (and the pure-lib test surface); ADDITIVE only.
+       */
+      code:
+        | "table-required"
+        | "listen-cap"
+        | "duplicate"
+        | "table-cap"
+        | "person-cap";
+      cap?: number;
+    };
 
 /** Map an app candidate to an engine input for cap/duplicate evaluation. */
 function toEngineInput(candidate: QueueEntry): EngineInput {
@@ -158,6 +174,7 @@ export function checkSubmit(
     return {
       ok: false,
       reason: "table-required",
+      code: "table-required",
       message: "Informe o número da sua mesa — o bar está no modo 2 por mesa.",
     };
   }
@@ -171,6 +188,8 @@ export function checkSubmit(
       return {
         ok: false,
         reason: "cap",
+        code: "listen-cap",
+        cap: LISTEN_CAP_PER_UUID,
         message: `Você já tem ${LISTEN_CAP_PER_UUID} pedidos de música na fila — espere um tocar.`,
       };
     }
@@ -188,6 +207,7 @@ export function checkSubmit(
     return {
       ok: false,
       reason: "duplicate",
+      code: "duplicate",
       message: "Você já pediu essa música — ela já está na fila.",
     };
   }
@@ -195,12 +215,16 @@ export function checkSubmit(
     return {
       ok: false,
       reason: "cap",
+      code: "table-cap",
+      cap: PER_TABLE_CAP,
       message: `Sua mesa já tem ${PER_TABLE_CAP} músicas na fila — espere uma tocar.`,
     };
   }
   return {
     ok: false,
     reason: "cap",
+    code: "person-cap",
+    cap: PER_PERSON_CAP,
     message: `Você já tem ${PER_PERSON_CAP} músicas na fila — espere uma tocar para adicionar outra.`,
   };
 }

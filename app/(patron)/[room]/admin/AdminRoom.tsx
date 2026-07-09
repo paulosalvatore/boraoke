@@ -1,11 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import type { QueueEntry } from "@/lib/store";
 import { computeStats } from "@/components/host/stats";
 import ModeSwitcher from "@/components/host/ModeSwitcher";
-import { DEFAULT_ROOM_MODE, modeLabel, type RoomMode } from "@/lib/rotation-modes";
+import { DEFAULT_ROOM_MODE, MODE_MESSAGE_KEY, type RoomMode } from "@/lib/rotation-modes";
 import QrCode from "@/components/QrCode";
+import {
+  LOCALES,
+  LOCALE_NATIVE_NAMES,
+  DEFAULT_LOCALE,
+  type Locale,
+} from "@/i18n/locales";
 import styles from "./admin.module.css";
 
 const POLL_INTERVAL = 3000;
@@ -20,10 +27,19 @@ type Auth = "checking" | "gate" | "authed";
 export default function AdminRoom({
   roomId,
   venueName,
+  initialLanguage,
 }: {
   roomId: string;
   venueName?: string;
+  /** Room default language resolved by the server page (TICKET-30). */
+  initialLanguage?: Locale;
 }) {
+  // i18n (TICKET-30): all copy from the `Admin`/`Modes` catalogs. The dashboard
+  // itself follows the HOST's locale (cookie flow); the room-language selector
+  // below sets what the TV + patron first-visit default follow.
+  const t = useTranslations("Admin");
+  const tCommon = useTranslations("Common");
+  const tModes = useTranslations("Modes");
   const [auth, setAuth] = useState<Auth>("checking");
   const [configured, setConfigured] = useState(true);
   // TICKET-43: landing "Suas salas" routes here with ?expired=1 when a remembered
@@ -44,6 +60,11 @@ export default function AdminRoom({
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [joinUrl, setJoinUrl] = useState("");
+  // Room default language (TICKET-30) — optimistic select, POST /api/host/language.
+  const [roomLanguage, setRoomLanguage] = useState<Locale>(
+    initialLanguage ?? DEFAULT_LOCALE,
+  );
+  const [langBusy, setLangBusy] = useState(false);
 
   const roomQuery = `?room=${encodeURIComponent(roomId)}`;
 
@@ -105,12 +126,12 @@ export default function AdminRoom({
         setToken("");
         setAuth("authed");
       } else if (res.status === 503) {
-        setLoginError("Controles do host ainda não configurados para este bar.");
+        setLoginError(t("notConfigured"));
       } else {
-        setLoginError("Token inválido — tente de novo.");
+        setLoginError(t("loginInvalid"));
       }
     } catch {
-      setLoginError("Erro de rede — tente de novo.");
+      setLoginError(tCommon("networkError"));
     } finally {
       setLoggingIn(false);
     }
@@ -143,7 +164,9 @@ export default function AdminRoom({
         body: JSON.stringify({ mode: next }),
       });
       if (res.ok) {
-        setModeMsg(`Modo alterado para ${modeLabel(next)} — fila reordenada.`);
+        setModeMsg(
+          t("modeChanged", { mode: tModes(`${MODE_MESSAGE_KEY[next]}Name`) }),
+        );
         window.setTimeout(() => setModeMsg(""), 4000);
       }
       await fetchQueue();
@@ -151,6 +174,25 @@ export default function AdminRoom({
       await fetchQueue(); // revert to server truth
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function changeLanguage(next: Locale) {
+    if (next === roomLanguage || langBusy) return;
+    setLangBusy(true);
+    const prev = roomLanguage;
+    setRoomLanguage(next); // optimistic
+    try {
+      const res = await fetch(`/api/host/language${roomQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language: next }),
+      });
+      if (!res.ok) setRoomLanguage(prev);
+    } catch {
+      setRoomLanguage(prev);
+    } finally {
+      setLangBusy(false);
     }
   }
 
@@ -168,7 +210,7 @@ export default function AdminRoom({
   if (auth === "checking") {
     return (
       <main className={styles.gate}>
-        <p style={{ color: "var(--text-muted)" }}>Carregando…</p>
+        <p style={{ color: "var(--text-muted)" }}>{tCommon("loading")}</p>
       </main>
     );
   }
@@ -176,26 +218,24 @@ export default function AdminRoom({
   if (auth === "gate") {
     return (
       <main className={styles.gate}>
-        <h1>🎤 Boraoke · admin</h1>
+        <h1>🎤 {t("adminTitle")}</h1>
         <p style={{ marginBottom: "0.25rem" }}>{venueName ?? roomId}</p>
         {sessionExpired && configured && (
           <p data-testid="session-expired-notice" style={{ color: "#fbbf24", fontSize: "0.9rem", marginBottom: "0.25rem" }}>
-            Sua sessão expirou — entre com o código da sala.
+            {t("sessionExpired")}
           </p>
         )}
         <p>
-          {configured
-            ? "Entre com o código do host para controlar a fila."
-            : "Controles do host ainda não configurados para este bar."}
+          {configured ? t("loginPrompt") : t("notConfigured")}
         </p>
         {configured && (
           <form className={styles.gateForm} onSubmit={handleLogin}>
             <label htmlFor="host-token" className={styles.label}>
-              Código do host
+              {t("hostCodeLabel")}
             </label>
             <input
               id="host-token"
-              aria-label="Código do host"
+              aria-label={t("hostCodeLabel")}
               type="password"
               autoFocus
               value={token}
@@ -204,7 +244,7 @@ export default function AdminRoom({
             />
             {loginError && <p className={styles.error}>{loginError}</p>}
             <button className="btn-primary" type="submit" disabled={loggingIn || !token}>
-              {loggingIn ? "Entrando…" : "Entrar"}
+              {loggingIn ? t("loggingIn") : t("login")}
             </button>
           </form>
         )}
@@ -218,12 +258,12 @@ export default function AdminRoom({
   return (
     <main className={styles.wrap}>
       <header className={styles.top}>
-        <span className={styles.wordmark}>Boraoke</span>
+        <span className={styles.wordmark}>{tCommon("brand")}</span>
         <span className={styles.chip}>{venueName ?? roomId}</span>
         {paused ? (
-          <span className={styles.chipPaused}>⏸ Pausado</span>
+          <span className={styles.chipPaused}>{t("paused")}</span>
         ) : (
-          <span className={styles.chipLive}>AO VIVO</span>
+          <span className={styles.chipLive}>{t("live")}</span>
         )}
         <span className={styles.spacer} />
         {/* TICKET-20: quick jumps to the two customer-facing screens of THIS
@@ -235,7 +275,7 @@ export default function AdminRoom({
           target="_blank"
           rel="noreferrer"
         >
-          Sala do público ↗
+          {t("publicRoomLink")}
         </a>
         <a
           className={styles.tvLink}
@@ -244,7 +284,7 @@ export default function AdminRoom({
           target="_blank"
           rel="noreferrer"
         >
-          Abrir /tv ↗
+          {t("tvLink")}
         </a>
       </header>
 
@@ -258,10 +298,10 @@ export default function AdminRoom({
 
       <div className={styles.cols}>
         {/* Left: queue + controls */}
-        <section aria-label="Fila">
-          <span className={styles.label}>Fila</span>
+        <section aria-label={t("queue")}>
+          <span className={styles.label}>{t("queue")}</span>
           {queue.length === 0 ? (
-            <p className={styles.emptyQueue}>Fila vazia — manda a primeira! 🎤</p>
+            <p className={styles.emptyQueue}>{t("emptyQueue")}</p>
           ) : (
             <ol className={styles.queue} style={{ listStyle: "none" }}>
               {queue.map((entry, idx) => {
@@ -278,9 +318,9 @@ export default function AdminRoom({
                     <div className={styles.songInfo}>
                       <div className={styles.who}>
                         {entry.nickname}
-                        {entry.table ? <span className={styles.meta}> · Mesa {entry.table}</span> : null}
+                        {entry.table ? <span className={styles.meta}> · {tCommon("table")} {entry.table}</span> : null}
                         {entry.mode === "listen-dance" ? (
-                          <span className={styles.meta}> · 🎶 só curtir</span>
+                          <span className={styles.meta}> · {t("listenOnly")}</span>
                         ) : null}
                       </div>
                       <div className={styles.song}>
@@ -290,7 +330,7 @@ export default function AdminRoom({
                     <div className={styles.rowActions}>
                       <button
                         className={styles.moveBtn}
-                        aria-label={`Subir ${entry.nickname}`}
+                        aria-label={t("moveUp", { nickname: entry.nickname })}
                         disabled={busy || idx === 0}
                         onClick={() => move(entry.id, idx - 1)}
                       >
@@ -298,7 +338,7 @@ export default function AdminRoom({
                       </button>
                       <button
                         className={styles.moveBtn}
-                        aria-label={`Descer ${entry.nickname}`}
+                        aria-label={t("moveDown", { nickname: entry.nickname })}
                         disabled={busy || idx === queue.length - 1}
                         onClick={() => move(entry.id, idx + 1)}
                       >
@@ -307,20 +347,20 @@ export default function AdminRoom({
                       {confirmingId === entry.id ? (
                         <span className={styles.confirm}>
                           <button className={styles.confirmYes} onClick={() => remove(entry.id)}>
-                            Confirmar
+                            {t("confirm")}
                           </button>
                           <button className={styles.confirmNo} onClick={() => setConfirmingId(null)}>
-                            Cancelar
+                            {t("cancel")}
                           </button>
                         </span>
                       ) : (
                         <button
                           className={styles.removeBtn}
-                          aria-label={`Remover ${entry.nickname}`}
+                          aria-label={t("removeAria", { nickname: entry.nickname })}
                           disabled={busy}
                           onClick={() => setConfirmingId(entry.id)}
                         >
-                          remover
+                          {t("remove")}
                         </button>
                       )}
                     </div>
@@ -336,50 +376,73 @@ export default function AdminRoom({
               onClick={togglePause}
               disabled={busy}
             >
-              {paused ? "▶ Retomar" : "⏸ Pausar"}
+              {paused ? t("resume") : t("pause")}
             </button>
             <button
               className={styles.ctrlBtn}
               onClick={skip}
               disabled={busy || queue.length === 0}
             >
-              ⏭ Pular música
+              {t("skipSong")}
             </button>
             <button
               className={styles.ctrlBtn}
               onClick={skipNoShow}
               disabled={busy || queue.length === 0 || queue[0]?.mode === "listen-dance"}
-              title="Cantor não veio: pula e devolve com 1 chance no próximo rodízio"
+              title={t("noShowTitle")}
             >
-              🙅 Não veio
+              {t("noShow")}
             </button>
           </div>
         </section>
 
         {/* Right: stats + join link */}
-        <section aria-label="A noite em números">
-          <span className={styles.label}>A noite em números</span>
+        <section aria-label={t("statsTitle")}>
+          <span className={styles.label}>{t("statsTitle")}</span>
           <div className={styles.stats}>
             <div className={styles.stat}>
               <div className={styles.statN}>{stats.total}</div>
-              <div className={styles.statL}>na fila hoje</div>
+              <div className={styles.statL}>{t("statInQueue")}</div>
             </div>
             <div className={styles.stat}>
               <div className={styles.statN}>{stats.singers}</div>
-              <div className={styles.statL}>cantores</div>
+              <div className={styles.statL}>{t("statSingers")}</div>
             </div>
             <div className={styles.stat}>
               <div className={styles.statN}>{stats.tables}</div>
-              <div className={styles.statL}>mesas ativas</div>
+              <div className={styles.statL}>{t("statTables")}</div>
             </div>
           </div>
+          <div className={styles.joinCard} data-testid="room-language-card">
+            <span className={styles.label}>
+              <label htmlFor="room-language">{t("languageLabel")}</label>
+            </span>
+            <select
+              id="room-language"
+              data-testid="room-language-select"
+              aria-label={t("languageLabel")}
+              value={roomLanguage}
+              disabled={langBusy}
+              onChange={(e) => void changeLanguage(e.target.value as Locale)}
+              style={{ marginTop: "0.5rem" }}
+            >
+              {LOCALES.map((l) => (
+                <option key={l} value={l}>
+                  {LOCALE_NATIVE_NAMES[l]}
+                </option>
+              ))}
+            </select>
+            <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
+              {t("languageHint")}
+            </p>
+          </div>
           <div className={styles.joinCard}>
-            <span className={styles.label}>Entrada do público</span>
-            <p style={{ fontSize: "0.9rem" }}>QR na tela /tv ou link direto:</p>
+            <span className={styles.label}>{t("publicEntrance")}</span>
+            <p style={{ fontSize: "0.9rem" }}>{t("joinHint")}</p>
             <p className={styles.joinUrl} data-testid="admin-join-url">{joinUrl || "…"}</p>
             {joinUrl ? (
               <div style={{ marginTop: "0.75rem" }}>
-                <QrCode value={joinUrl} size={140} title="QR da sala" />
+                <QrCode value={joinUrl} size={140} title={t("qrTitle")} />
               </div>
             ) : null}
           </div>

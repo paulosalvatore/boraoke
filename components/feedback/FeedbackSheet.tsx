@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import type { Category, Sentiment } from "@/lib/feedback-types";
 import { useFeedbackContext } from "./useFeedbackContext";
 import styles from "./FeedbackWidget.module.css";
@@ -12,32 +13,26 @@ import styles from "./FeedbackWidget.module.css";
  * sentiment tap is optional.
  */
 
-interface SentimentDef {
-  key: Sentiment;
-  emoji: string;
-  label: string;
-}
-const SENTIMENT_DEFS: readonly SentimentDef[] = [
-  { key: "love", emoji: "😍", label: "Amei" },
-  { key: "happy", emoji: "🙂", label: "Curti" },
-  { key: "meh", emoji: "😕", label: "Meh" },
-  { key: "angry", emoji: "😡", label: "Odiei" },
+// i18n (TICKET-30): labels moved to messages, keyed off the stable `key`. The
+// emoji + key stay here (data, not copy); the label is looked up per locale.
+const SENTIMENT_DEFS: readonly { key: Sentiment; emoji: string; labelKey: string }[] = [
+  { key: "love", emoji: "😍", labelKey: "sentimentLove" },
+  { key: "happy", emoji: "🙂", labelKey: "sentimentHappy" },
+  { key: "meh", emoji: "😕", labelKey: "sentimentMeh" },
+  { key: "angry", emoji: "😡", labelKey: "sentimentAngry" },
 ];
 
-interface CategoryDef {
-  key: Category;
-  label: string;
-}
-const CATEGORY_DEFS: readonly CategoryDef[] = [
-  { key: "song-search", label: "Busca de música" },
-  { key: "queue-fairness", label: "Fila / vez" },
-  { key: "tv-player", label: "Player da TV" },
-  { key: "other", label: "Outro" },
+const CATEGORY_DEFS: readonly { key: Category; labelKey: string }[] = [
+  { key: "song-search", labelKey: "catSongSearch" },
+  { key: "queue-fairness", labelKey: "catQueueFairness" },
+  { key: "tv-player", labelKey: "catTvPlayer" },
+  { key: "other", labelKey: "catOther" },
 ];
 
 type Phase = "form" | "sending" | "done" | "error";
 
 export function FeedbackSheet({ onClose }: { onClose: () => void }) {
+  const t = useTranslations("Feedback");
   const { buildContext } = useFeedbackContext();
   const [text, setText] = useState("");
   const [category, setCategory] = useState<Category | null>(null);
@@ -48,7 +43,7 @@ export function FeedbackSheet({ onClose }: { onClose: () => void }) {
     if (phase === "sending") return;
     const context = buildContext();
     if (!context) {
-      setErrorMsg("Não consegui te identificar. Recarrega a página e tenta de novo.");
+      setErrorMsg(t("errorNoIdentity"));
       setPhase("error");
       return;
     }
@@ -71,12 +66,10 @@ export function FeedbackSheet({ onClose }: { onClose: () => void }) {
       const data = (await res.json().catch(() => null)) as {
         error?: string;
       } | null;
-      setErrorMsg(
-        data?.error ?? "Deu ruim ao enviar. Tenta de novo em instantes.",
-      );
+      setErrorMsg(data?.error ?? t("errorSend"));
       setPhase("error");
     } catch {
-      setErrorMsg("Sem conexão? Tenta de novo em instantes.");
+      setErrorMsg(t("errorOffline"));
       setPhase("error");
     }
   }
@@ -85,18 +78,15 @@ export function FeedbackSheet({ onClose }: { onClose: () => void }) {
     return (
       <div className={styles.confirm}>
         <div className={styles.confirmEmoji}>🎤</div>
-        <p className={styles.confirmTitle}>Valeu!</p>
-        <p className={styles.confirmBody}>
-          Um robô supervisionado por humanos lê cada um desses. Fica de olho no
-          changelog. 🚀
-        </p>
+        <p className={styles.confirmTitle}>{t("thanks")}</p>
+        <p className={styles.confirmBody}>{t("thanksBody")}</p>
         <button
           type="button"
           className={styles.confirmBtn}
           onClick={onClose}
           autoFocus
         >
-          Fechar
+          {t("close")}
         </button>
       </div>
     );
@@ -107,49 +97,47 @@ export function FeedbackSheet({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className={styles.header}>
-        <p className={styles.title}>Como tá sendo? 🎶</p>
+        <p className={styles.title}>{t("title")}</p>
         <button
           type="button"
           className={styles.close}
-          aria-label="Fechar"
+          aria-label={t("close")}
           onClick={onClose}
         >
           ×
         </button>
       </div>
-      <p className={styles.subtitle}>
-        Toca numa carinha pra mandar — rapidão, sem login.
-      </p>
+      <p className={styles.subtitle}>{t("subtitle")}</p>
 
-      <div className={styles.sentiments} role="group" aria-label="Sentimento">
+      <div className={styles.sentiments} role="group" aria-label={t("sentimentAria")}>
         {SENTIMENT_DEFS.map((s) => (
           <button
             key={s.key}
             type="button"
             className={styles.sentiment}
             disabled={sending}
-            aria-label={s.label}
+            aria-label={t(s.labelKey)}
             onClick={() => submit(s.key)}
           >
             <span className={styles.sentimentEmoji} aria-hidden>
               {s.emoji}
             </span>
-            <span className={styles.sentimentLabel}>{s.label}</span>
+            <span className={styles.sentimentLabel}>{t(s.labelKey)}</span>
           </button>
         ))}
       </div>
 
       <textarea
         className={styles.textarea}
-        placeholder="Quer contar mais? (opcional)"
+        placeholder={t("textPlaceholder")}
         maxLength={1000}
         value={text}
         disabled={sending}
         onChange={(e) => setText(e.target.value)}
       />
 
-      <p className={styles.chipsLabel}>Sobre o quê? (opcional)</p>
-      <div className={styles.chips} role="group" aria-label="Categoria">
+      <p className={styles.chipsLabel}>{t("categoryLabel")}</p>
+      <div className={styles.chips} role="group" aria-label={t("categoryAria")}>
         {CATEGORY_DEFS.map((c) => (
           <button
             key={c.key}
@@ -163,17 +151,17 @@ export function FeedbackSheet({ onClose }: { onClose: () => void }) {
             disabled={sending}
             onClick={() => setCategory(category === c.key ? null : c.key)}
           >
-            {c.label}
+            {t(c.labelKey)}
           </button>
         ))}
       </div>
 
       {sending ? (
         <p className={styles.hint}>
-          <span className={styles.spinner} aria-hidden /> Enviando…
+          <span className={styles.spinner} aria-hidden /> {t("sending")}
         </p>
       ) : (
-        <p className={styles.hint}>É só tocar numa carinha pra enviar.</p>
+        <p className={styles.hint}>{t("sendHint")}</p>
       )}
 
       {phase === "error" && <p className={styles.error}>{errorMsg}</p>}

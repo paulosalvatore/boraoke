@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import SavedRooms from "@/components/SavedRooms";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 /**
  * Landing (TICKET-9) — replaces the old global patron flow (which moved to
@@ -12,6 +14,9 @@ import SavedRooms from "@/components/SavedRooms";
  * joined from localStorage for quick re-entry.
  */
 export default function Landing() {
+  // i18n (TICKET-30): copy from the `Landing` catalog; switcher in the header.
+  const t = useTranslations("Landing");
+  const tCommon = useTranslations("Common");
   const router = useRouter();
   const [code, setCode] = useState("");
   const [lastRoom, setLastRoom] = useState("");
@@ -42,10 +47,12 @@ export default function Landing() {
 
   return (
     <main style={{ maxWidth: 480, margin: "0 auto", padding: "3rem 1rem", display: "flex", flexDirection: "column", minHeight: "80vh" }}>
-      <h1 style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>🎤 Boraoke</h1>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
+        <LanguageSwitcher />
+      </div>
+      <h1 style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>🎤 {tCommon("brand")}</h1>
       <p style={{ color: "var(--text-muted)", fontSize: "1.05rem", lineHeight: 1.5, marginBottom: "2rem" }}>
-        A fila de karaokê do seu bar, no celular de cada cliente. Crie a sala,
-        mostre o QR, e todo mundo entra na fila com a mesa marcada.
+        {t("tagline")}
       </p>
 
       <Link
@@ -53,21 +60,21 @@ export default function Landing() {
         href="/new"
         style={{ display: "block", textAlign: "center", marginBottom: "2.5rem" }}
       >
-        Criar a sala do seu bar
+        {t("createCta")}
       </Link>
 
       {/* TICKET-43: device-level remembered rooms (renders nothing when empty). */}
       <SavedRooms />
 
       <section style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: "1.25rem" }}>
-        <h2 style={{ fontSize: "1.05rem", marginBottom: "0.25rem" }}>Já tem um código?</h2>
+        <h2 style={{ fontSize: "1.05rem", marginBottom: "0.25rem" }}>{t("haveCode")}</h2>
         <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
-          Digite o código da sala (ou cole o link que você recebeu).
+          {t("haveCodeHint")}
         </p>
         <form onSubmit={join} style={{ display: "flex", gap: "0.5rem" }}>
           <input
-            aria-label="Código da sala"
-            placeholder="ex.: bar-do-ze"
+            aria-label={t("codeLabel")}
+            placeholder={t("codePlaceholder")}
             value={code}
             onChange={(e) => setCode(e.target.value)}
             // TICKET-20: the input's default fill is var(--surface) — the SAME
@@ -77,12 +84,12 @@ export default function Landing() {
             style={{ flex: 1, background: "var(--bg)", borderColor: "var(--text-muted)" }}
           />
           <button className="btn-primary" type="submit" disabled={!code.trim()} style={{ minWidth: 90, width: "auto" }}>
-            Entrar
+            {t("enter")}
           </button>
         </form>
         {lastRoom && (
           <p style={{ marginTop: "0.75rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            Última sala:{" "}
+            {t("lastRoom")}{" "}
             <Link href={`/${lastRoom}`} style={{ color: "var(--accent)" }} data-testid="last-room-link">
               {lastRoom}
             </Link>
@@ -91,7 +98,7 @@ export default function Landing() {
       </section>
 
       <footer style={{ marginTop: "auto", paddingTop: "2rem", color: "var(--text-muted)", fontSize: "0.75rem", textAlign: "center" }}>
-        <span>Boraoke — early access · uma sala por bar, filas isoladas</span>
+        <span>{t("footer")}</span>
       </footer>
     </main>
   );

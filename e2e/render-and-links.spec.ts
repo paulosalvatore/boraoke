@@ -102,15 +102,15 @@ test("/[room] renders join form, then song input + queue + player-hint", async (
   await page.goto(`/${id}`);
 
   // join (nickname) gate
-  const nick = page.getByLabel("Your nickname");
+  const nick = page.getByLabel("Seu apelido");
   await expect(nick).toBeVisible();
   await nick.fill("RenderTester");
-  await page.getByRole("button", { name: /join queue/i }).click();
+  await page.getByRole("button", { name: /entrar na fila/i }).click();
 
   // post-join essentials
-  await expect(page.getByRole("heading", { name: /add a song/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /adicionar música/i })).toBeVisible();
   await expect(page.getByLabel(/buscar música/i)).toBeVisible(); // song input
-  await expect(page.getByRole("heading", { name: /live queue/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /fila ao vivo/i })).toBeVisible();
   // player-hint (TICKET-20 #3: patron page has no player by design → hint to TV)
   const hint = page.getByTestId("patron-player-hint");
   await expect(hint).toBeVisible();

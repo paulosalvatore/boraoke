@@ -8,6 +8,9 @@ const config: Config = {
     // `server-only` throws under plain node (by design — it guards Next.js
     // client bundles); stub it out for jest.
     "^server-only$": "<rootDir>/__mocks__/server-only.ts",
+    // next-intl/server ships ESM + needs a live request context; stub it to the
+    // pt-BR source catalog so API-route tests run under CJS (TICKET-30).
+    "^next-intl/server$": "<rootDir>/__mocks__/next-intl-server.ts",
     // rotation-engine (TICKET-10): resolve the workspace package to its source
     // entry. The engine's internal `.ts`-suffixed imports resolve as real files.
     "^@boraoke/rotation-engine$": "<rootDir>/packages/rotation-engine/src/index.ts",
