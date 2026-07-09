@@ -199,3 +199,59 @@ TICKET-45 faithfully implements the committed design from `work/plans/TICKET-41-
 Two NITs noted (duplicate header constant, onError+rate-limit wedge comment) — neither blocks merge.
 
 The TM may merge after flipping the PR from draft to ready and confirming the local-Docker `verify-green-local.sh` GREEN.
+
+---
+
+## D-022 OPUS MERGE-COUNTING SECOND PASS (2026-07-09)
+
+The sonnet first pass above resolved the structural/design-conformance layer. This pass applies the judgment lens the venue's Saturday night actually needs. **Verdict: APPROVE (merge-counting).** Verified locally: jest 460/460, rotation-engine 59/59, e2e-enforce 43 passed (advance-auth spec's 3× 401/success paths re-run live green), `next build` compiles clean. Findings below are follow-ups and NITs — none block.
+
+### 1. The rollout flip — does it strand live TVs? (RULING + runbook caveat)
+
+Walked in code. The token is `HMAC(secret, "boraoke-screen-v1|<roomId>|<bucket>")`. `advanceAuthMode()` (the `log`/`enforce` env read) is referenced ONLY in `app/api/queue/advance/route.ts` — it is NOT read by `mintScreenToken` or `verifyScreenToken`. Therefore **the token byte-format is identical in both modes**, and verification is fully stateless (no session store — `verifyScreenToken` recomputes the HMAC from `resolveRoomToken` + bucket). Consequences of the flip `log → enforce` + redeploy:
+
+- **A TV opened BEFORE the flip holds a token that survives the flip and the redeploy**, so long as it is still in-bucket. The redeploy kills the lambda, but there is no per-lambda auth state — the new lambda recomputes the same secret+bucket and accepts the pre-flip token. **The flip does NOT strand a TV whose token is still within its bucket window.** Confirmed by the `advanceAuthMode` unit tests (mode is a pure env read, orthogonal to token math).
+- **The one real hazard is bucket EXPIRY on a never-reloading kiosk TV.** A token is valid for its mint bucket + the previous bucket → up to 48h from page load (`verifyScreenToken` loops `[current, current-1]`; unit test "a token expires two buckets later" pins this). The `screenToken` is a static server-rendered prop passed once at page render; **nothing in the client re-mints it.** I verified the watchdog ladder does NOT save such a TV: the `reload` rung calls `player.loadVideoById()` (reloads the PLAYER), and the `recreate` rung calls `player.destroy()` + `setPlayerEpoch` bump (rebuilds the player IN-PAGE). **No watchdog rung reloads the PAGE**, so no rung re-mints the token. A kiosk TV that has been open >48h will, under `enforce`, get 401 on both its ENDED auto-advance and its watchdog skip → the current video finishes and the queue **wedges silently** (no user-visible error; advance just no-ops).
+
+  **RULING: the flip protocol REQUIRES a "reload every TV" caveat in the TM runbook.** The flip itself is safe for freshly-loaded TVs, but the correct operational sequence is: (a) flip `ADVANCE_AUTH=enforce` + redeploy during a quiet window, THEN (b) **hard-reload every deployed venue TV page** (F5 / kiosk relaunch) so each re-mints a fresh in-bucket token off the new deploy. Any TV left un-reloaded is fine until its token ages past 48h, at which point it wedges. This is a low-frequency failure (needs a >48h-uptime kiosk that never reloaded) but it is silent, so the reload step belongs in the runbook, not tribal knowledge. Follow-up ticket worth filing: a client-side token-age self-heal (TV reloads its own page when its token is within N hours of the 48h edge, or on a 401 from advance) so kiosks self-recover without a human touching them — this closes the class rather than papering it with a runbook step.
+
+### 2. The onError wedge — real-venue ruling
+
+Scenario: one patron pastes an album of 12 region-blocked / embedding-disabled videos; each fires `onError` (fatal code) → `skipUnplayable` → `advance("unplayable")`. Twelve near-instant fatal errors in <60s hit the 12/min/room rate cap; the 13th advance gets 429 and the TV wedges on the 13th unplayable video until the sliding window drains (~60s), then self-resolves. `skippingRef` serializes to one skip in flight so this is paced by the round-trip, but 12 instant fatals can still exhaust the minute.
+
+**RULING: ACCEPTED, as sonnet did — a 12-region-blocked-playlist IS plausible, and I do not treat the 60s self-resolving wedge as a merge blocker.** Rationale: (a) it is bounded and self-healing (the window drains, the 13th video plays or skips), (b) it requires a genuinely pathological queue (12 consecutive fatals) that a single bad patron can create but that also fixes itself within a minute, (c) the rate limit is doing exactly its job — capping drain velocity — and lowering the cap to accommodate instant-fatal bursts would weaken the anti-grief backstop it exists for. **Cheap mitigation worth a FOLLOW-UP ticket (not this PR):** exempt the `reason=unplayable` advance from the rate charge, OR give it a separate, higher unplayable-skip budget — a watchdog/onError skip is a system-legitimate advance, not attacker griefing, so charging it against the same 12/min anti-grief bucket is the root conflation. That cleanly removes the wedge without weakening the anti-scrape throttle. Filed as a suggestion, not a condition.
+
+### 3. Scraped-token blast radius (adversarial, beyond the audit)
+
+The screen token is public-by-design (rendered into the `/[room]/tv` HTML/props — the honest threat note owns this). I enumerated what a scraped CURRENT token grants for its ≤48h life:
+
+- **ADVANCE ONLY.** Grep-verified: the `X-Boraoke-Screen` header / `verifyScreenToken` / `isAdvanceAuthorized` chain is consumed by **exactly one route** — `app/api/queue/advance/route.ts`. No other route reads the header or calls the verifier.
+- **No reorder, no remove, no pause, no mode/language change.** Those live under `app/api/host/*` and gate on `requireHost`, which reads the **cookie** `hostCookieName(roomId)` and verifies against `sessionValue(token) = HMAC(secret, "cantai-host-session-v1")` — a DIFFERENT HMAC message and a DIFFERENT transport (cookie, not header) than the screen token's `HMAC(secret, "boraoke-screen-v1|room|bucket")`. **The scraped screen token cannot be replayed as a host session** (wrong derivation, wrong channel). Domain separation is real and correct.
+- **No cross-room reuse.** The token binds `roomId` into the HMAC message; unit test "a token minted for room A does NOT verify for room B" pins this. A token scraped off room A's TV is useless against room B.
+- **Residual grief is bounded by the rate limit:** a scraper holding a valid token can skip-grief the one room whose TV they scraped, at ≤12 advances/min/room. That is the deliberate prototype trade-off (accounts wave #14 hardens it), and the rate limiter is the sanctioned backstop.
+
+**Blast radius = skip-grief a single physically-identifiable room at ≤12/min for ≤48h, nothing else.** No reorder, no remove, no cross-endpoint, no cross-room. This matches the documented threat model exactly — no undisclosed escalation path.
+
+### 4. e2e helper reimplementation drift (coupling assessment)
+
+`e2e/helpers.ts` hand-mirrors the server HMAC (`SCREEN_TOKEN_PREFIX`, `SCREEN_TOKEN_BUCKET_MS`, `HOSTCODE_HMAC_KEY`, `DEV_FALLBACK_TOKEN` as local literals) rather than importing `lib/screen-token.ts` — necessarily, because that lib carries `import "server-only"` and cannot load in Playwright's Node context. **Assessment: the coupling is self-alarming, not silent.** If `lib/screen-token.ts` changed its message format (e.g., prefix → `v2`) without updating the helper, the positive-path e2e (`advanceOnce` → `expect(200)` in advance-auth.spec.ts, plus every `drainQueue` in the migrated specs) would receive 401 and **fail loudly** — the helper's stale token no longer verifies server-side. So a lib-only format change surfaces immediately as red e2e. The only un-caught case is a *matching* drift (dev edits both identically), which is by definition still correct. NIT, non-blocking: this is a manual mirror with no compile-time link; a comment cross-referencing the two constant blocks (already partially present) is sufficient. A future consolidation could extract the pure-crypto constants to a non-`server-only` module importable by both, but that is polish, not a condition.
+
+### 5. Test verification (self-run, this pass)
+
+| Suite | Claimed | Re-run result |
+|---|---|---|
+| jest (unit) | 460 | **460/460 pass** (32 suites) |
+| rotation-engine (`node --test`) | 59 | **59/59 pass** |
+| e2e advance-auth (enforce) | 43 total | **advance-auth.spec 4/4 live green** (3× 401/success + helper sanity), config pins `ADVANCE_AUTH=enforce` |
+| `next build` | PASS | **Compiled successfully, 23/23 static pages** |
+
+### Opus-pass findings (all non-blocking)
+
+- **F1 (follow-up, MEDIUM):** rollout flip needs a "hard-reload every venue TV after the flip+redeploy" step in the TM runbook, because a >48h-uptime kiosk that never reloads wedges silently under `enforce` (no watchdog rung reloads the page → no re-mint). Best permanent fix: client-side token-age self-heal (reload page near the 48h edge or on a 401). See §1.
+- **F2 (follow-up, LOW):** exempt `reason=unplayable` advances from the anti-grief rate charge (or give them a separate budget) to remove the 12-instant-fatal → 60s wedge. System-legitimate skips shouldn't spend the anti-scrape budget. See §2.
+- **N1 (NIT):** `"X-Boraoke-Screen"` is defined 3× (TvScreen hardcoded literal, `lib` lowercase const, `e2e/helpers` mixed-case const). Case-insensitive on the wire so it works; TvScreen is client-side and can't import the `server-only` lib const. Non-blocking.
+- **N2 (NIT, carried from sonnet):** add a one-line comment at the `advanceRateLimitOk` call in the route noting the onError-burst wedge interaction (pairs with F2).
+
+### Opus verdict
+
+**[reviewer] APPROVE — merge-counting (D-022).** The authorization mechanism is correct and honest: stateless mode-independent tokens that survive the flip, exact domain separation from the host session (scraped token = advance-only, one room, ≤12/min, ≤48h), correct midnight/bucket handling with test coverage mapped to each threat, and a rate-limit backstop sized above legitimate cadence. All suites green on my own re-run. The two follow-ups (F1 flip-runbook/self-heal, F2 unplayable-skip rate exemption) are genuine but out of this PR's scope — file as tickets. **The TM must carry the §1 "reload every TV after the flip" caveat into the enforce-flip runbook** — that is the one operational condition attached to this APPROVE.
