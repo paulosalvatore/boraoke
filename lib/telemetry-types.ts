@@ -28,10 +28,10 @@ export const TELEMETRY_EVENTS = [
   "song_played", // a queue entry is promoted to now-playing
   "song_skipped", // props: reason ("host" | "noshow" | "unplayable" — TICKET-41 watchdog)
   // ── host behavior (proxies priority-tools demand) ──
-  "host_action", // props: action ("skip" | "pause" | "resume" | "remove" | "reorder")
+  "host_action", // props: action ("skip" | "pause" | "resume" | "remove" | "reorder" | "mode_change" | "language_change" | "moderation_change" | "approve" | "reject" — TICKET-44 adds the last three as prop VALUES, not new event types)
   // ── friction markers ──
   "search_performed", // props: results (count) — search-no-submit derived at rollup
-  "submit_rejected", // props: reason ("cap")
+  "submit_rejected", // props: reason ("cap" | "rate" | ... | "moderation" — TICKET-44 adds "moderation" as a prop VALUE, not a new event type)
 ] as const;
 
 export type TelemetryEventName = (typeof TELEMETRY_EVENTS)[number];

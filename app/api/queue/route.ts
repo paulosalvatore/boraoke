@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { store, DEFAULT_ROOM, QUEUE_MAX, type Mode, type QueueEntry } from "@/lib/store";
-import { isValidRoomId, getRoomMode } from "@/lib/rooms";
+import { isValidRoomId, getRoomMode, getRoomModeration } from "@/lib/rooms";
 import { checkSubmit, orderQueue, relayQueue } from "@/lib/rotation";
 import { submitRateLimitOk } from "@/lib/queue-rate-limit";
 import { getTranslations } from "next-intl/server";
 import { clientIpFrom } from "@/lib/host-auth";
 import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
 import { track } from "@/lib/telemetry";
+import { pendingStore } from "@/lib/pending-store";
+import {
+  generatePendingId,
+  pendingRoomMax,
+  pendingUuidMax,
+  type PendingEntry,
+} from "@/lib/pending-types";
 
 /**
  * Resolve the target room for a queue request. `room` comes from the `?room=`
@@ -33,10 +40,11 @@ export async function GET(req: NextRequest) {
   if (roomId === null) {
     return NextResponse.json({ error: "Invalid room id" }, { status: 400 });
   }
-  const [rawItems, paused, mode] = await Promise.all([
+  const [rawItems, paused, mode, moderation] = await Promise.all([
     store.getQueue(roomId),
     store.isPaused(roomId),
     getRoomMode(roomId),
+    getRoomModeration(roomId),
   ]);
   // TICKET-10: render the EFFECTIVE (fairness-engine) order, not raw insertion
   // order. `orderQueue` pins items[0] as now-playing and is idempotent, so this
@@ -46,7 +54,9 @@ export async function GET(req: NextRequest) {
   const current = items[0] ?? null;
   // `paused` is additive (TICKET-7): host pause reflected on every polling view.
   // /tv consumes it to freeze playback; patron submits stay accepted while paused.
-  return NextResponse.json({ items, nowPlaying: current, paused, mode });
+  // `moderation` is additive (TICKET-44): patron/admin views read it to know
+  // whether a submit lands in the queue or in the pending-approval list.
+  return NextResponse.json({ items, nowPlaying: current, paused, mode, moderation });
 }
 
 export async function POST(req: NextRequest) {
@@ -179,6 +189,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: te(CODE_KEY[check.code], { cap: check.cap ?? 0 }), reason: check.reason },
       { status: 409 },
+    );
+  }
+
+  // TICKET-44: venue-optional moderation. When the room has moderation ON, the
+  // entry does NOT enter the queue — it is diverted to the parallel pending
+  // keyspace so it never reaches the rotation engine / public queue / TV. The
+  // host approves it later (that is where addEntry + caps finally apply). The
+  // submit-time `checkSubmit` above already ran as a cheap pre-filter. When
+  // moderation is OFF (default), this whole block is skipped and the flow below
+  // is byte-identical to before.
+  const moderation = await getRoomModeration(roomId);
+  if (moderation) {
+    // Bound the pending list: per-room + per-uuid caps (abuse coherence §6). The
+    // upstream submit rate limit already ran; this is a second, durable bound so
+    // one patron can't flood the host's approval queue.
+    const [roomCount, uuidCount] = await Promise.all([
+      pendingStore.countRoom(roomId),
+      pendingStore.countUuid(roomId, entry.patronUuid),
+    ]);
+    if (roomCount >= pendingRoomMax() || uuidCount >= pendingUuidMax()) {
+      void track("submit_rejected", { roomId, uuid: entry.patronUuid, props: { reason: "moderation" } }); // fire-and-forget
+      const te = await getTranslations("Errors");
+      return NextResponse.json(
+        { error: te("pendingFull"), reason: "moderation" },
+        { status: 429 },
+      );
+    }
+    const pendingEntry: PendingEntry = {
+      pendingId: generatePendingId(),
+      roomId,
+      entry,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    await pendingStore.add(pendingEntry);
+    // 202 Accepted (not 201): the submission is received but not yet queued.
+    return NextResponse.json(
+      { entry, pending: true, pendingId: pendingEntry.pendingId },
+      { status: 202 },
     );
   }
 

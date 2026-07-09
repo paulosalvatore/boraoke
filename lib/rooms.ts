@@ -45,6 +45,15 @@ export interface RoomSettings {
    * migration and no write.
    */
   language?: Locale;
+  /**
+   * Venue-optional song moderation (TICKET-44, ADDITIVE + optional). When true,
+   * a patron submission is diverted to a parallel PENDING keyspace
+   * (`lib/pending-store.ts`) and only enters the real queue when the host
+   * approves — so unapproved entries never reach the rotation engine, the public
+   * queue, or the TV. Default OFF: legacy/absent → `false` via
+   * {@link getRoomModeration}, no migration and no write. Mirrors `language?`.
+   */
+  moderation?: boolean;
 }
 
 export interface Room {
@@ -402,6 +411,37 @@ export async function setRoomLanguage(
   };
   await roomBackend.update(next);
   return language;
+}
+
+/**
+ * Read a room's moderation flag, normalized (TICKET-44). Rooms without a record
+ * or without the (optional, additive) `moderation` field read back as `false`
+ * (moderation OFF = current behavior) — no re-migration, no write. Mirrors
+ * `getRoomLanguage`. This is the single gate the submission route branches on.
+ */
+export async function getRoomModeration(roomId: string): Promise<boolean> {
+  const room = await getRoom(roomId);
+  return room?.settings?.moderation === true;
+}
+
+/**
+ * Set a room's moderation flag (TICKET-44, additive host mutator). Persists in
+ * place via the backend `update`. Returns the new value on success, or `null`
+ * when the room does not exist (moderation-set is host-authed, so this only
+ * fires for a real, host-owned room). Idempotent. Mirrors `setRoomLanguage`.
+ */
+export async function setRoomModeration(
+  roomId: string,
+  moderation: boolean,
+): Promise<boolean | null> {
+  const room = await getRoom(roomId);
+  if (!room) return null;
+  const next: Room = {
+    ...room,
+    settings: { ...room.settings, moderation },
+  };
+  await roomBackend.update(next);
+  return moderation;
 }
 
 /** The legacy single-queue room id (pre-multi-room prototype). */
