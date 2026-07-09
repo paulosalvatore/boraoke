@@ -172,3 +172,60 @@ The PR has merged main twice (post #21/#22/#24 and again post later merges). The
 **[reviewer] APPROVE — TICKET-30 i18n framework is production-quality.**
 
 The completeness gate is the headline deliverable: it enforces key + ICU-placeholder parity across all three catalogs in CI, making it impossible to add a string without all translations. This is the class-level prevention that outlives the PR. The security waiver is correct — `POST /api/host/language` strictly validates the locale enum via `isLocale()` and requires host auth. Hydration consistency is sound (server resolves locale, passes messages to provider, client never re-resolves independently). The two-layer room-language override is architecturally coherent: scoped provider at the TV page and patron server page, with the `<html lang>` / content mismatch documented. Translation quality is high — EN and ES are natural party-host voice, not machine-ese; no clunkers found in 30 sampled strings. The string sweep is string-only (no behavior changes smuggled into the 7 components). Engine tests (59) are untouched by the additive `code`+`cap` fields in `rotation.ts`. All 443 unit / 59 engine / 4 switcher-e2e / build verified green by this reviewer independently. Nits above are all optional.
+
+---
+
+# Opus second pass (D-022 merge-counting) — judgment layer
+
+- **Date:** 2026-07-08
+- **Reviewer:** Reviewer agent, opus tier (D-022 second pass — the APPROVE that counts for merge)
+- **Tip reviewed:** `c27e689` (`origin/ticket/30-i18n`; `159d7a7` is the App-Tester commit, the sonnet review report was committed on top — diff verified locally against merge-base `7866aad`, per git-local-first)
+- **Verdict:** **[reviewer] APPROVE — merge-counting**
+
+All findings below verified first-hand from code reads and my own runs (443/443 jest green including the 4 i18n suites; `next build` green; catalogs read side by side; next-intl v4.13.1 default fallback verified in `node_modules/use-intl` dist).
+
+## 1. Locale-resolution matrix — product ruling
+
+Precedence as implemented (`i18n/locales.ts` `resolveLocale`, `app/(patron)/[room]/page.tsx` override): explicit user cookie → room default language → Accept-Language → pt-BR. Walked against the real personas:
+
+- **Spanish tourist in a pt-BR bar, room language UNSET.** The room record's `settings.language` is `undefined` when never set (verified: `room-language.test.ts` asserts no field is written on creation; `getRoomLanguage` only *reads back* pt-BR as a default). The patron page mounts the room override ONLY `if (!isLocale(cookieLocale) && roomLanguage)` — undefined room language means NO override, so the app-wide request config runs and the tourist's `Accept-Language: es` wins. **They see Spanish. Correct** — an unset room default is genuinely "no opinion," not an implicit pt-BR pin. This is the subtle case that would have produced the venue bug report ("my foreign customers all get Portuguese") and the implementation gets it right.
+- **Spanish tourist, room language EXPLICITLY pt-BR.** The venue stated an opinion; the tourist sees pt-BR content but has the persistent globe switcher on the patron page — one tap to es, cookie sticks for a year. Correct hierarchy: the venue set the house language, the individual can still override for themselves.
+- **pt-BR host with a pt cookie opens the patron page of their own es-language party room.** They see pt; their cookie-less guests see es. **Correct, not confusing** — the host's cookie is an *explicit personal choice* and per-user UI language following the user is the principle every multilingual product follows. The room language governs the shared surfaces (the TV, first-visit defaults), not a user who has stated a preference. If the host wants to preview the guest experience, an incognito tab or the switcher does it. No venue would file this as a bug; the opposite behavior (room silently overriding my chosen language) would be.
+- **TV:** always room language, never a cookie (`tv/page.tsx` scoped provider) — exactly right for a shared venue device.
+
+**Ruling: the matrix produces no experience a real venue would report as a bug.** The one nuance worth a docs line is the unset-vs-explicit-pt-BR room distinction (unset lets Accept-Language through; explicit pt-BR pins first-visit patrons) — the admin selector UI should make "set" vs "default" visually distinct someday. Optional, not blocking.
+
+## 2. `<html lang>` mismatch — severity ruling: SHIP + FOLLOW-UP (not a one-liner)
+
+Verified the constraint directly: the single root `app/layout.tsx` owns `<html lang>` via `getLocale()` (app-wide request config — cookie/Accept-Language only). The room override is a scoped provider mounted in the *page*, a child of the layout; App Router layouts don't receive page params and the root layout cannot see the room record without duplicating the room lookup outside the page. There is **no scoped-provider one-liner** — a proper fix is either a `(patron)` route-group layout that resolves room language (new lookup plumbing) or a client `document.documentElement.lang` sync effect inside the overridden subtree (~5 lines but a deliberate design choice about SSR-vs-post-hydration lang).
+
+Severity: LOW. The affected population is cookie-less screen-reader users on a room whose venue set a non-default language — content announces in the wrong accent until they use the switcher (which is present on the page). SEO impact is negligible (room pages are ephemeral, force-dynamic, not indexing targets). **Ruling: ship now; file a follow-up ticket** for the `documentElement.lang` sync (recommended shape: small client effect in the scoped-provider branch). Do not block a trilingual launch on this.
+
+## 3. Party-host voice across locales — HERO moments
+
+Read the three catalogs side by side at the emotional peaks. (Note: no literal "Você é o 4º" position-hero key exists in the catalogs — queue position renders via the live-queue list; the actual hero strings are submit-success, mic-call, and the empty-queue/TV idle prompts.)
+
+- **Submit success:** pt `"✓ Música na fila!"` / en `"✓ You're in the queue!"` / es `"✓ ¡Ya estás en la fila!"` — en and es actually *upgrade* the moment from song-status to personal ("YOU'RE in"). Energy carried, arguably improved.
+- **Mic-call countdown:** pt `"vá para o microfone!"` / en `"get to the mic!"` / es `"¡pasa al micrófono!"` — all imperative, all urgent, `<s>{seconds}s</s>` countdown intact with matching ICU/table-select structure in all three. No flattening.
+- **Empty-queue (admin):** pt `"manda a primeira! 🎤"` / en `"kick it off! 🎤"` / es `"¡arranca la primera! 🎤"` — genuinely idiomatic host energy in each language, not translated-pt.
+- **TV idle:** `"Escaneia e canta!"` / `"Scan and sing!"` / `"¡Escanea y canta!"` — punchy in all three.
+
+**Ruling: en/es carry the same energy; nothing feels machine-flattened.** The es catalog correctly uses LatAm register (celular, minutito, inverted punctuation). I concur with the sonnet nit that `Tv.upNext` es `"A CONTINUACIÓN"` is a shade broadcast-formal — optional copyedit only.
+
+## 4. Runtime fallback for a missing message — verified, graceful
+
+No custom `onError`/`getMessageFallback` is configured anywhere (grepped `i18n/`, `app/`, `next.config.ts`). next-intl 4.13.1 defaults, verified in `node_modules/use-intl/dist/esm/*/initializeConfig-*.js`: `defaultOnError` = `console.error` (never throws), `defaultGetMessageFallback` = the dotted `Namespace.key` path rendered in place. So a runtime-missing key renders e.g. `Patron.songAdded` — **not blank, not a crash**; ugly but debuggable, and the CI completeness gate makes the state near-unreachable anyway. Defense in depth is sound; no config change needed.
+
+## 5. Bundle/perf — per-locale, no client bloat
+
+Built the branch and grepped `.next/static` for locale-distinctive strings (`"A CONTINUACIÓN"`, `"vá para o microfone"`): **zero hits in client chunks**. Catalogs are dynamically imported server-side (`loadMessages` → `import('../messages/<locale>.json')`) and only the ACTIVE locale's messages are serialized into the RSC payload per request. First-load JS 102 kB shared / ~128 kB on room routes — no 3x-catalog shipping. The all-night venue TV holds exactly one catalog in memory. **Pass.**
+
+## 6. Tests — verified first-hand
+
+- `npx jest` on tip: **443/443, 30 suites green** (includes i18n-completeness / i18n-locales / room-language / metadata).
+- `npx next build`: **green** (output inspected; routes and chunk sizes above).
+- e2e: 54 `test()` declarations across specs, 4 in `language-switcher.spec.ts` (sonnet pass ran them green on the tip; dev report's 39-executed figure consistent with skips/config). Engine suite (59) confirmed green in the sonnet pass on the same tip; `lib/rotation.ts` diff is additive `code`/`cap` fields only.
+
+## Opus verdict
+
+**[reviewer] APPROVE — merge-counting (D-022 second pass).** The locale-resolution matrix is product-correct across all personas including the subtle unset-room case; the `<html lang>` mismatch is LOW severity, ship + follow-up ticket (documentElement.lang sync — not a one-liner, verified); voice survives translation at every hero moment; runtime fallback is graceful-by-default and CI-gated besides; catalogs ship per-locale with zero client bundle bloat. No blocking findings. Follow-ups to file: (a) `documentElement.lang` sync for room-overridden subtrees, (b) admin selector "unset vs explicit" distinction, (c) the sonnet nits (all optional).
