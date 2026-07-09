@@ -1,6 +1,6 @@
 # cantai — Board
 
-_Last updated: 2026-07-09 (WAVE CLOSED — 23 PRs; trilingual live; 45+44 building)_
+_Last updated: 2026-07-09 (45+44 both delivered, in gates: PR #26 review, PR #25 app-test)_
 
 ## Needs user (TL)
 
@@ -54,8 +54,8 @@ _Last updated: 2026-07-09 (WAVE CLOSED — 23 PRs; trilingual live; 45+44 buildi
 | TICKET-40 | Search UX (select-jump + karaoke keyword) | DONE | PR #21 merged (App Tester FAIL→fix→PASS focus race; opus product judgments recorded) |
 | TICKET-41 | TV watchdog + embeddable search | DONE | PR #24 merged (415/415; opus all-night walk blessed 12s ladder; skip-AUTH deferred by design → TICKET-45) |
 | TICKET-43 | Session recovery (local room memory) | DONE | PR #22 merged (probe bounded top-3; claim-path AC binding for TICKET-28 recorded) |
-| TICKET-44 | Optional moderation mode | IN PROGRESS | Dev (opus), .worktrees/ticket-44 — pending-list store pattern, approval at addEntry time |
-| TICKET-45 | Advance/skip authorization | IN PROGRESS | Dev (opus), .worktrees/ticket-45 — implements the TICKET-41 plan (screen token, log→enforce) + e2e drain-helper migration |
+| TICKET-44 | Optional moderation mode | IN GATES | PR #25 (470/470, parallel pending keyspace, caps-at-approval); App Tester running |
+| TICKET-45 | Advance/skip authorization | IN GATES | PR #26 (460/460, ships ADVANCE_AUTH=log); App Tester PASS + Security PASS (0 blocking); sonnet review running |
 | TICKET-30 | i18n pt-BR/en/es + switcher | DONE | PR #23 merged (443/443; zero stragglers; opus locale-matrix + bundle rulings clean). TRILINGUAL LIVE |
 | TICKET-33 | Code rebrand + publish metadata | DONE | PR #20 merged; boraoke.com live-verified (title, OG 200, 308 redirect w/ path+query) |
 | (research) | Naming + domain availability | IN PROGRESS | fable agent — cantai.com taken; shortlist w/ whois checks |
