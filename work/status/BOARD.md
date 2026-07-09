@@ -62,7 +62,7 @@ _Last updated: 2026-07-09 (24 PRs; #26 skip-auth merged/log-mode; #25 moderation
 | TICKET-40 | Search UX (select-jump + karaoke keyword) | DONE | PR #21 merged (App Tester FAIL→fix→PASS focus race; opus product judgments recorded) |
 | TICKET-41 | TV watchdog + embeddable search | DONE | PR #24 merged (415/415; opus all-night walk blessed 12s ladder; skip-AUTH deferred by design → TICKET-45) |
 | TICKET-43 | Session recovery (local room memory) | DONE | PR #22 merged (probe bounded top-3; claim-path AC binding for TICKET-28 recorded) |
-| TICKET-44 | Optional moderation mode | CI-WAIT | Full chain approved; CI-red root-caused+fixed (unwarmed /api/host/pending compile wiped memory store — class fix warmModerationRoutes, 46/46 cold); tip 962f94b needs a run — GitHub Actions DEGRADED (status.github.com), watch armed |
+| TICKET-44 | Optional moderation mode | CI-WAIT | Full chain approved; CI-red root-caused+fixed (unwarmed /api/host/pending compile wiped memory store — class fix warmModerationRoutes, 46/46 cold); tip 962f94b needs a run — GitHub Actions DEGRADED (status.github.com); watches were killed twice, so NEXT RESUME: check status, kick CI (close/reopen PR #25 or empty push), then merge via git-ops (all approvals already recorded) |
 | TICKET-45 | Advance/skip authorization | DONE | PR #26 merged (460/460; full chain). LIVE in log mode — enforce flip per runbook after observation window |
 | TICKET-30 | i18n pt-BR/en/es + switcher | DONE | PR #23 merged (443/443; zero stragglers; opus locale-matrix + bundle rulings clean). TRILINGUAL LIVE |
 | TICKET-33 | Code rebrand + publish metadata | DONE | PR #20 merged; boraoke.com live-verified (title, OG 200, 308 redirect w/ path+query) |
