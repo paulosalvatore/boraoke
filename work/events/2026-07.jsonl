@@ -219,3 +219,4 @@
 {"v": "1", "ts": "2026-07-09T03:51:33Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-44", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/44-moderation", "short_sha": "c5fd6dd", "message_slug": "TICKET-44: finalize dev report with full e2e verdict + CI substrate note"}}
 {"v": "1", "ts": "2026-07-09T03:51:45Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-44", "pr": 25, "event": "pr_ready", "payload": {"pr_number": 25}}
 {"v": "1", "ts": "2026-07-09T03:52:01Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-44", "pr": 25, "event": "gate_requested", "payload": {"gate": "app_tester", "pr_number": 25}}
+{"v": "1", "ts": "2026-07-09T03:52:16Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-44", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/44-moderation", "short_sha": "c2fa965", "message_slug": "chore(events): gate_requested app_tester for TICKET-44"}}
