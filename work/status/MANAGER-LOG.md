@@ -1,5 +1,19 @@
 # cantai — Manager Log
 
+## 2026-07-11 — Heartbeat fire #9 (autonomous, unattended) — 🟢 PROGRESSED (stale-premise reconciliation, Step 0.5)
+
+- **Step 0 — Cold-resume:** rules reloaded (CLAUDE.md §§1–4); shared framework HEAD on `main` (clean); boraoke checkout on `main`. Read BOARD.md + MANAGER-LOG.md fires #1–#8.
+- **Step 0.5 — Re-verified the load-bearing "5 undeliverable PRs" premise → it was STALE (the boraoke lesson, exactly).** Probed reality at 14:41 UTC instead of trusting the board:
+  - `curl -sI https://boraoke.com/` → **200** (live).
+  - `gh pr list --state open` → **only PR #25 open.** `gh pr view` on #27/#28/#29/#30 → all **MERGED** today (14:02 / 13:57 / 14:07 / 14:24 UTC) + auto-deployed. The TL drained the pile that fires #6/#7/#8 kept idling on.
+  - PR #25 (TICKET-44) is `CONFLICTING/DIRTY`, but `git merge-tree origin/main origin/ticket/44-moderation` shows the **only** "changed in both" file is `work/events/2026-07.jsonl` — the **TICKET-F110 event-log false-conflict** (append-only heartbeat log; zero product-code conflict). Not undeliverable; one union-rebase from mergeable.
+- **Bounded increment = board reconciliation on the corrected truth** (Step 0.5 explicitly rules this `progressed` — backlog accuracy is progress that every later fire depends on). Additively corrected BOARD.md: #27/#28/#29/#30 → DONE/MERGED+deployed (table + follow-ups + "Needs user"); TICKET-44 → OPEN, blocked ONLY by the F110 JSONL false-conflict, with the **exact one-command unblock recipe** (`git merge origin/main` in `.worktrees/ticket-44` → union-resolve the single JSONL → push → Dev re-verify build+test+e2e, because origin/main gained #27/#28/#29/#30 which touch some of #25's files and git auto-merges them silently). Superseded #7/#8's stale summaries in place.
+- **Decision: no merge, no re-gate, no branch-push (deferential, parallel-driver).** (1) An unattended heartbeat NEVER triggers a live prod deploy — merging #25 = boraoke.com deploy, always the TL's call. (2) The TL was **actively merging PRs ~17 min before this fire** (last merge 14:24 UTC vs. probe 14:41 UTC); pushing a merge commit to the open PR they're mid-drain on would race them. Left #25 as a one-command TL action + noted a future fire may do the union-rebase + Dev re-verify (still deliver-open, never auto-merge) if the drain has stopped and #25 is still stuck.
+- **Not filed:** no duplicate TICKET-F110 framework note (already on the framework board) and no new auto-backoff note (#7 filed it). The reconciliation itself removes the false "undeliverable pile" signal that would keep backing the product off.
+- **Stale worktrees** `.worktrees/ticket-24a/46/47/48` are now orphaned (their PRs merged) → flagged on the board as safe to `worktree-cleanup`; deferred this fire (TL live; don't touch shared worktrees mid-drain).
+- **Selection safety:** shared framework HEAD on `main`; boraoke on `main`; touched NO open PR's branch/worktree/files; edited only boraoke's own `work/status/BOARD.md` + `MANAGER-LOG.md` additively (product-owned status docs, not a framework write).
+- **Outcome:** `progressed`.
+
 ## 2026-07-11 — Heartbeat fire #8 (autonomous, unattended) — 🟡 IDLE (4th consecutive undeliverable fire)
 
 - **Step 0 — Cold-resume:** rules reloaded from disk (CLAUDE.md §§1–4); shared framework HEAD on `main` (clean); boraoke checkout on `main`. Reviewed BOARD.md + MANAGER-LOG.md fires #1–#7 + open-PR state.
