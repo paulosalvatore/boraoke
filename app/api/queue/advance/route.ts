@@ -49,17 +49,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Resolve the allowlisted skip reason BEFORE the rate-limit charge so the
+  // limiter can pick the correct bucket (TICKET-47): a `reason=unplayable`
+  // watchdog drain is charged to the separate, more generous unplayable bucket,
+  // never the anti-grief singer-skip bucket.
+  const rawReason = req.nextUrl.searchParams.get("reason");
+  const skipReason =
+    rawReason && ADVANCE_SKIP_REASONS.has(rawReason) ? rawReason : null;
+
   // ── Per-room advance rate limit (defense-in-depth backstop) ────────────────
-  if (!advanceRateLimitOk(roomId)) {
+  if (!advanceRateLimitOk(roomId, { unplayable: skipReason === "unplayable" })) {
     return NextResponse.json(
       { error: "Too many advances", reason: "rate" },
       { status: 429 },
     );
   }
-
-  const rawReason = req.nextUrl.searchParams.get("reason");
-  const skipReason =
-    rawReason && ADVANCE_SKIP_REASONS.has(rawReason) ? rawReason : null;
   // Head being skipped — read BEFORE advance, telemetry-only (fail-open).
   const skipped = skipReason ? await store.nowPlaying(roomId) : null;
   const next = await store.advance(roomId);
