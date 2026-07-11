@@ -1,8 +1,10 @@
 # cantai — Board
 
-_Last updated: 2026-07-09 (24 PRs; #26 skip-auth merged/log-mode; #25 moderation in app-test; ⚠️ Vercel deploy rate-limited ~24h)_
+_Last updated: 2026-07-11 (heartbeat #2: TICKET-46 kiosk-TV token self-heal delivered as PR #28, open; PR #27 TICKET-24a open; #25 moderation CI-WAIT; ⚠️ Vercel deploy rate-limited ~24h from 07-09)_
 
 ## Needs user (TL)
+
+- 🟢 **PR #28 (TICKET-46) ready to merge (2026-07-11, heartbeat #2)** — MED: kiosk-TV screen-token self-heal (F1). Removes the "hard-reload every venue TV after the enforce flip" runbook step. Full gate chain green (Dev 479/479, App Tester PASS zero-spurious-reload, Reviewer opus APPROVE + security-clean). **Behavior-neutral under the current `ADVANCE_AUTH=log` default** — low-risk merge. Left OPEN — merge triggers a boraoke.com prod deploy (Vercel auto-deploy); your call. https://github.com/paulosalvatore/boraoke/pull/28
 
 - 🟢 **PR #27 (TICKET-24a) ready to merge (2026-07-11, heartbeat)** — LOW hardening: rotation.ts JSDoc fix + grace-requeue `addEntry`-return guard (no silent singer-drop on full queue). Full gate chain green (Dev 462/462, Reviewer opus APPROVE + security-clean). Left OPEN — merge triggers a boraoke.com prod deploy (Vercel auto-deploy); your call. https://github.com/paulosalvatore/boraoke/pull/27
 
@@ -20,7 +22,9 @@ _Last updated: 2026-07-09 (24 PRs; #26 skip-auth merged/log-mode; #25 moderation
 - **BINDING for TICKET-28 (accounts/claim): claim-path AC (PR #22 opus)** — the server MUST treat localStorage `claimable`/posted room-id lists as an untrusted claim REQUEST, never ownership evidence; authorize only via the server-registered anon uuid's `identity:{uuid}:rooms` index (TICKET-26) or host-token proof for legacy rooms; sign-out clears device memory (AC4).
 - **TICKET-45 (next slot): advance-auth screen-token + per-room rate limit** — design complete in work/plans/TICKET-41-plan.md (HMAC screen-token, log-only→enforce rollout, e2e drain-helper migration). TL-directed (skip-from-patron hole). Launch after #21/#24 merge.
 - **Paste-submit embeddability warning** (TICKET-41 deferral; after #40 merges — patron-form file).
-- **[MED] F1 (PR #26 opus): kiosk-TV token self-heal** — a TV page that never reloads outlives its ≤48h screen token and wedges silently under enforce (no watchdog rung reloads the PAGE). Add client-side token-age self-heal (page reload or token refetch). Until fixed, the enforce-flip runbook REQUIRES reloading every deployed venue TV after the flip.
+- ✅ DELIVERED (PR #28, awaiting human merge) **[MED] F1 (PR #26 opus): kiosk-TV token self-heal** — TICKET-46, heartbeat #2 2026-07-11. Full chain green (Dev 479/479, App Tester PASS zero-spurious-reload, Reviewer opus APPROVE + security-clean). Removes the "hard-reload every venue TV after the enforce flip" runbook requirement. NOT auto-merged: boraoke.com live Vercel-auto-deploy. Behavior-neutral in log mode. Worktree `.worktrees/ticket-46`.
+- **[LOW] F1-nit-1 (TICKET-46 reviewer): Layer-1 proactive-reload debounce/clamp** — the proactive idle-reload path has no `sessionStorage` one-shot guard; a kiosk whose browser clock is >20h *ahead* of the Vercel server would idle-reload every 60s (needs ~a full day of clock skew that would already break TLS; strictly idle-gated, never cuts a singer). Cheap fix: clamp `tokenAgeMs >= 0` or mirror Layer 2's one-shot marker onto Layer 1.
+- **[LOW] F1-nit-2 (TICKET-46 reviewer): clear the reactive self-heal marker on a successful advance** — `boraoke-tv-selfheal-reload` sessionStorage marker isn't cleared after a 200 advance (benign as shipped; a clean-up nicety).
 - **[LOW] F2 (PR #26 opus): exempt reason=unplayable advances from the anti-grief rate charge** — removes the 12-instafail→60s TV wedge without weakening the throttle.
 - **[MED] Toggle-OFF pending orphans (PR #25 opus)** — flipping moderation OFF strands pending entries: patron sees "aguardando aprovação" FOREVER, host loses the approve/reject UI. Fix: auto-reject outstanding pending on toggle-OFF (preferred) or keep admin pending section visible while pending.length>0.
 - **[MED] Pending-store poll cost + TTL (PR #25 security LOW-3 + sonnet)** — rejected entries never expire (orphan accumulation) AND listRoom is N+1 GETs on a 3s poll (~4,400 Upstash cmds/min at 20 pending). One ticket: MGET batch + EXPIRE on reject + lazy index prune.
@@ -66,6 +70,7 @@ _Last updated: 2026-07-09 (24 PRs; #26 skip-auth merged/log-mode; #25 moderation
 | TICKET-43 | Session recovery (local room memory) | DONE | PR #22 merged (probe bounded top-3; claim-path AC binding for TICKET-28 recorded) |
 | TICKET-44 | Optional moderation mode | CI-WAIT | Full chain approved; CI-red root-caused+fixed (unwarmed /api/host/pending compile wiped memory store — class fix warmModerationRoutes, 46/46 cold); tip 962f94b needs a run — GitHub Actions DEGRADED (status.github.com); watches were killed twice, so NEXT RESUME: check status, kick CI (close/reopen PR #25 or empty push), then merge via git-ops (all approvals already recorded) |
 | TICKET-45 | Advance/skip authorization | DONE | PR #26 merged (460/460; full chain). LIVE in log mode — enforce flip per runbook after observation window |
+| TICKET-46 | Kiosk-TV screen-token self-heal (F1) | DELIVERED | PR #28 OPEN (heartbeat #2, 2026-07-11): Dev 479/479, App Tester PASS zero-spurious-reload, Reviewer opus APPROVE + security-clean. NOT auto-merged (live Vercel-auto-deploy); behavior-neutral in log mode. Removes the enforce-flip TV-reload runbook step |
 | TICKET-30 | i18n pt-BR/en/es + switcher | DONE | PR #23 merged (443/443; zero stragglers; opus locale-matrix + bundle rulings clean). TRILINGUAL LIVE |
 | TICKET-33 | Code rebrand + publish metadata | DONE | PR #20 merged; boraoke.com live-verified (title, OG 200, 308 redirect w/ path+query) |
 | (research) | Naming + domain availability | IN PROGRESS | fable agent — cantai.com taken; shortlist w/ whois checks |
