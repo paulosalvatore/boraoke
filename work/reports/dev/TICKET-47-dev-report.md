@@ -73,4 +73,9 @@ Note: boraoke is a product repo with no `scripts/verify-green-local.sh` (that is
 
 ## Commits
 
-- (see PR — appended as committed)
+- `fd2e2c8` — fix(rate-limit): exempt unplayable watchdog skips from anti-grief charge (TICKET-47) — code + tests + plan + report + ticket.
+- (event-log auto-commits `f4a37de`/`a9fd2e5` are hook-generated, not part of the change.)
+
+## PR
+
+- **PR #29** — https://github.com/paulosalvatore/boraoke/pull/29 (draft). Base `main`, head `ticket/47-unplayable-exempt`. NOT auto-mergeable (prod deploy on merge — deliver to TL).
