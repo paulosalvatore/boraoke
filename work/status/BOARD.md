@@ -1,6 +1,6 @@
 # cantai — Board
 
-_Last updated: 2026-07-11 (heartbeat #4: TICKET-48 host-login throttle → Upstash cross-instance limiter delivered as PR #30, open; PR #29 TICKET-47 open; PR #28 TICKET-46 open; PR #27 TICKET-24a open; #25 moderation CI-WAIT; ⚠️ Vercel deploy rate-limited ~24h from 07-09)_
+_Last updated: 2026-07-11 (heartbeat #5: backlog reconciliation — corrected the stale `[HIGH] Atomic store RMW` follow-up (already fully delivered by merged TICKET-21/PR #16, incl. concurrency-regression tests); no new PR minted this fire. 5 PRs still open/awaiting TL merge: #30 TICKET-48, #29 TICKET-47, #28 TICKET-46, #27 TICKET-24a, #25 moderation CI-WAIT; ⚠️ Vercel deploy rate-limited ~24h from 07-09)_
 
 ## Needs user (TL)
 
@@ -38,7 +38,7 @@ _Last updated: 2026-07-11 (heartbeat #4: TICKET-48 host-login throttle → Upsta
 - **[LOW] Response over-echo trims (PR #25 security LOW-1/2)** — 202 body echoes entry.id+patronUuid; approve echoes full QueueEntry (UI ignores it). Trim both response shapes.
 - **ADVANCE_AUTH enforce-flip runbook (TM action, after observation window):** watch Vercel logs for `[advance-auth] would-block` lines (a legit TV produces ZERO — any appearance is the signal); when quiet, set ADVANCE_AUTH=enforce in Vercel prod + redeploy + HARD-RELOAD every live venue TV (F1 caveat).
 
-- **[HIGH] Atomic store RMW (PR #14 opus)** — WATCH/Lua CAS on QueueStore rewrite/removeEntry/reorder + concurrency regression test. Closes the lost-submit window (~0.1-0.3/busy night in bursts, patron-visible+permanent) AND the pre-existing host-op races in one change. First candidate for the next dev slot.
+- ✅ RESOLVED (heartbeat #5, 2026-07-11) **[HIGH] Atomic store RMW (PR #14 opus)** — DELIVERED by merged **TICKET-21 / PR #16**, not still-open work. `rewrite`/`removeEntry`/`reorder` all route through one `MERGE_SCRIPT` Lua `EVAL` (server-side atomic read→merge→write) — see `lib/store/upstash.ts` header + `mergeApply`. The concurrency regression tests exist in `__tests__/store.test.ts` ("CONCURRENCY REGRESSION — append-during-relay never loses a submit" + "two racing relays"). This was stale on the board as "first candidate for the next dev slot" through heartbeats #1–#4; corrected here. **No open action remains.**
 - **[LOW] Strip patronUuid from public GET /api/queue projection** (griefing lockout via per-uuid limiter) — weigh against patron-page own-row highlighting (may need a hashed marker instead).
 - ✅ DELIVERED (PR #27, awaiting human merge) **[LOW] rotation.ts:13 stale JSDoc; grace-path addEntry-return check** (PR #14 sonnet NITs) — heartbeat 2026-07-11. Full chain green (Dev 462/462, App Tester N/A backend-only, Reviewer opus APPROVE incl. security). NOT auto-merged: boraoke.com live Vercel-auto-deploy. Worktree `.worktrees/ticket-24a`.
 
