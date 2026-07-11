@@ -41,17 +41,31 @@ export async function POST(req: NextRequest) {
     // than dropping it. removeEntry + addEntry (frozen ops) rewrite the field;
     // relay then lands it at the front of its group's next round.
     await store.removeEntry(roomId, head.id);
-    await store.addEntry(roomId, {
+    const requeued = await store.addEntry(roomId, {
       ...head,
       graceRequeue: true,
       submittedAt: new Date().toISOString(),
     });
+    if (!requeued) {
+      // Re-add was rejected (e.g. queue at QUEUE_MAX). The entry is already
+      // removed and did NOT come back — surface it rather than silently dropping
+      // the singer. Telemetry stays fire-and-forget, fail-open (TICKET-12 style).
+      void track("host_action", {
+        roomId,
+        props: { action: "skip", grace: true, requeueFailed: "queue-full" },
+      });
+      const nowPlaying = await store.nowPlaying(roomId);
+      return NextResponse.json(
+        { ok: false, grace: true, requeued: false, reason: "queue-full", nowPlaying },
+        { status: 200 },
+      );
+    }
     const mode = await getRoomMode(roomId);
     await relayQueue(roomId, mode);
     void track("song_skipped", { roomId, props: { reason: "noshow" } });
     void track("host_action", { roomId, props: { action: "skip", grace: true } });
     const nowPlaying = await store.nowPlaying(roomId);
-    return NextResponse.json({ ok: true, grace: true, nowPlaying });
+    return NextResponse.json({ ok: true, grace: true, requeued: true, nowPlaying });
   }
 
   const nowPlaying = await store.advance(roomId);

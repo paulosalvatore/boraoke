@@ -11,6 +11,7 @@ import {
   _clearLoginThrottle,
 } from "@/lib/host-auth";
 import { createRoom } from "@/lib/rooms";
+import * as telemetry from "@/lib/telemetry";
 
 import { POST as login } from "@/app/api/host/login/route";
 import { POST as skip } from "@/app/api/host/skip/route";
@@ -214,6 +215,51 @@ describe("authenticated host actions act on the store", () => {
   it("pause 400s on a non-boolean", async () => {
     const res = await pause(req("/api/host/pause", { authed: true, body: { paused: "yes" } }));
     expect(res.status).toBe(400);
+  });
+});
+
+describe("no-show grace re-queue (TICKET-10 / TICKET-24a NIT-2)", () => {
+  it("re-queues the head with graceRequeue on the grace path", async () => {
+    for (const e of seed("a", "b")) await store.addEntry(DEFAULT_ROOM, e);
+    const res = await skip(
+      req("/api/host/skip", { authed: true, body: { grace: true } }),
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.requeued).toBe(true);
+    // "a" was re-queued (not dropped) with the grace flag set.
+    const queue = await store.getQueue(DEFAULT_ROOM);
+    const a = queue.find((e) => e.id === "a");
+    expect(a?.graceRequeue).toBe(true);
+  });
+
+  it("surfaces a failed grace re-queue instead of silently dropping the singer", async () => {
+    for (const e of seed("a", "b")) await store.addEntry(DEFAULT_ROOM, e);
+    // Force the re-add to be rejected (mirrors QUEUE_MAX) AFTER the remove.
+    const addSpy = jest.spyOn(store, "addEntry").mockResolvedValueOnce(false);
+    const trackSpy = jest.spyOn(telemetry, "track");
+
+    const res = await skip(
+      req("/api/host/skip", { authed: true, body: { grace: true } }),
+    );
+
+    // Response reflects the failure — not a silent ok.
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.ok).toBe(false);
+    expect(json.requeued).toBe(false);
+    expect(json.reason).toBe("queue-full");
+
+    // Telemetry fired the failure signal (fire-and-forget).
+    expect(trackSpy).toHaveBeenCalledWith(
+      "host_action",
+      expect.objectContaining({
+        props: expect.objectContaining({ requeueFailed: "queue-full" }),
+      }),
+    );
+
+    addSpy.mockRestore();
+    trackSpy.mockRestore();
   });
 });
 

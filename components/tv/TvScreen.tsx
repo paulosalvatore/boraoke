@@ -13,6 +13,10 @@ import {
   BOOTSTRAP_READY_TIMEOUT_MS,
   type StallState,
 } from "./watchdog";
+import {
+  shouldProactivelyReload,
+  shouldReactivelyReload,
+} from "./self-heal";
 
 declare global {
   interface Window {
@@ -64,11 +68,15 @@ const WATCHDOG_POLL_MS = 3000;
 /** How long the pt-BR "pulando vídeo indisponível" notice stays up. */
 const SKIP_NOTICE_MS = 4000;
 
+/** sessionStorage key: timestamp (ms) of the last reactive (401) self-heal reload. */
+const SELF_HEAL_MARKER_KEY = "boraoke-tv-selfheal-reload";
+
 export default function TvScreen({
   poweredByFooter,
   roomId,
   venueName,
   screenToken,
+  screenTokenMintedAt,
 }: {
   poweredByFooter: boolean;
   /** Room whose queue this screen plays. Omitted = legacy `default` room. */
@@ -82,6 +90,14 @@ export default function TvScreen({
    * then sends no header and enforcement is off for that room).
    */
   screenToken?: string | null;
+  /**
+   * Mint time (ms epoch) of `screenToken`, captured server-side next to the mint
+   * call (TICKET-46). NOT secret material — just a timestamp — so the client can
+   * compute token age and proactively reload (when idle) before the token's ≤48h
+   * expiry wedges the queue under `ADVANCE_AUTH=enforce`. Absent for a no-key
+   * room (no token to age).
+   */
+  screenTokenMintedAt?: number;
 }) {
   // i18n (TICKET-30): the TV follows the ROOM language, never a per-user
   // cookie — the server page wraps this component in a NextIntlClientProvider
@@ -227,6 +243,35 @@ export default function TvScreen({
     return () => clearInterval(interval);
   }, [fetchQueue]);
 
+  // ---- TICKET-46 Layer 2: reactive self-heal on a 401 from advance ----
+  // Under `ADVANCE_AUTH=enforce`, an aged-out screen token makes advance return
+  // 401 and the queue wedges silently. As a last-resort backstop, reload the
+  // page (re-minting a fresh token via force-dynamic) — but debounced by a
+  // sessionStorage one-shot marker so a genuinely bad config (every fresh token
+  // still 401s) can never storm the page with reloads; after one attempt inside
+  // the window it fails quietly (the pre-existing silent behavior). Dormant in
+  // log mode, where advance never 401s.
+  const reactiveSelfHeal = useCallback(() => {
+    if (typeof window === "undefined") return;
+    let lastReloadAt: number | null = null;
+    try {
+      const raw = window.sessionStorage.getItem(SELF_HEAL_MARKER_KEY);
+      lastReloadAt = raw ? Number(raw) : null;
+      if (lastReloadAt !== null && Number.isNaN(lastReloadAt)) lastReloadAt = null;
+    } catch {
+      // sessionStorage unavailable (private mode / disabled) — treat as no prior
+      // reload so the one-shot heal can still run once.
+      lastReloadAt = null;
+    }
+    if (!shouldReactivelyReload({ lastReloadAt, now: Date.now() })) return;
+    try {
+      window.sessionStorage.setItem(SELF_HEAL_MARKER_KEY, String(Date.now()));
+    } catch {
+      // best-effort marker; a reload still lands on a fresh token
+    }
+    window.location.reload();
+  }, []);
+
   // ---- Advance queue on the server and tell player to load the next video ----
   // `reason` (TICKET-41): forwarded so the server can emit the existing
   // `song_skipped` event with a reason prop (watchdog skips stay observable).
@@ -243,10 +288,16 @@ export default function TvScreen({
       const headers: HeadersInit = screenToken
         ? { "X-Boraoke-Screen": screenToken }
         : {};
-      await fetch(`/api/queue/advance${roomQuery}${reasonQuery}`, {
+      const advanceRes = await fetch(`/api/queue/advance${roomQuery}${reasonQuery}`, {
         method: "POST",
         headers,
       });
+      // TICKET-46 Layer 2: token rejected under enforce → self-heal by reloading
+      // (debounced). Only 401 (auth) triggers it — other errors are transient.
+      if (advanceRes.status === 401) {
+        reactiveSelfHeal();
+        return;
+      }
       const res = await fetch(`/api/queue${roomQuery}`);
       if (!res.ok) return;
       const data = await res.json();
@@ -256,7 +307,7 @@ export default function TvScreen({
     } catch {
       return null;
     }
-  }, [roomQuery, screenToken]);
+  }, [roomQuery, screenToken, reactiveSelfHeal]);
 
   // ---- TICKET-41: skip a video that will never play here (onError / ladder top) ----
   const skipUnplayable = useCallback(async () => {
@@ -533,6 +584,36 @@ export default function TvScreen({
 
   const nowPlaying = queue[0] ?? null;
   const upcoming = queue.slice(1, 4); // design: max 3 on the rail
+
+  // ---- TICKET-46 Layer 1: proactive reload when the token is OLD *and* idle ----
+  // The screen token is valid only for its 24h bucket + the previous one (≤48h).
+  // A kiosk that runs for days without a reload outlives its token and — under
+  // `ADVANCE_AUTH=enforce` — wedges silently. So when the token crosses a safe
+  // threshold (~20h, comfortably inside the first bucket) AND no song is playing
+  // (queue empty → idle), reload: force-dynamic re-mints a fresh token with no
+  // singer interrupted. We NEVER reload mid-song (that would cut off the current
+  // singer); an old-but-playing page waits for the next idle window — a busy
+  // venue reaches idle between songs long before 48h. Dormant when the room has
+  // no token (screenTokenMintedAt absent) and behavior-neutral in log mode (the
+  // reload just re-mints; nothing else changes). Checked on an interval so a
+  // page that is idle when the threshold is crossed heals without waiting for a
+  // queue change to re-render.
+  const isPlaying = nowPlaying !== null;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (screenTokenMintedAt === undefined) return; // no-key room — nothing to heal
+    const check = () => {
+      const tokenAgeMs = Date.now() - screenTokenMintedAt;
+      if (shouldProactivelyReload({ tokenAgeMs, isPlaying })) {
+        window.location.reload();
+      }
+    };
+    check(); // evaluate immediately on idle/playing transitions
+    // Re-check periodically so an idle page still heals if it crossed the
+    // threshold while sitting idle (no queue change to re-fire the effect).
+    const interval = setInterval(check, 60_000);
+    return () => clearInterval(interval);
+  }, [screenTokenMintedAt, isPlaying]);
 
   const singerLine = (entry: QueueEntry) =>
     entry.mode === "listen-dance" ? `${entry.nickname} 🎶` : entry.nickname;

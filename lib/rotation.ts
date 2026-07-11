@@ -10,7 +10,9 @@
  *    the frozen store contract (composition, not modification);
  *  - enforce submit-time caps per mode with friendly pt-BR copy;
  *  - re-lay the store into effective order on the two ordering mutations
- *    (submit, mode-switch) using only the frozen `reorder` op.
+ *    (submit, mode-switch) via the store's bulk `rewrite` op — one round-trip,
+ *    merge-on-write `snapshot` so the re-lay is atomic against a concurrent
+ *    submit (see `relayQueue`).
  *
  * Integration model — why re-lay instead of a stored fairness ledger:
  * the frozen store holds only the pending queue (no per-session sing history),

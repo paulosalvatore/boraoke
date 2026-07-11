@@ -34,7 +34,13 @@ export default async function RoomTvPage({
   // the server, from its server-only secret. TvScreen sends it as the
   // X-Boraoke-Screen header on advance so the route can authorize the skip.
   // `null` for a no-key room (enforcement off) — the TV then sends no header.
-  const screenToken = await mintScreenToken(room);
+  //
+  // TICKET-46: capture the mint time (ms epoch) right next to the mint call and
+  // pass it to TvScreen so the client can compute token age and self-heal
+  // (proactive idle reload) before the ≤48h token expires under enforce. This is
+  // NOT secret/signing material — just a timestamp — so it is safe on the client.
+  const screenTokenMintedAt = Date.now();
+  const screenToken = await mintScreenToken(room, screenTokenMintedAt);
   return (
     <NextIntlClientProvider locale={locale} messages={await loadMessages(locale)}>
       <TvScreen
@@ -42,6 +48,7 @@ export default async function RoomTvPage({
         roomId={room}
         venueName={record?.name}
         screenToken={screenToken}
+        screenTokenMintedAt={screenTokenMintedAt}
       />
     </NextIntlClientProvider>
   );
