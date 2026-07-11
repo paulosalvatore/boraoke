@@ -1,5 +1,21 @@
 # cantai — Manager Log
 
+## 2026-07-11 — Heartbeat fire #13 (autonomous, unattended) — 🟢 PROGRESSED (delivered TICKET-52)
+
+- **Step 0 — Cold-resume:** rules reloaded (CLAUDE.md §§1–4) via `tm-resume`; shared framework HEAD on `main` (clean); boraoke checkout on `main`. Read BOARD.md + MANAGER-LOG.md fires #1–#12.
+- **Step 0.5 — Re-verified load-bearing claims → all accurate.** `git fetch` + `gh pr list --state open` = **PRs #31/#32/#33** (all gate-green deliver-not-merge, matches board); `origin/main` tip `0dfa5fc` (heartbeat #12 status commit, no new merges since #33); `curl -sI https://boraoke.com/` → **200** (live). Board was NOT stale — no reconciliation needed. Confirmed the deploy carve-out is real (any merge auto-deploys live boraoke.com).
+- **Parallel-driver check:** no concurrent driver detected; open worktrees `.worktrees/ticket-{24a,33,33b,44,46,47,48,49,50,51}` are prior fires' (their PRs merged or open, none live). Created a fresh isolated worktree; touched no other driver's branch/worktree/PR.
+- **Step 1 — Selected TICKET-52 (= TICKET-48 reviewer FU-2, room-create half).** The two MEDs were unsafe unattended (pending-store MED collides with open PR #31's `UpstashPendingStore`; TV-e2e-deflake MED is a CI-only flake unverifiable locally — per fires #11/#12). Picked the highest-value **safe, collision-free, verifiably-green-locally** item: adopt the purpose-built `lib/rate-limit-counter.ts` in `lib/room-create-throttle.ts` (cross-instance flood cap). Scoped an Explore agent first → confirmed room-create is a **clean swap** but the search-limiter half is a **dual-bucket sliding-window mismatch** (NOT a mechanical swap) → deferred it as FU-2b, kept the increment bounded. Collision check: #32 modifies `rate-limit-counter.ts` itself (FU-2 only *consumes* it, public signatures unchanged, different files) → conflict-free with #31/#32/#33.
+- **Step 2 — Full gate chain (all green):**
+  - **Dev** (deleted local Map/LRU; `isRoomCreateThrottled`/`registerRoomCreation` now async wrappers over the shared counter, key `room-create:<ip>`, opts `{max: roomCreateLimit(), windowMs: 3.6e6}` evaluated at call time; `await`ed both in `app/api/rooms/route.ts`; `_clearRoomCreateThrottle()`→`_clearAll()`; async tests proving trips-at-limit/1h-reset/env-override/IP-isolation): **521/521 tests, `npm run build` exit 0.** Committed + pushed to `origin/ticket/52-adopt-rate-counter` (SHA `da43fb9`). Did NOT touch `lib/rate-limit-counter.ts`, its test, or `lib/youtube-search.ts`.
+  - **App Tester: N/A** — backend-only, no UI/render change.
+  - **Cyber Security: N/A** — same route, same limits, no new external surface.
+  - **Reviewer (opus, D-022): APPROVE, no follow-ups.** Independently re-ran `npm install` + `npm test` (521/521) + `npm run build` (exit 0). Verified behavior equivalence (byte-identical memory path, no window-anchor/off-by-one drift), delegation correctness (collision-free key namespace, live env override, correct `await`), fail-open inheritance, the now-SHARED 1000-key LRU pool (acceptable + disclosed), non-tautological tests, and conflict-safety. Report: `work/reports/review/TICKET-52-review.md`.
+- **Step 3 — Decision: DELIVER, not auto-merge.** GATED carve-out — any merge to boraoke `main` auto-deploys live boraoke.com; an unattended fire never triggers a client-facing prod deploy. **PR #34 opened, left OPEN** for the TL: https://github.com/paulosalvatore/boraoke/pull/34.
+- **Follow-up filed:** **FU-2b** (LOW, deferred) — search limiter (`youtube-search.ts` `rateLimitOk`) cross-instance needs a dual-bucket counter variant; real design change, not a mechanical swap; do deliberately when warranted.
+- **Selection safety:** shared framework HEAD on `main`; boraoke on `main`; touched NO other driver's PR/branch/worktree; edited only boraoke's own `work/status/BOARD.md` + `MANAGER-LOG.md` additively.
+- **Outcome:** `progressed`.
+
 ## 2026-07-11 — Heartbeat fire #10 (autonomous, unattended) — 🟢 PROGRESSED (delivered TICKET-49 + Step 0.5 reconciliation)
 
 - **Step 0 — Cold-resume:** rules reloaded (CLAUDE.md §§1–4); shared framework HEAD on `main` (clean); boraoke checkout on `main`. Read BOARD.md + MANAGER-LOG.md fires #1–#9.
