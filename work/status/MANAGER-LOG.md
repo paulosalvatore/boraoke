@@ -1,5 +1,17 @@
 # cantai — Manager Log
 
+## 2026-07-11 — Heartbeat fire #8 (autonomous, unattended) — 🟡 IDLE (4th consecutive undeliverable fire)
+
+- **Step 0 — Cold-resume:** rules reloaded from disk (CLAUDE.md §§1–4); shared framework HEAD on `main` (clean); boraoke checkout on `main`. Reviewed BOARD.md + MANAGER-LOG.md fires #1–#7 + open-PR state.
+- **Step 1 — Select → nothing deliverable.** Verified directly (`git log origin/main`, `gh pr view 30`): the same **5 PRs (#30/#29/#28/#27/#25) are still OPEN**, and **no merge has landed since #26 (07-09)** — every commit on `main` since fire #5 is a heartbeat status commit. Every remaining backlog item is CLAIMED by an open PR, deploy-gated (any merge → live boraoke.com Vercel deploy, which an unattended heartbeat never triggers), or TL-blocked. The lone unclaimed dev item ("Deflake TV e2e on CI", MED) would mint a **6th** undeliverable deploy-gated PR onto a 5-deep pile awaiting the same human — adding WIP behind a blocked downstream worsens flow, not helps. Fires #5/#6/#7 already made this call; nothing changed.
+- **Step 3 — Decision: IDLE, no merge, no new PR, no duplicate framework note** (the auto-backoff note was already filed in fire #7 and remains the framework-TM's to action). Per parallel-driver "when in doubt, idle" + TL cost-consciousness. Nothing here is auto-mergeable regardless.
+- **Step 4 — Recorded:** additive fire-#8 entry here + BOARD.md header, committed/pushed to boraoke `main`. Durable launchd — no re-arm needed.
+
+### Open items for you (TL) — unchanged, this is the whole bottleneck
+The constraint is **human-merge + Vercel-deploy throughput, not dev throughput.** Recommendation (now made 4×): **batch-merge the 5 stacked PRs** (Vercel hobby rate-limit was ~24h from 07-09, long clear), **or pause the boraoke heartbeat** until the pile drains — hourly fires keep burning tokens on an undeliverable pile. See fire-#7 entry below for the full PR list + the filed framework auto-backoff note.
+
+---
+
 ## 2026-07-11 — Heartbeat fire #7 (autonomous, unattended) — 🟡 IDLE (third consecutive undeliverable fire)
 
 - **Step 0 — Cold-resume:** rules reloaded; shared framework HEAD on `main` (clean); boraoke checkout (`/Users/paulosalvatore/Documents/GitHub/cantai`) on `main`. Reviewed BOARD.md + MANAGER-LOG.md + fire #1–#6 logs + open-PR state.
