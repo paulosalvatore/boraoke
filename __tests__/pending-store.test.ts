@@ -156,6 +156,35 @@ describe.each(drivers)("PendingStore conformance — %s", (_name, make) => {
     expect(await s.reject(ROOM, p.pendingId)).toBeNull();
   });
 
+  it("rejectAllPending flips every pending entry, returns the count, is idempotent", async () => {
+    const a1 = makePending(UUID_A);
+    const a2 = makePending(UUID_A);
+    const b1 = makePending(UUID_B);
+    await s.add(a1);
+    await s.add(a2);
+    await s.add(b1);
+    // Pre-reject one so it's already "rejected" and must be left untouched.
+    await s.reject(ROOM, a1.pendingId);
+
+    // Flips the two still-pending entries; the already-rejected one is skipped.
+    expect(await s.rejectAllPending(ROOM)).toBe(2);
+    expect(await s.countRoom(ROOM)).toBe(0);
+    const all = await s.listRoom(ROOM);
+    expect(all.every((p) => p.status === "rejected")).toBe(true);
+    // The pre-rejected entry stayed readable/rejected (never touched).
+    expect((await s.get(ROOM, a1.pendingId))?.status).toBe("rejected");
+    expect(all).toHaveLength(3);
+    // Patron polls still surface them as rejected (not deleted).
+    expect((await s.listForUuid(ROOM, UUID_B))[0].status).toBe("rejected");
+
+    // Idempotent: a second call finds nothing pending and rejects 0.
+    expect(await s.rejectAllPending(ROOM)).toBe(0);
+  });
+
+  it("rejectAllPending on a room with no pending entries is a clean 0", async () => {
+    expect(await s.rejectAllPending(ROOM)).toBe(0);
+  });
+
   it("countRoom / countUuid count only PENDING entries", async () => {
     const a1 = makePending(UUID_A);
     const a2 = makePending(UUID_A);
@@ -191,5 +220,18 @@ describe.each(drivers)("PendingStore conformance — %s", (_name, make) => {
     await s.add(here);
     expect((await s.listRoom(other)).length).toBe(0);
     expect(await s.countRoom(other)).toBe(0);
+  });
+
+  it("rejectAllPending is room-scoped — it never touches another room", async () => {
+    const other = "outro-bar";
+    await s.clear(other);
+    const here = makePending(UUID_A);
+    const there = { ...makePending(UUID_A), roomId: other };
+    await s.add(here);
+    await s.add(there);
+    // Reject this room's pending; the other room's entry stays pending.
+    expect(await s.rejectAllPending(ROOM)).toBe(1);
+    expect(await s.countRoom(other)).toBe(1);
+    expect((await s.get(other, there.pendingId))?.status).toBe("pending");
   });
 });

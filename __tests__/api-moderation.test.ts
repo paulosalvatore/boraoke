@@ -15,6 +15,7 @@ import { POST as APPROVE_POST } from "@/app/api/host/pending/approve/route";
 import { POST as REJECT_POST } from "@/app/api/host/pending/reject/route";
 import { store } from "@/lib/store";
 import { pendingStore } from "@/lib/pending-store";
+import { telemetryStore } from "@/lib/telemetry-store";
 import { createRoom } from "@/lib/rooms";
 import { issueSession, hostCookieName } from "@/lib/host-auth";
 
@@ -192,6 +193,84 @@ describe("moderation ON", () => {
     // And only ONE song made it into the real queue.
     const q = await (await QUEUE_GET(queueGet(room))).json();
     expect(q.items).toHaveLength(1);
+  });
+});
+
+describe("moderation ON → OFF auto-rejects stranded pending (TICKET-49)", () => {
+  const TODAY = new Date().toISOString().slice(0, 10);
+  /** Wait for the fire-and-forget track() promise to settle. */
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  /** The moderation_change telemetry prop bag for the latest toggle in a room. */
+  async function lastModerationChange(room: string) {
+    const events = await telemetryStore.listRange(TODAY, TODAY);
+    const mine = events.filter(
+      (e) => e.roomId === room && e.props?.action === "moderation_change",
+    );
+    return mine[mine.length - 1]?.props;
+  }
+
+  it("rejects ALL pending on ON → OFF and reports the count in telemetry", async () => {
+    const room = await freshRoom("Strand Bar");
+    await telemetryStore.clear();
+    await setModeration(room, true);
+    await QUEUE_POST(submit(room, UUID_A, { title: "One" }));
+    await QUEUE_POST(submit(room, UUID_B, { title: "Two" }));
+    expect(await pendingStore.countRoom(room)).toBe(2);
+
+    // Flip OFF — the two stranded entries must be auto-rejected.
+    expect((await setModeration(room, false)).status).toBe(200);
+    expect(await pendingStore.countRoom(room)).toBe(0);
+
+    // Each patron's next poll surfaces the rejected state (not left hanging).
+    const a = await (await PENDING_GET(patronPendingGet(room, UUID_A))).json();
+    expect(a.items[0].status).toBe("rejected");
+    const b = await (await PENDING_GET(patronPendingGet(room, UUID_B))).json();
+    expect(b.items[0].status).toBe("rejected");
+
+    // Nothing was auto-approved into the live queue.
+    const q = await (await QUEUE_GET(queueGet(room))).json();
+    expect(q.items).toHaveLength(0);
+
+    // Telemetry carries the rejected count on the ON → OFF change.
+    await flush();
+    expect(await lastModerationChange(room)).toMatchObject({
+      action: "moderation_change",
+      moderation: false,
+      from: true,
+      rejectedPending: 2,
+    });
+  });
+
+  it("ON → OFF with zero pending is a clean no-op (count 0)", async () => {
+    const room = await freshRoom("Empty Strand Bar");
+    await telemetryStore.clear();
+    await setModeration(room, true);
+    expect((await setModeration(room, false)).status).toBe(200);
+    await flush();
+    expect((await lastModerationChange(room))?.rejectedPending).toBe(0);
+  });
+
+  it("OFF → ON rejects nothing (the enabling edge never auto-rejects)", async () => {
+    // A fresh room defaults to moderation OFF, so the first toggle ON is the
+    // OFF → ON edge — it must reject nothing (there is nothing to strand yet).
+    const room = await freshRoom("Turn On Bar");
+    await telemetryStore.clear();
+    expect((await setModeration(room, true)).status).toBe(200); // OFF → ON
+    await flush();
+    expect((await lastModerationChange(room))?.rejectedPending).toBe(0);
+  });
+
+  it("a no-op ON → ON toggle rejects nothing", async () => {
+    const room = await freshRoom("Noop Bar");
+    await setModeration(room, true);
+    await QUEUE_POST(submit(room, UUID_A, { title: "Stay Pending" }));
+    await telemetryStore.clear();
+    // Re-applying ON while already ON must not touch the pending entry.
+    expect((await setModeration(room, true)).status).toBe(200);
+    expect(await pendingStore.countRoom(room)).toBe(1);
+    await flush();
+    expect((await lastModerationChange(room))?.rejectedPending).toBe(0);
   });
 });
 
