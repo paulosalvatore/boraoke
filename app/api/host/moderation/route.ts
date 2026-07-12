@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireHost, roomIdFromRequest } from "@/lib/host-auth";
 import { getRoomModeration, setRoomModeration } from "@/lib/rooms";
+import { pendingStore } from "@/lib/pending-store";
 import { track } from "@/lib/telemetry";
 
 /**
@@ -41,10 +42,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
+  // On the ON → OFF transition ONLY, auto-reject every still-pending entry so no
+  // patron is stranded on "aguardando aprovação" forever with the host's approve/
+  // reject UI now gone (TICKET-49). No-op toggles and OFF → ON reject nothing.
+  const rejectedPending =
+    before === true && raw === false
+      ? await pendingStore.rejectAllPending(roomId)
+      : 0;
+
   // Telemetry: a new host_action variant (new prop VALUE, NOT a new event type).
   void track("host_action", {
     roomId,
-    props: { action: "moderation_change", moderation: raw, from: before },
+    props: {
+      action: "moderation_change",
+      moderation: raw,
+      from: before,
+      rejectedPending,
+    },
   });
 
   return NextResponse.json({ ok: true, moderation: raw });

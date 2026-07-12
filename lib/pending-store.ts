@@ -72,6 +72,15 @@ export interface PendingStore {
    */
   reject(roomId: string, pendingId: string): Promise<PendingEntry | null>;
 
+  /**
+   * Bulk-reject EVERY still-`pending` entry in a room, flipping each to
+   * "rejected" (never deleting, never approving). Already-`rejected` entries are
+   * left untouched, so the call is idempotent (a second call rejects 0). Returns
+   * the number of entries flipped. Used when moderation transitions ON → OFF so
+   * no patron is stranded on "aguardando aprovação" forever (TICKET-49).
+   */
+  rejectAllPending(roomId: string): Promise<number>;
+
   /** Count of PENDING (not rejected) entries in a room — the room-cap input. */
   countRoom(roomId: string): Promise<number>;
 
@@ -140,6 +149,17 @@ export class MemoryPendingStore implements PendingStore {
     item.status = "rejected";
     m.set(pendingId, item);
     return item;
+  }
+
+  async rejectAllPending(roomId: string): Promise<number> {
+    let n = 0;
+    for (const item of this.room(roomId).values()) {
+      if (item.status === "pending") {
+        item.status = "rejected";
+        n++;
+      }
+    }
+    return n;
   }
 
   async countRoom(roomId: string): Promise<number> {
@@ -227,6 +247,21 @@ export class UpstashPendingStore implements PendingStore {
     item.status = "rejected";
     await this.redis.set(pendingKeys.item(roomId, pendingId), item);
     return item;
+  }
+
+  async rejectAllPending(roomId: string): Promise<number> {
+    // One listing pass, then a `set` per still-pending item to flip it to
+    // "rejected" (index untouched — rejected entries stay indexed so the patron
+    // poll still surfaces them, exactly like a single `reject`). Already-rejected
+    // entries are skipped, keeping the op idempotent.
+    let n = 0;
+    for (const item of await this.listRoom(roomId)) {
+      if (item.status !== "pending") continue;
+      item.status = "rejected";
+      await this.redis.set(pendingKeys.item(roomId, item.pendingId), item);
+      n++;
+    }
+    return n;
   }
 
   async countRoom(roomId: string): Promise<number> {
