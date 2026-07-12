@@ -161,4 +161,56 @@ describe("POST /api/queue/advance rate limiting (route)", () => {
     expect(overLimit.status).toBe(429);
     expect((await overLimit.json()).reason).toBe("rate");
   });
+
+  // ── TICKET-51 (TICKET-47 FU-2): junk/non-allowlisted reason → STRICT bucket ──
+  // The advance route allowlists reasons to `"unplayable"` only; ANY other value
+  // resolves to skipReason=null and is charged to the anti-grief singer-skip
+  // bucket (12/60s), NOT the generous unplayable bucket (40/60s). This is the
+  // fail-safe: a forger cannot bypass the throttle by sending a junk reason.
+  it("charges a junk/non-allowlisted reason to the STRICT singer-skip bucket (12/60s), not the generous unplayable bucket (TICKET-51)", async () => {
+    delete process.env.HOST_TOKEN;
+    process.env.NODE_ENV = "test";
+    process.env.ADVANCE_AUTH = "enforce";
+
+    // A non-allowlisted reason ("bogus") must be counted against the STRICT
+    // bucket: exactly 12 succeed in-window, then the 13th 429s — the same
+    // 12/60s anti-grief ceiling as a reasonless advance. If junk reasons were
+    // (mis)routed to the generous unplayable bucket, all 13 would succeed.
+    for (let i = 0; i < ADVANCE_RATE_ROOM_MAX; i++) {
+      const res = await POST(await authedAdvance("bogus"));
+      expect(res.status).toBe(200);
+    }
+    const overLimit = await POST(await authedAdvance("bogus"));
+    expect(overLimit.status).toBe(429);
+    expect((await overLimit.json()).reason).toBe("rate");
+  });
+
+  it("junk-reason advances SHARE the strict bucket with reasonless advances — a run of junk exhausts the singer-skip cap (TICKET-51)", async () => {
+    delete process.env.HOST_TOKEN;
+    process.env.NODE_ENV = "test";
+    process.env.ADVANCE_AUTH = "enforce";
+
+    // Interleave junk-reason and reasonless advances: because both resolve to
+    // skipReason=null they charge the SAME strict bucket. Twelve combined
+    // succeed; the 13th (regardless of reason) 429s. This proves junk reasons
+    // do NOT get their own allowance and do NOT leak into the unplayable bucket.
+    const junkReasons = ["junk", "", "skip", "griefer", "unplayable-ish", "advance"];
+    for (let i = 0; i < ADVANCE_RATE_ROOM_MAX; i++) {
+      // alternate: half junk, half reasonless — all strict-bucket
+      const req =
+        i % 2 === 0
+          ? await authedAdvance(junkReasons[i % junkReasons.length])
+          : await authedAdvance();
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+    }
+    const overLimit = await POST(await authedAdvance("junk"));
+    expect(overLimit.status).toBe(429);
+    expect((await overLimit.json()).reason).toBe("rate");
+
+    // Proof the junk run did NOT touch the unplayable bucket: it is still fully
+    // free — a reason=unplayable advance in the SAME room/window still succeeds.
+    const stillOk = await POST(await authedAdvance("unplayable"));
+    expect(stillOk.status).toBe(200);
+  });
 });

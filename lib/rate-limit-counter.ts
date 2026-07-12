@@ -17,11 +17,17 @@
  * is deliberately generic (caller passes the full key) so the room-create and
  * search limiters can adopt it in their own follow-ups.
  *
- * Redis pattern: the standard fixed-window counter — `INCR rl:<key>` and, ONLY
- * when the counter is newly created (INCR returns 1), `EXPIRE rl:<key>
- * windowSec`. INCR is atomic per key, so concurrent failures on the same key
- * from different instances all land on one counter. `isThrottled` reads the
- * counter with GET (absent key → 0). `resetKey` DELs it.
+ * Redis pattern: the standard fixed-window counter, but INCR + the
+ * TTL-on-create are collapsed into ONE atomic Lua `EVAL` (`REGISTER_FAILURE_SCRIPT`,
+ * mirroring `MERGE_SCRIPT` in lib/store/upstash.ts). Running both in a single
+ * server-side script closes a TTL-less-counter race: with the old two-round-trip
+ * `INCR` then conditional `EXPIRE`, a lost/failed second round-trip (fail-open
+ * catch, crash between the two calls) left the key with NO TTL, so the counter
+ * never expired and that key stayed throttled indefinitely (self-healing only on
+ * a successful login via `resetKey`). INCR is atomic per key, so concurrent
+ * failures on the same key from different instances all land on one counter, and
+ * the TTL is now guaranteed to be set atomically with the create. `isThrottled`
+ * reads the counter with GET (absent key → 0). `resetKey` DELs it.
  *
  * FAIL-OPEN: every Redis call is wrapped in try/catch. On any Redis error
  * `isThrottled` returns false and `registerFailure` no-ops — availability over
@@ -45,6 +51,33 @@ export interface CounterOptions {
 
 /** Namespace prefix for every Redis key this helper writes (collision-free with queue/room keys). */
 const REDIS_PREFIX = "rl:";
+
+/**
+ * Atomic register-failure (TICKET-50, from TICKET-48 reviewer FU-1). Runs the
+ * INCR and the TTL-on-create inside ONE EVAL, mirroring `MERGE_SCRIPT` in
+ * lib/store/upstash.ts.
+ *
+ * KEYS[1] = counter key (`rl:<key>`).
+ * ARGV[1] = window length in whole milliseconds (>= 1) for PEXPIRE.
+ *
+ * INCR the counter; iff the result is 1 (the counter was just created) set the
+ * TTL in the SAME script via PEXPIRE — so the TTL can never be lost to a dropped
+ * second round-trip or a crash between two calls, which is the whole point:
+ * without it a fail-open-swallowed EXPIRE left a TTL-less key that never expired
+ * and stayed throttled forever. Returns the post-INCR count (unused by the
+ * caller today, but kept for parity/telemetry).
+ *
+ * Uses PEXPIRE (millisecond precision) rather than the old EXPIRE (ceil to whole
+ * seconds): strictly more precise, and it never rounds a sub-second window up to
+ * a full second.
+ */
+export const REGISTER_FAILURE_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`;
 
 /** Cap tracked keys on the memory path so a spoofed-key flood can't grow heap unbounded (LRU). */
 const MAX_TRACKED_KEYS = 1000;
@@ -142,10 +175,14 @@ export async function isThrottled(
 }
 
 /**
- * Record one failure for `key`. Redis path: atomic `INCR`, then `EXPIRE` only
- * when the counter was newly created (INCR === 1) — the standard fixed-window
- * pattern. The EXPIRE-on-create means the window is anchored at the FIRST
- * failure and the key self-expires, so no cleanup pass is needed.
+ * Record one failure for `key`. Redis path: a single atomic `EVAL` of
+ * `REGISTER_FAILURE_SCRIPT` that INCRs the counter and, iff it was just created
+ * (INCR === 1), sets the window TTL via PEXPIRE in the SAME script. Collapsing
+ * the two round-trips into one server-side script means the TTL is guaranteed to
+ * be set atomically with the create — a lost/failed second round-trip can no
+ * longer leave a TTL-less counter that stays throttled forever. The window is
+ * anchored at the FIRST failure and the key self-expires, so no cleanup pass is
+ * needed.
  */
 export async function registerFailure(
   key: string,
@@ -157,13 +194,10 @@ export async function registerFailure(
     return;
   }
   try {
-    const rk = redisKey(key);
-    const count = await redis.incr(rk);
-    if (count === 1) {
-      // Newly created counter — anchor the window. Ceil so a sub-second window
-      // still gets ≥1s TTL (Redis EXPIRE is whole seconds).
-      await redis.expire(rk, Math.max(1, Math.ceil(opts.windowMs / 1000)));
-    }
+    // PEXPIRE takes whole milliseconds; floor of 1ms so a zero/sub-ms window
+    // still gets a positive TTL (mirrors the old EXPIRE's max(1, …) floor).
+    const ttlMs = Math.max(1, Math.round(opts.windowMs));
+    await redis.eval(REGISTER_FAILURE_SCRIPT, [redisKey(key)], [ttlMs]);
   } catch {
     // Fail-open: on any Redis error, silently skip recording the failure.
   }

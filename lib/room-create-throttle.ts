@@ -3,15 +3,29 @@
  *
  * POST /api/rooms is unauthenticated by design (no accounts until #14), so
  * without a cap an attacker can flood Redis with `room:<id>:meta` keys at zero
- * cost. This is the house standalone dual-bucket/LRU pattern (same shape as
- * TICKET-7's login throttle and TICKET-8's search limiter — deliberately not
- * imported from them, per the parallel-wave file-ownership rule).
+ * cost.
  *
- * Semantics: counts SUCCESSFUL room creations per client IP in a rolling
- * window. In-process, per-instance — on serverless hosting each lambda keeps
- * its own buckets, so this is a strong attack-surface reduction, NOT a hard
- * global cap (the hard cap is the ROOM_MAX ceiling in `lib/rooms.ts`; an
- * edge/Upstash-backed limiter is a recorded #14 follow-up).
+ * This now delegates to the shared `lib/rate-limit-counter` helper (TICKET-52 /
+ * TICKET-48 FU-2), exactly as `lib/host-auth.ts`'s login throttle does. When
+ * Upstash is configured the counter is CROSS-INSTANCE (INCR-based fixed-window
+ * counter in Redis), so on serverless hosting an attacker spraying creations
+ * across warm lambdas is actually capped — previously each lambda kept its own
+ * in-memory Map, making this a per-instance guard only (the recorded #14
+ * follow-up). When Upstash is absent it falls back to the same in-process
+ * Map/LRU logic, so local dev / CI and the zero-secret boot are byte-behavior
+ * unchanged. Fixed-window semantics are identical (window anchored at the first
+ * hit, self-expiring), so the trip point and 1h window are unchanged. The hard
+ * global cap remains the ROOM_MAX ceiling in `lib/rooms.ts`.
+ *
+ * NOTE: the shared counter's memory-path LRU cap (MAX_TRACKED_KEYS = 1000) is
+ * now SHARED across all its consumers (login + room-create keys), where
+ * room-create previously had its own private 1000-entry cap. This is an
+ * intentional consolidation consequence — still a strong heap bound, and
+ * irrelevant on the Redis/prod path.
+ *
+ * Semantics: counts SUCCESSFUL room creations per client IP in a fixed 1h
+ * window. Functions are async because the Redis path is async; the sole call
+ * site already runs in an async route and simply `await`s.
  *
  * Tunables:
  *   ROOM_CREATE_LIMIT — creations per IP per window (default 3).
@@ -20,17 +34,15 @@
 
 import "server-only";
 
+import {
+  isThrottled,
+  registerFailure,
+  _clearAll,
+  type CounterOptions,
+} from "./rate-limit-counter";
+
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const DEFAULT_LIMIT = 3;
-/** Cap tracked IPs so a spoofed-IP flood can't grow memory unbounded (LRU). */
-const MAX_TRACKED_IPS = 1000;
-
-interface CreationBucket {
-  count: number;
-  windowStart: number;
-}
-
-const creations = new Map<string, CreationBucket>();
 
 /** Creations allowed per IP per hour (env-tunable, default 3). */
 export function roomCreateLimit(): number {
@@ -38,36 +50,30 @@ export function roomCreateLimit(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_LIMIT;
 }
 
+/**
+ * Counter options for room-create. `max` is evaluated at call time so a live
+ * ROOM_CREATE_LIMIT env override still applies.
+ */
+function roomCreateOpts(): CounterOptions {
+  return { max: roomCreateLimit(), windowMs: WINDOW_MS };
+}
+
+/** Namespaced counter key for a room-create IP (helper prefixes `rl:`). */
+function roomCreateKey(ip: string): string {
+  return `room-create:${ip}`;
+}
+
 /** True when this IP has exhausted its creation budget for the current window. */
-export function isRoomCreateThrottled(ip: string): boolean {
-  const bucket = creations.get(ip);
-  if (!bucket) return false;
-  if (Date.now() - bucket.windowStart >= WINDOW_MS) {
-    creations.delete(ip); // stale window — expired
-    return false;
-  }
-  return bucket.count >= roomCreateLimit();
+export function isRoomCreateThrottled(ip: string): Promise<boolean> {
+  return isThrottled(roomCreateKey(ip), roomCreateOpts());
 }
 
 /** Record one successful room creation for this IP. */
-export function registerRoomCreation(ip: string): void {
-  const now = Date.now();
-  const bucket = creations.get(ip);
-  if (!bucket || now - bucket.windowStart >= WINDOW_MS) {
-    // New or expired window. Evict the oldest-inserted entry when at capacity
-    // (Map preserves insertion order — cheap LRU-ish bound).
-    if (!creations.has(ip) && creations.size >= MAX_TRACKED_IPS) {
-      const oldest = creations.keys().next().value;
-      if (oldest !== undefined) creations.delete(oldest);
-    }
-    creations.delete(ip); // re-insert to refresh insertion order
-    creations.set(ip, { count: 1, windowStart: now });
-    return;
-  }
-  bucket.count += 1;
+export function registerRoomCreation(ip: string): Promise<void> {
+  return registerFailure(roomCreateKey(ip), roomCreateOpts());
 }
 
-/** Test-only helper: wipe all throttle state. */
+/** Test-only helper: wipe all in-memory throttle state (memory path only). */
 export function _clearRoomCreateThrottle(): void {
-  creations.clear();
+  _clearAll();
 }

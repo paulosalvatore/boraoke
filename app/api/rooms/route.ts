@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   // Per-IP creation throttle — checked before parsing so throttled callers are
   // rejected cheaply.
   const ip = clientIpFrom(req);
-  if (throttleEnforced() && isRoomCreateThrottled(ip)) {
+  if (throttleEnforced() && (await isRoomCreateThrottled(ip))) {
     // i18n (TICKET-30): user-facing copy localized to the request locale (cookie
     // / Accept-Language via i18n/request.ts). Technical 4xx guards below stay in
     // English — a normal UI never surfaces them (see string audit).
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
       { status: 503 },
     );
   }
-  registerRoomCreation(ip);
+  await registerRoomCreation(ip);
   void track("room_created", { roomId: created.room.id }); // TICKET-12: fire-and-forget, fail-open
 
   return NextResponse.json(
