@@ -1,0 +1,8 @@
+# Append-only JSONL ledgers (event log work/events/*.jsonl, usage work/usage/*.jsonl)
+# are written by many branches + the hourly heartbeat's auto-commits to main. Without
+# a union driver, every such append collides on merge and manufactures a false
+# "CONFLICTING/undeliverable" PR on the JSONL alone (zero product-code conflict) —
+# the TICKET-F110 class bug. `merge=union` makes git (and GitHub's merge button)
+# auto-resolve these by keeping BOTH sides' lines, so these conflicts never need a
+# human. Union is correct precisely because these files are append-only.
+*.jsonl merge=union
