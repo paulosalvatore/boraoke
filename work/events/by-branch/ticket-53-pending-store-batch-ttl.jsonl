@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-07-14T12:27:39Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-53", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/53-pending-store-batch-ttl", "short_sha": "feadecd", "message_slug": "feat(pending-store): MGET batch reads + TTL-on-reject + lazy index prune"}}
