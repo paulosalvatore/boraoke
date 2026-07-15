@@ -81,6 +81,23 @@ _Prior: (heartbeat #5: backlog reconciliation — corrected the stale `[HIGH] At
 - POWERED_BY_FOOTER doc nit: env change needs redeploy on Vercel.
 - Design-token consolidation (tv CSS module duplicates TICKET-4 tokens deliberately).
 
+## Roadmap reconciliation (PO sweep, 2026-07-15)
+
+Full sweep of the TL prompt archive + code + backlog. Detail: `work/planning/boraoke-roadmap-reconciliation.md`.
+
+**Headline:** the karaoke CORE is done + hard (tickets 0–53 merged, pile drained). The entire platform-GROWTH arc groomed 2026-07-07 (identity/accounts/theming/admin-analytics/venue-types/bot-prevention) was **never started** — all dev after 07-07 went into core hardening (tickets 40–53).
+
+**FELL THROUGH (asked, groomed, never started):** TICKET-26 anon identity registry ("register anonymous users from the start" — foundational, compounding history loss), TICKET-27 bot prevention ("recaptch"), TICKET-28 Google OAuth + retroactive claim (creds provided), TICKET-31 admin dashboard/analytics ("all karaoke days, musics played" — asked twice), TICKET-32 venue generalization ("doesn't need to be a bar"), TICKET-29 dark/light theming (asked twice), TICKET-39 automated feedback loop (a FOUNDING pillar demoted to wave-7).
+
+**Operational debt fell through:** YouTube quota-increase form never submitted (~99 searches/day ceiling); Upstash pending driver built (TICKET-53) but not provisioned in prod (moderation fragile); ADVANCE_AUTH stuck in log-only; TICKET-20 contrast-assertion HIGH follow-up never done; Upstash search cache ("biggest quota lever") never built; F110 `merge=union` never ported; stale "cantai" naming in CLAUDE.md/board/roadmap.
+
+**Proposed priority (PO proposes, TL confirms):**
+- **P0 (unblock scale + launch debt):** file YT quota request · Upstash search cache + cross-instance buckets · provision Upstash pending driver in prod · TICKET-26 anon identity registry.
+- **P1 (founding growth arc):** TICKET-27 bot prevention → TICKET-28 OAuth+claim → TICKET-31 admin analytics → TICKET-39 automated feedback loop → ADVANCE_AUTH enforce flip + TICKET-20 contrast follow-up.
+- **P2:** TICKET-29 theming · TICKET-32 venue types · TICKET-25 telemetry+deflake · TICKET-34/35/36/37 payments arc · housekeeping (rebrand strings, F110 port, worktree cleanup).
+
+**TL decisions needed:** (1) YT quota — file or accept degraded permanently? (2) grow now vs hold at "great core" + pause heartbeat? (3) bot vendor Turnstile vs reCAPTCHA? (4) payments business setup (CNPJ/MEI, MP account, revenue-share %)? (5) first paid feature + fairness sign-off? (6) venue-type shortlist? (7) i18n language set? (8) merge cadence (every merge = live deploy).
+
 ## Notes
 
 - Branch protection on `main`: SKIPPED — GitHub Free + private repo (403); gates are process-enforced (D-011).
