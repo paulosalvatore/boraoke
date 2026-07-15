@@ -1,5 +1,13 @@
 # cantai — Manager Log
 
+## 2026-07-15 — TM interactive (TL-present, D-043 merge authority) — ✅ PR #35 MERGED + deployed
+
+- **Trigger:** coordinating meta-TM relayed that the TL is present and AUTHORIZES merging gate-green PRs — the unattended-deploy carve-out is lifted; TM holds merge authority (D-043). Target: PR #35 (TICKET-53).
+- **Re-verify live (pre-merge):** `gh pr view 35` → `mergeable: MERGEABLE`, `mergeStateStatus: CLEAN`, checks build-and-test **SUCCESS** + Vercel **SUCCESS**. `reviewDecision` empty — expected: GitHub branch protection is off (D-011, gates process-enforced), so no GitHub-required reviewer is configured; the **opus D-022 APPROVE** is recorded on the board + `work/reports/reviewer/TICKET-53-reviewer-report.md` (Dev 542/542 + build 0).
+- **Runtime-risk judgment (no App Tester spawn):** backend-only pending-store change; **memory driver + public `PendingStore` interface byte-identical**, and prod currently runs the in-memory pending driver (Upstash pending not yet provisioned) → the change is **inert in prod** until that driver is live. Low runtime risk; no fresh verify pass warranted.
+- **Merge:** `gh pr merge 35 --squash` → **sha `dc63227d8225c88529ded0ddda16e7794242da56`**. F104 discipline: confirmed `state == MERGED` via `gh pr view 35` **before** any cleanup. Merge auto-triggered a live boraoke.com Vercel prod deploy — **authorized** by the TL.
+- **State after:** `git pull --ff-only` synced main; **open PRs = []** — the deliver-not-merge pile is fully drained. Updated BOARD.md (last-updated banner, Needs-user #35 → resolved, Tickets table TICKET-53 → MERGED) + this log additively; emitted the work event. **No net-new dev started** (per instruction). Worktree `.worktrees/ticket-53` cleanup deferred (none present in this checkout; branch cleanup not required post-squash).
+
 ## 2026-07-15 — Heartbeat fire #16 (autonomous, unattended) — 🟡 BLOCKED-PILE (no new PR)
 
 - **Step 0 cold-resume:** reloaded CLAUDE.md §§1–4 + boraoke's BOARD.md/MANAGER-LOG.md from disk. boraoke = the `cantai` checkout (`git@github.com:paulosalvatore/boraoke.git`), shared HEAD on `main`. Ran from the framework tab but operated only on the boraoke product's own repo/docs (no framework mutation).
