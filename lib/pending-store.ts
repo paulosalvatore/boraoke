@@ -38,9 +38,22 @@ export interface PendingRedisLike {
   lrange<T = unknown>(key: string, start: number, stop: number): Promise<T[]>;
   lrem(key: string, count: number, value: unknown): Promise<number>;
   get<T = unknown>(key: string): Promise<T | null>;
+  /** Batch fetch: one record per key, in key order, null for missing. */
+  mget<T = unknown>(...keys: string[]): Promise<(T | null)[]>;
   set(key: string, value: unknown): Promise<unknown>;
+  /** Set a TTL (in ms) on an existing key (Upstash PEXPIRE). */
+  pexpire(key: string, ms: number): Promise<unknown>;
   del(...keys: string[]): Promise<number>;
 }
+
+/**
+ * TTL applied to an item record the moment it is flipped to "rejected", so
+ * rejected orphans self-expire instead of accumulating forever (the id lingers
+ * in the index until lazily pruned on the next read). 10 minutes is comfortably
+ * longer than the patron's ~3s poll interval, so the "rejected" state reliably
+ * surfaces to the patron before the record vanishes.
+ */
+export const REJECTED_PENDING_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Durable, room-scoped pending store. Every op is async so one interface covers
@@ -208,12 +221,23 @@ export class UpstashPendingStore implements PendingStore {
 
   async listRoom(roomId: string): Promise<PendingEntry[]> {
     const ids = await this.idsFor(roomId);
+    // Empty-case guard: Upstash MGET with zero keys is invalid — never call it.
+    if (ids.length === 0) return [];
+    // One batched round-trip instead of N per-id GETs (the 3s-poll cost fix).
+    const recs = await this.redis.mget<PendingEntry>(
+      ...ids.map((id) => pendingKeys.item(roomId, id)),
+    );
     const out: PendingEntry[] = [];
-    for (const id of ids) {
-      const rec = await this.redis.get<PendingEntry>(
-        pendingKeys.item(roomId, id),
-      );
-      if (rec) out.push(rec);
+    for (let i = 0; i < ids.length; i++) {
+      const rec = recs[i];
+      if (rec) {
+        out.push(rec);
+      } else {
+        // Lazy index prune: the record is genuinely gone (expired/missing), so
+        // drop its dead id from the index. Best-effort read-path cleanup — only
+        // ever removes ids whose slot came back null, never a live record's id.
+        await this.redis.lrem(pendingKeys.index(roomId), 0, ids[i]);
+      }
     }
     return out;
   }
@@ -246,6 +270,12 @@ export class UpstashPendingStore implements PendingStore {
     if (!item || item.status !== "pending") return null;
     item.status = "rejected";
     await this.redis.set(pendingKeys.item(roomId, pendingId), item);
+    // Bound the rejected orphan's lifetime so it self-expires (the id is lazily
+    // pruned from the index on the next listRoom that sees the null slot).
+    await this.redis.pexpire(
+      pendingKeys.item(roomId, pendingId),
+      REJECTED_PENDING_TTL_MS,
+    );
     return item;
   }
 
@@ -259,6 +289,11 @@ export class UpstashPendingStore implements PendingStore {
       if (item.status !== "pending") continue;
       item.status = "rejected";
       await this.redis.set(pendingKeys.item(roomId, item.pendingId), item);
+      // Same bounded TTL as single reject — rejected orphans self-expire.
+      await this.redis.pexpire(
+        pendingKeys.item(roomId, item.pendingId),
+        REJECTED_PENDING_TTL_MS,
+      );
       n++;
     }
     return n;

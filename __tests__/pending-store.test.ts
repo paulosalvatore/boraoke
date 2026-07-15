@@ -8,6 +8,8 @@
 import {
   MemoryPendingStore,
   UpstashPendingStore,
+  REJECTED_PENDING_TTL_MS,
+  pendingKeys,
   type PendingRedisLike,
   type PendingStore,
 } from "@/lib/pending-store";
@@ -18,6 +20,25 @@ import type { QueueEntry } from "@/lib/store";
 class FakeRedis implements PendingRedisLike {
   private kv = new Map<string, string>();
   private lists = new Map<string, string[]>();
+  /** key → TTL(ms), set by pexpire. Deterministically drained by _expireNow. */
+  private ttls = new Map<string, number>();
+
+  /** Call counters so tests can assert batching (one mget, zero per-id gets). */
+  public calls = { get: 0, mget: 0, pexpire: 0, lrem: 0 };
+
+  /** Test-only: simulate the TTL elapsing on a key — it vanishes like Redis expiry. */
+  _expireNow(key: string): void {
+    this.kv.delete(key);
+    this.ttls.delete(key);
+  }
+  /** Test-only: read the TTL recorded on a key (undefined if none set). */
+  _ttlOf(key: string): number | undefined {
+    return this.ttls.get(key);
+  }
+  /** Test-only: current length of a list (index inspection). */
+  _listLen(key: string): number {
+    return (this.lists.get(key) ?? []).length;
+  }
 
   async rpush(key: string, ...values: unknown[]): Promise<number> {
     const arr = this.lists.get(key) ?? [];
@@ -31,24 +52,40 @@ class FakeRedis implements PendingRedisLike {
     return arr.slice(start, end) as unknown as T[];
   }
   async lrem(key: string, _count: number, value: unknown): Promise<number> {
+    this.calls.lrem++;
     const arr = this.lists.get(key) ?? [];
     const next = arr.filter((v) => v !== value);
     this.lists.set(key, next);
     return arr.length - next.length;
   }
   async get<T = unknown>(key: string): Promise<T | null> {
+    this.calls.get++;
     const raw = this.kv.get(key);
     return raw != null ? (JSON.parse(raw) as T) : null;
+  }
+  async mget<T = unknown>(...keys: string[]): Promise<(T | null)[]> {
+    this.calls.mget++;
+    return keys.map((k) => {
+      const raw = this.kv.get(k);
+      return raw != null ? (JSON.parse(raw) as T) : null;
+    });
   }
   async set(key: string, value: unknown): Promise<unknown> {
     this.kv.set(key, JSON.stringify(value));
     return "OK";
+  }
+  async pexpire(key: string, ms: number): Promise<unknown> {
+    this.calls.pexpire++;
+    // Mirror Redis: PEXPIRE only sets a TTL on an existing key.
+    if (this.kv.has(key)) this.ttls.set(key, ms);
+    return 1;
   }
   async del(...keys: string[]): Promise<number> {
     let n = 0;
     for (const k of keys) {
       if (this.kv.delete(k)) n++;
       if (this.lists.delete(k)) n++;
+      this.ttls.delete(k);
     }
     return n;
   }
@@ -233,5 +270,87 @@ describe.each(drivers)("PendingStore conformance — %s", (_name, make) => {
     expect(await s.rejectAllPending(ROOM)).toBe(1);
     expect(await s.countRoom(other)).toBe(1);
     expect((await s.get(other, there.pendingId))?.status).toBe("pending");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Upstash-driver-specific: MGET batching, TTL-on-reject, lazy index prune (T-53)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("UpstashPendingStore — batch / TTL / lazy-prune (TICKET-53)", () => {
+  let fake: FakeRedis;
+  let s: UpstashPendingStore;
+  beforeEach(async () => {
+    fake = new FakeRedis();
+    s = new UpstashPendingStore(fake);
+    await s.clear(ROOM);
+  });
+
+  it("listRoom issues ONE mget for all ids, not N per-id gets", async () => {
+    await s.add(makePending(UUID_A));
+    await s.add(makePending(UUID_A));
+    await s.add(makePending(UUID_B));
+    fake.calls.get = 0;
+    fake.calls.mget = 0;
+    const list = await s.listRoom(ROOM);
+    expect(list).toHaveLength(3);
+    // Exactly one batched read, zero per-id gets.
+    expect(fake.calls.mget).toBe(1);
+    expect(fake.calls.get).toBe(0);
+  });
+
+  it("listRoom on an empty room returns [] WITHOUT calling mget", async () => {
+    fake.calls.mget = 0;
+    expect(await s.listRoom(ROOM)).toEqual([]);
+    expect(fake.calls.mget).toBe(0);
+  });
+
+  it("reject sets a bounded TTL on the item key with the constant", async () => {
+    const p = makePending(UUID_A);
+    await s.add(p);
+    fake.calls.pexpire = 0;
+    await s.reject(ROOM, p.pendingId);
+    const key = pendingKeys.item(ROOM, p.pendingId);
+    expect(fake.calls.pexpire).toBe(1);
+    expect(fake._ttlOf(key)).toBe(REJECTED_PENDING_TTL_MS);
+  });
+
+  it("rejectAllPending sets the TTL on each flipped item key", async () => {
+    const a1 = makePending(UUID_A);
+    const a2 = makePending(UUID_A);
+    await s.add(a1);
+    await s.add(a2);
+    fake.calls.pexpire = 0;
+    expect(await s.rejectAllPending(ROOM)).toBe(2);
+    expect(fake.calls.pexpire).toBe(2);
+    expect(fake._ttlOf(pendingKeys.item(ROOM, a1.pendingId))).toBe(
+      REJECTED_PENDING_TTL_MS,
+    );
+    expect(fake._ttlOf(pendingKeys.item(ROOM, a2.pendingId))).toBe(
+      REJECTED_PENDING_TTL_MS,
+    );
+  });
+
+  it("after a rejected item's TTL expires, listRoom omits it AND lazily lrem's its dead id", async () => {
+    const live = makePending(UUID_A);
+    const doomed = makePending(UUID_A);
+    await s.add(live);
+    await s.add(doomed);
+    await s.reject(ROOM, doomed.pendingId);
+    const indexKey = pendingKeys.index(ROOM);
+    // Both ids still indexed right after reject (id lingers until pruned).
+    expect(fake._listLen(indexKey)).toBe(2);
+
+    // Simulate the TTL elapsing — the item record vanishes like real Redis expiry.
+    fake._expireNow(pendingKeys.item(ROOM, doomed.pendingId));
+    fake.calls.lrem = 0;
+
+    const list = await s.listRoom(ROOM);
+    // The expired entry is omitted; only the live one remains.
+    expect(list.map((p) => p.pendingId)).toEqual([live.pendingId]);
+    // Its dead id was lazily lrem'd, shrinking the index to just the live id.
+    expect(fake.calls.lrem).toBe(1);
+    expect(fake._listLen(indexKey)).toBe(1);
+    // A live record's id is NEVER pruned.
+    expect(await fake.lrange<string>(indexKey, 0, -1)).toEqual([live.pendingId]);
   });
 });
