@@ -96,5 +96,8 @@ export async function POST(req: NextRequest) {
     props: { kind: "moderated", mode: item.entry.mode },
   });
 
-  return NextResponse.json({ ok: true, entry: item.entry });
+  // Minimal ack — the host admin UI ignores this body and refetches both the
+  // pending list and the queue, so we do NOT echo the full QueueEntry back
+  // (PR#25 sec LOW-1: trim needless PII/enumeration surface).
+  return NextResponse.json({ ok: true });
 }

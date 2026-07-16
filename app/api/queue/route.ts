@@ -225,8 +225,13 @@ export async function POST(req: NextRequest) {
     };
     await pendingStore.add(pendingEntry);
     // 202 Accepted (not 201): the submission is received but not yet queued.
+    // Response is a minimal ack — the patron client refetches its own pending
+    // list (GET /api/queue/pending) rather than reading the entry back here, so
+    // we do NOT echo the full QueueEntry (drops patronUuid et al. — PR#25 sec
+    // LOW-1: no needless PII/enumeration surface). `pending`/`pendingId` stay:
+    // they are non-PII and the moderation test asserts them.
     return NextResponse.json(
-      { entry, pending: true, pendingId: pendingEntry.pendingId },
+      { pending: true, pendingId: pendingEntry.pendingId },
       { status: 202 },
     );
   }
@@ -248,5 +253,8 @@ export async function POST(req: NextRequest) {
   await relayQueue(roomId, roomMode);
 
   void track("song_queued", { roomId, uuid: entry.patronUuid, props: { kind: typeof rawVideoId === "string" && rawVideoId ? "search" : "paste", mode: resolvedMode } }); // TICKET-12: fire-and-forget, fail-open
-  return NextResponse.json({ entry }, { status: 201 });
+  // Minimal ack — the patron client discards this body and refetches the queue
+  // (GET /api/queue), so we do NOT echo the full QueueEntry / patronUuid back
+  // (PR#25 sec LOW-2: trim needless PII/enumeration surface).
+  return NextResponse.json({ ok: true }, { status: 201 });
 }
