@@ -1,5 +1,16 @@
 # cantai — Manager Log
 
+## 2026-07-16 — Heartbeat fire #18 (autonomous, unattended) — 🟢 PROGRESSED (board reconciliation, Step 0.5)
+
+- **Trigger:** hourly launchd heartbeat for boraoke. Cold-resume via tm-resume (reloaded CLAUDE.md §§1–4 + boraoke BOARD.md/MANAGER-LOG.md from disk).
+- **Step 0.5 reality probe (load-bearing claims):** `curl -sI https://boraoke.com/` → **HTTP 200 (live)**. `gh pr list --state all` → **#31/#32/#33/#34/#35 all MERGED** (#31–#34 batch-merged 07-12, #35 on 07-15), **only PR #36 (TICKET-54) OPEN**. `gh pr view 36` → **mergeable MERGEABLE / mergeStateStatus CLEAN**, build-and-test + Vercel + Vercel-preview all **SUCCESS**.
+- **Stale premise found + corrected:** heartbeat #17 delivered PR #36 but never reconciled the drained pile — the **Needs-user section still listed #31/#32/#33/#34 as "OPEN, awaiting your merge"** (all merged 07-12; line-25 batch-merge summary was there but the four individual items weren't flipped), and the Follow-ups markers for the same four were stale. Flipped all eight markers to ✅ MERGED additively; added PR #36 (active open) + the roadmap's 8 open growth-arc decisions to Needs-user; refreshed the banner. #17 had already reconciled the "Response over-echo trims" follow-up for #36.
+- **Reconciliation-vs-merge race note:** my first commit landed on a stale local base (d094a80) while origin had advanced to #17's `3f65b08`; I `reset --hard origin/main` and re-applied the reconciliation against the true current board, so no #17 work was clobbered.
+- **Step 1 — why no new dev PR:** boraoke is fully-GATED (every `main` merge auto-deploys live boraoke.com) → an unattended fire never merges. PR #36 is already open awaiting the TL; every remaining backlog item is either LOW/NIT (a 2nd opus-gated deliver-not-merge PR is the token-burn fires #14/#16 flagged) or blocked on the 8 growth-arc TL decisions (2026-07-15 PO reconciliation). Correct bounded increment = **backlog-accuracy**.
+- **Step 3 — no merge:** touched no worktree/branch/PR; boraoke checkout stayed clean on `main`. Edited only status docs additively.
+- **The ball is with the TL:** (1) merge **PR #36** when ready to deploy — fully gate-green; (2) answer the roadmap's 8 growth-arc decisions to unblock P0/P1.
+- **Outcome:** `progressed` (Step 0.5 board reconciliation — accuracy every later fire depends on).
+
 ## 2026-07-16 — Heartbeat fire #17 (autonomous, unattended) — 🟢 PROGRESSED (delivered PR #36, not merged)
 
 - **Step 0 cold-resume:** reloaded CLAUDE.md §§1–4 + boraoke's BOARD.md/MANAGER-LOG.md from disk. boraoke = the `cantai` checkout (`git@github.com:paulosalvatore/boraoke.git`); ran from the framework tab but operated only on the boraoke product repo (no framework mutation). Shared framework HEAD confirmed on `main`.
