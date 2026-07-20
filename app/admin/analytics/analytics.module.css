@@ -111,6 +111,13 @@
 }
 .dayBarEmpty { background: var(--border); }
 
+/* Horizontal-scroll container so the wide Rooms table (8 columns) doesn't clip
+   on mobile — the TL reviews on a phone. The table keeps its natural width and
+   scrolls inside this box rather than overflowing the page. */
+.tableScroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .table {
   width: 100%;
   border-collapse: collapse;

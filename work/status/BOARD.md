@@ -112,7 +112,7 @@ Full sweep of the TL prompt archive + code + backlog. Detail: `work/planning/bor
 
 | Ticket | Title | Status | Notes |
 |---|---|---|---|
-| TICKET-31 | Admin dashboard / analytics (read-only) | IN REVIEW | Worktree `.worktrees/31-admin-analytics`, branch `ticket/31-admin-analytics`. New `lib/analytics.ts` (pure aggregation) + `/api/admin/analytics` (gated by the existing `default`-room HOST_TOKEN, reuses `requireHost`/`/api/host/login`) + `/admin/analytics` page. Closes the top-songs telemetry gap: `song_played` now carries `videoId`(+`title`). Zero writes beyond that one additive prop. Full ticket doc: work/tickets/TICKET-31-admin-analytics.md |
+| TICKET-31 | Admin dashboard / analytics (read-only) | IN REVIEW | Worktree `.worktrees/31-admin-analytics`, branch `ticket/31-admin-analytics`. New `lib/analytics.ts` (pure aggregation) + `/api/host/analytics` (gated by the existing `default`-room HOST_TOKEN, reuses `requireHost`/`/api/host/login`; under `/api/host` so the host cookie's path scope reaches it — App Tester real-browser fix) + `/admin/analytics` page. Closes the top-songs telemetry gap: `song_played` now carries `videoId`(+`title`). Zero writes beyond that one additive prop. Full ticket doc: work/tickets/TICKET-31-admin-analytics.md |
 | TICKET-0 | Bootstrap | DONE | Repo created 2026-07-05; definition in work/tickets/TICKET-0-bootstrap.md |
 | TICKET-1 | Walking skeleton / prototype core | DONE | PR #4 merged: full gate chain (App Tester PASS, Security MEDIUMs fixed, sonnet+opus APPROVE); CI billing exception recorded |
 | TICKET-6 | Durable persistence (wave 1) | DONE | PR #7 merged: full chain (Security+hardening, sonnet+opus APPROVE; opus verified real @upstash/redis semantics). Upstash activates on TL provisioning |

@@ -23,7 +23,7 @@ A READ-ONLY admin analytics view over the existing telemetry data:
 ## New in this ticket
 
 - `lib/analytics.ts` — pure aggregation (`computeAnalytics(events, fromDay, toDay, opts)`): a days-over-time series (`DayActivity[]`), top-N songs by play count (`TopSong[]`), and a per-room breakdown (`RoomActivity[]`). Takes raw events over an arbitrary day range (not fixed to an ISO week like the rollup); reuses `countSessions`/`dayRange` exactly like the rollup script does.
-- `app/api/admin/analytics/route.ts` — `GET ?from=&to=&topSongs=` — auth-gated (see below), reads via `telemetryStore.listRange`, calls `computeAnalytics`, returns JSON. Zero writes to any store.
+- `app/api/host/analytics/route.ts` — `GET ?from=&to=&topSongs=` — auth-gated (see below), reads via `telemetryStore.listRange`, calls `computeAnalytics`, returns JSON. Zero writes to any store. **Route location is load-bearing:** it MUST live under `/api/host/*` so the host session cookie (scoped to `HOST_COOKIE_PATH="/api/host"`) is actually sent by a real browser — an earlier draft at `/api/admin/analytics` was outside the cookie scope, so a logged-in host's browser never attached the cookie and every request 401'd (App Tester real-browser catch; unit tests missed it because they set the cookie directly on mock requests). A path-scope regression test now guards this.
 - `app/admin/analytics/page.tsx` + `analytics.module.css` — client page: login gate (reuses the existing host-login flow), date-range controls, a days-over-time bar strip, a top-songs table, and a per-room table.
 - `app/api/queue/advance/route.ts` — additive telemetry fix (see "Known gap closed" below).
 
@@ -31,7 +31,7 @@ A READ-ONLY admin analytics view over the existing telemetry data:
 
 The new `/admin/analytics` surface and its `/api/admin/analytics` route are gated by the **same host-session mechanism** as `/[room]/admin`, scoped to the `default` room — i.e. the site's existing `HOST_TOKEN` secret (the pre-multi-room `/admin` was already this site's single global admin surface; `default`'s token is the natural site-wide admin secret). Concretely:
 
-- `GET /api/admin/analytics` calls `requireHost(req, DEFAULT_ROOM)` — the exact same function every other host route calls, just checked against `DEFAULT_ROOM` instead of a real venue id.
+- `GET /api/host/analytics` calls `requireHost(req, DEFAULT_ROOM)` — the exact same function every other host route calls, just checked against `DEFAULT_ROOM` instead of a real venue id. It lives under `/api/host/*` precisely so it shares the host cookie's path scope (see above).
 - The page reuses the EXISTING `/api/host/login?room=default` and `/api/host/session?room=default` endpoints for the login gate — no new login endpoint, no new secret, no new cookie name (`cantai_host`, the legacy `default`-room cookie).
 - This is fail-closed in production exactly like every other host route: if `HOST_TOKEN` is unset in prod, `/admin/analytics` is locked (same "host controls are not configured" message as `/[room]/admin`).
 - Per-room host auth is untouched — `lib/host-auth.ts` has zero code changes.

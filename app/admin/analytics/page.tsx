@@ -68,7 +68,10 @@ export default function AdminAnalyticsPage() {
     setLoadError("");
     try {
       const res = await fetch(
-        `/api/admin/analytics?from=${from}&to=${to}`,
+        // NOTE: endpoint lives UNDER /api/host so the host session cookie
+        // (scoped to HOST_COOKIE_PATH="/api/host") is actually sent by the
+        // browser — see app/api/host/analytics/route.ts header.
+        `/api/host/analytics?from=${from}&to=${to}`,
         { cache: "no-store" },
       );
       if (!res.ok) {
@@ -232,6 +235,7 @@ export default function AdminAnalyticsPage() {
           <section className={styles.section}>
             <div className={styles.sectionTitle}>Top songs</div>
             {data.topSongs.length > 0 ? (
+              <div className={styles.tableScroll}>
               <table className={styles.table}>
                 <thead>
                   <tr>
@@ -252,6 +256,7 @@ export default function AdminAnalyticsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             ) : (
               <p className={styles.empty}>No songs played in range.</p>
             )}
@@ -260,6 +265,7 @@ export default function AdminAnalyticsPage() {
           <section className={styles.section}>
             <div className={styles.sectionTitle}>Rooms</div>
             {data.rooms.length > 0 ? (
+              <div className={styles.tableScroll}>
               <table className={styles.table}>
                 <thead>
                   <tr>
@@ -288,6 +294,7 @@ export default function AdminAnalyticsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             ) : (
               <p className={styles.empty}>No room activity in range.</p>
             )}
