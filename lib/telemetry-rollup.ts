@@ -102,6 +102,34 @@ function bump(map: Record<string, number>, key: string): void {
   map[key] = (map[key] ?? 0) + 1;
 }
 
+/**
+ * Split a chronologically-sorted list of same-room events into sessions on
+ * >SESSION_GAP_MS gaps. Factored out (TICKET-31) so `lib/analytics.ts` can
+ * reuse the exact same session-boundary rule at day granularity instead of
+ * only the weekly rollup's granularity — one definition of "a session", two
+ * call sites. `events` MUST already be sorted by `ts` ascending (both call
+ * sites pre-sort).
+ */
+export function countSessions(
+  events: TelemetryEvent[],
+): { sessions: number; sessionMs: number } {
+  let sessions = 0;
+  let sessionMs = 0;
+  let sessionStart = -1;
+  let prev = -1;
+  for (const e of events) {
+    const t = new Date(e.ts).getTime();
+    if (prev < 0 || t - prev > SESSION_GAP_MS) {
+      if (sessionStart >= 0) sessionMs += prev - sessionStart;
+      sessions += 1;
+      sessionStart = t;
+    }
+    prev = t;
+  }
+  if (sessionStart >= 0) sessionMs += prev - sessionStart;
+  return { sessions, sessionMs };
+}
+
 export function computeRollup(
   events: TelemetryEvent[],
   week: string,
@@ -126,20 +154,7 @@ export function computeRollup(
     const activeDays = new Set(roomEvents.map((e) => e.ts.slice(0, 10))).size;
 
     // Sessions: chronological events split on >SESSION_GAP_MS gaps.
-    let sessions = 0;
-    let sessionMs = 0;
-    let sessionStart = -1;
-    let prev = -1;
-    for (const e of roomEvents) {
-      const t = new Date(e.ts).getTime();
-      if (prev < 0 || t - prev > SESSION_GAP_MS) {
-        if (sessionStart >= 0) sessionMs += prev - sessionStart;
-        sessions += 1;
-        sessionStart = t;
-      }
-      prev = t;
-    }
-    if (sessionStart >= 0) sessionMs += prev - sessionStart;
+    const { sessions, sessionMs } = countSessions(roomEvents);
 
     const patrons = new Set(
       roomEvents.filter((e) => e.uuid).map((e) => e.uuid as string),

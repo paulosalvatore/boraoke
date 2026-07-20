@@ -75,7 +75,17 @@ export async function POST(req: NextRequest) {
       props: { reason: skipReason },
     });
   }
-  if (next) void track("song_played", { roomId, uuid: next.patronUuid, props: { mode: next.mode } }); // TICKET-12 (C1): the ONE song_played source; fire-and-forget, fail-open
+  if (next)
+    void track("song_played", {
+      roomId,
+      uuid: next.patronUuid,
+      // TICKET-12 (C1): the ONE song_played source; fire-and-forget, fail-open.
+      // TICKET-31: videoId (+title, when the patron supplied one) added so the
+      // admin analytics top-songs ranking is computable from telemetry —
+      // sanitizeProps truncates to MAX_PROP_STRING and drops `title` entirely
+      // when undefined, so this is a pure additive prop, not a schema change.
+      props: { mode: next.mode, videoId: next.videoId, title: next.title },
+    });
   return NextResponse.json({
     nowPlaying: next,
     message: next ? "Advanced to next entry" : "Queue is now empty",
