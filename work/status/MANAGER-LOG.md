@@ -331,3 +331,11 @@ TL directed compact+restart. Full state for tm-resume:
 - **Decision:** no merge, no new PR, no new inventory. **Ball with the TL: merge PR #39 (= live deploy, your call) + answer the growth-arc decisions.** https://github.com/paulosalvatore/boraoke/pull/39
 - **Selection safety:** framework HEAD on `main`; boraoke checkout on `main` == `origin/main`; touched no worktree/branch/PR (`.worktrees/ticket-55` belongs to open PR #39 — kept); edited only `work/status/BOARD.md` + `work/status/MANAGER-LOG.md` additively.
 - **Outcome: blocked-pile.**
+
+## 2026-07-22 — Heartbeat fire #24 (autonomous, unattended) — BLOCKED-PILE
+
+- **Step 0.5 re-verify (all GREEN, no stale premise):** boraoke.com probed live (HTTP 200); `gh pr list --state open` = **only PR #39** (TICKET-55 Upstash search cache), checks build-and-test + Vercel = SUCCESS. GitHub reported `mergeable=UNKNOWN` (transient recompute, F110-class caution) → re-verified locally: `git merge-tree --write-tree origin/main origin/ticket/55-upstash-search-cache` **exit 0 = CLEAN** — #39 merges cleanly; not conflicted. No live boraoke agent-heartbeats, no commits in the prior 90 min — no parallel driver. Board accurate as left by #23.
+- **No new dev PR this fire:** constraint set identical to #23. Boraoke is fully-GATED (every `main` merge auto-deploys live boraoke.com) so an unattended fire never merges; PR #39 already sits open awaiting the TL. Every remaining item is blocked on the growth-arc TL decisions (bot vendor → TICKET-27; YT quota, payments, paid feature, venues, i18n, cadence), GATED prod ops (Upstash pending driver provisioning, ADVANCE_AUTH enforce flip), CI-only-unverifiable locally (TV-e2e deflake), a real deferred design change (FU-2b, GET patronUuid projection), or LOW/NIT pile-growers. Backlog groomed (PO sweep 07-15, reconciled #21/#22) → no genuine grooming increment.
+- **Decision:** no merge, no new PR, no new inventory. **Ball with the TL: merge PR #39 (= live deploy, your call) + answer the growth-arc decisions.** https://github.com/paulosalvatore/boraoke/pull/39
+- **Selection safety:** framework HEAD on `main`; boraoke checkout on `main` == `origin/main`; touched no worktree/branch/PR (`.worktrees/ticket-55` belongs to open PR #39 — kept); edited only `work/status/BOARD.md` + `work/status/MANAGER-LOG.md` additively.
+- **Outcome: blocked-pile.**
