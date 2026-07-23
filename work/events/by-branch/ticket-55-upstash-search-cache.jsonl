@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-07-21T11:51:24Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-55", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/55-upstash-search-cache", "short_sha": "7ee9ea6", "message_slug": "review: TICKET-55 report (APPROVE)"}}

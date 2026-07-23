@@ -205,6 +205,9 @@ export async function searchYouTube(
 
 // ---------------------------------------------------------------------------
 // In-memory LRU query cache (read cache, not state; per-instance/best-effort).
+// Since TICKET-55 this is the L1 / no-Upstash fallback behind the
+// cross-instance Redis cache in lib/search-cache.ts — routes go through that
+// module; these primitives stay exported for it and for tests.
 // ---------------------------------------------------------------------------
 
 interface CacheEntry {
@@ -216,8 +219,13 @@ const CACHE_MAX = 100;
 const CACHE_TTL_MS = 60_000;
 const queryCache = new Map<string, CacheEntry>();
 
+/**
+ * Normalized, region-scoped cache key: trim + lowercase + collapse internal
+ * whitespace runs to a single space (TICKET-55 — "foo  bar" and "foo bar" are
+ * the same search, so they must share one cross-instance cache entry).
+ */
 export function cacheKey(q: string, regionCode: string): string {
-  return `${regionCode}::${q.trim().toLowerCase()}`;
+  return `${regionCode}::${q.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
 
 export function getCached(key: string, now = Date.now()): SearchResult[] | null {

@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   searchYouTube,
   cacheKey,
-  getCached,
-  setCached,
   rateLimitOk,
   SEARCH_DEFAULTS,
   YouTubeQuotaError,
 } from "@/lib/youtube-search";
+import { getCachedSearch, setCachedSearch } from "@/lib/search-cache";
 import { track } from "@/lib/telemetry";
 import { getTranslations } from "next-intl/server";
 
@@ -92,9 +91,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ degraded: true, reason: "no-api-key", results: [] });
   }
 
-  // Brief read cache for identical queries (per serverless instance; best-effort).
+  // Cross-instance read cache for identical queries (TICKET-55): memory L1 +
+  // Upstash Redis when configured; fail-open (any Redis error = cache miss).
+  // Served BEFORE any Data API call — a hit burns zero quota.
   const ck = cacheKey(q, SEARCH_DEFAULTS.regionCode);
-  const cached = getCached(ck);
+  const cached = await getCachedSearch(ck);
   if (cached) {
     void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: cached.length } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({ results: cached, cached: true });
@@ -102,7 +103,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const results = await searchYouTube(q, key);
-    setCached(ck, results);
+    // Only SUCCESSFUL responses reach this line — errors threw above and are
+    // never cached. Non-empty → 12h TTL; empty → 10min TTL (see search-cache).
+    await setCachedSearch(ck, results);
     void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: results.length } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({ results });
   } catch (err) {
