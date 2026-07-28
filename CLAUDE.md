@@ -1,4 +1,4 @@
-# cantai — Product Session Rules
+# boraoke — Product Session Rules
 
 This is a product repo of the **agentic software house**. Framework, agent prompts, workflows, and decisions live in `paulosalvatore/agentic-software-house` (local checkout: `~/Documents/GitHub/agentic-software-house`). Read that repo's `docs/ARCHITECTURE.md`, `docs/WORKFLOWS.md`, and `docs/DECISIONS.md` before orchestrating.
 
@@ -12,7 +12,7 @@ Free, embeddable karaoke-queue platform for bars: patrons join with uuid+nicknam
 ## Rules
 
 - **Roles:** interactive session = Tech Manager (orchestration only, no code). Spawned agents load `agents/<role>.md` from the framework repo.
-- **Prompt archiving:** the interactive TM archives every TL prompt (and modal answers) via the framework repo's `scripts/archive-prompt.sh` with `--product cantai` — prompts live ONLY in the framework repo (D-015). Subagents never archive.
+- **Prompt archiving:** the interactive TM archives every TL prompt (and modal answers) via the framework repo's `scripts/archive-prompt.sh` with `--product boraoke` — prompts live ONLY in the framework repo (D-015). Subagents never archive.
 - **Gates are sequential (D-007):** plan gate → dev → test gate → security → review (D-022 opus where applicable) → merge. All changes via PRs from TICKET-1 on; the bootstrap commit was the only direct-to-main.
 - **Worktrees (D-008, D-033):** one shared worktree per ticket at `<repo>/.worktrees/<slug>` (inside the repo, never tracked).
 - **Verdict comments (D-011):** gate agents record PASS/FAIL verdicts as PR comments in the fixed format.
