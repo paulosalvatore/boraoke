@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-07-28T11:43:18Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-57", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/57-fix-cantai-product-slug", "short_sha": "c2f759d", "message_slug": "fix(docs): archive boraoke prompts under the registered slug, not the un"}}
