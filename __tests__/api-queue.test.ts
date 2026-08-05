@@ -312,10 +312,48 @@ describe("POST /api/queue — embeddability warning (TICKET-61)", () => {
     expect(url.searchParams.get("id")).toBe(body.videoId);
   });
 
-  it("does not spend quota on a rejected submit (rate-limited / refused never reach the check)", async () => {
-    // A validation failure short-circuits long before the pre-check.
-    const res = await POST(makeRequest(freshBody({ source: "paste", videoId: "short" })));
-    expect(res.status).toBe(400);
-    expect(fetchMock).not.toHaveBeenCalled();
+  describe("a refused submit never reaches the check (no quota spent)", () => {
+    it("validation failure (400) short-circuits before the pre-check", async () => {
+      const res = await POST(makeRequest(freshBody({ source: "paste", videoId: "short" })));
+      expect(res.status).toBe(400);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("a rotation-rule refusal (409 duplicate) spends no quota", async () => {
+      // Same uuid + same video twice: the second is refused by `checkSubmit`,
+      // which runs BEFORE the pre-check. The first submit is a search-path
+      // submit so it spends nothing either.
+      const body = freshBody({ source: "search" });
+      expect((await POST(makeRequest(body))).status).toBe(201);
+      fetchMock.mockClear();
+
+      const res = await POST(makeRequest({ ...body, source: "paste" }));
+      expect(res.status).toBe(409);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("AC1c: the 202 moderation path also carries the warning (and stays trimmed)", async () => {
+    // TICKET-44 moderation ON: the entry is diverted to the pending keyspace and
+    // the route answers 202. The advisory must ride along there too.
+    const { createRoom, setRoomModeration } = await import("@/lib/rooms");
+    const created = await createRoom("Bar Embeddable 61");
+    if (!created) throw new Error("room ceiling hit in test");
+    await setRoomModeration(created.room.id, true);
+
+    const body = freshBody({ source: "paste", room: created.room.id });
+    fetchMock.mockResolvedValue(
+      ytResponse({ items: [{ id: body.videoId, status: { embeddable: false } }] }),
+    );
+
+    const res = await POST(makeRequest(body));
+    expect(res.status).toBe(202);
+
+    const json = await res.json();
+    expect(json.pending).toBe(true);
+    expect(typeof json.pendingId).toBe("string");
+    expect(json.warning).toBe(PT_WARNING);
+    // Still trimmed: no echoed entry / patronUuid (TICKET-54).
+    expect(Object.keys(json).sort()).toEqual(["pending", "pendingId", "warning"]);
   });
 });

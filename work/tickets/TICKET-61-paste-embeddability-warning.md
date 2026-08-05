@@ -27,7 +27,9 @@ Everything else — a pre-parsed `videoId` with `source` absent, `"search"`, or 
 
 Client side, `PatronRoom.tsx` derives `source` from the selection shape, because `SongSelection` (`components/SongSearch.tsx`, owned by a parallel ticket) is `{ videoId, title? }` and exposes nothing else: SongSearch emits a `title` **only** for a picked real search result, while a resolved pasted link — and a pick of the synthetic row a paste creates — always arrive with `title` undefined. So "no title" == "paste" for every path in that component.
 
-**Known imprecision, deliberately accepted:** a real search result with an empty title would be labelled `paste`. Cost: one quota unit, and the check returns `embeddable` anyway because search only ever returns embeddable results. **Follow-up:** put an explicit `source` on `SongSelection` in `components/SongSearch.tsx` once that file is free.
+**Known imprecision, deliberately accepted:** a real search result with an empty title would be labelled `paste`. Cost: one quota unit, and the check returns `embeddable` anyway because search only ever returns embeddable results. The imprecision is one-directional — a paste can never be mislabelled `search`, so a warning is never silently lost.
+
+**Follow-up (must not be dropped):** put an explicit `source` on `SongSelection` in `components/SongSearch.tsx` once that file is free. The derivation currently depends on SongSearch mapping the synthetic paste row's title to `undefined` by comparing against a *localized* copy string — reword that string and paste warnings would vanish silently with a green test suite. The follow-up removes that coupling entirely.
 
 Bonus fix: the existing `song_queued` telemetry `props.kind` used `videoId`-presence alone to label paste vs search. The patron form always sends `videoId` (it parses pasted links client-side), so **every** submit was being logged as `"search"`. It now uses the same `isPaste` derivation.
 
@@ -37,6 +39,10 @@ Bonus fix: the existing `song_queued` telemetry `props.kind` used `videoId`-pres
 - **0 units** for: search-selected submits, submits rejected by validation / rate limit / rotation rules / body-size cap, and any request in an environment with no `YOUTUBE_API_KEY`.
 - The default Data API allowance is 10,000 units/day. For scale: `/api/search` costs 100 units (search.list) + 1 (videos.list) per query, so one paste check is ~1% of one search. Pastes are the minority path, so the added load is negligible against the search budget.
 - The call is placed **after** the dual-bucket submit rate limit (10/min per patronUuid, 60/min per IP) and after `checkSubmit`, so an unauthenticated attacker cannot spend quota faster than the existing submit limit allows, and a refused submit never spends any.
+
+## Latency cost
+
+A checked paste-submit gains one serial outbound round-trip, bounded at **1500ms** by `AbortSignal.timeout` (`EMBEDDABLE_CHECK_TIMEOUT_MS`) — typical is well under 200ms. Search submits and every environment without a `YOUTUBE_API_KEY` add **0ms**. The bound is the point: a hanging Google call can delay a paste submit by at most 1.5s, after which the check fails open and the submit proceeds.
 
 ## Acceptance criteria
 
