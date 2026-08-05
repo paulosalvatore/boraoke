@@ -500,3 +500,155 @@ describe("UpstashPendingStore — batch / TTL / lazy-prune (TICKET-53)", () => {
     expect(await fake.lrange<string>(indexKey, 0, -1)).toEqual([live.pendingId]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TICKET-63 (TICKET-56 FU-5) — pin the cjson string/boolean-only invariant.
+//
+// REJECT_ALL_PENDING_SCRIPT (lib/pending-store.ts) decodes every persisted
+// PendingEntry with Lua's `cjson.decode`, flips `status`, then re-encodes it
+// with `cjson.encode`. That round-trip is documented as lossless "because
+// every persisted field is a string or boolean" — but nothing enforces that
+// claim except the code comment. cjson.encode reformats any Lua *number*
+// through `%.14g` on the way back out, so a numeric field slipped into
+// PendingEntry/QueueEntry (e.g. a `durationSeconds: number`) would silently
+// come back reformatted/truncated in production, with no test ever failing.
+//
+// Two independent, complementary checks below (neither is a hand-maintained
+// list of field names, so neither silently drifts as the shape evolves):
+//
+//   1. A recursive TYPE-LEVEL check over the REAL `PendingEntry`/`QueueEntry`
+//      types, structurally covering every key (present or not, required or
+//      optional) without naming any of them. This is a type-only construct —
+//      ts-jest runs with `isolatedModules: true` (jest.config.ts), which
+//      strips types before executing, so `npm test` alone can NEVER observe
+//      this fail. It is enforced ONLY by running `npx tsc --noEmit` — that is
+//      why this ticket's dev/reviewer verification runs tsc as a separate,
+//      mandatory step, not merely `npm test`.
+//   2. A RUNTIME check that drives the actual `UpstashPendingStore
+//      .rejectAllPending` path (the real production code under test, against
+//      the FakeRedis emulation of the Lua script already used above) with a
+//      maximally-populated representative entry, then recursively walks the
+//      round-tripped record asserting every leaf is a string/boolean/null —
+//      i.e. it inspects the ACTUAL persisted shape that came back through the
+//      cjson-emulating path, not a duplicated list of expected keys.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Leaf types cjson can round-trip losslessly (see the hazard note above). */
+type CjsonSafeLeaf = string | boolean | null | undefined;
+
+/**
+ * Recursively true only if every leaf of T is a `CjsonSafeLeaf`. Structural
+ * over `keyof T` — it does not name a single field, so it automatically
+ * covers any field added later to `PendingEntry` or `QueueEntry`. A numeric
+ * (or any other non-string/boolean) leaf makes this resolve to `false`,
+ * which fails the assignment below with a TS2322 error — but ONLY under
+ * `tsc`, never under `jest` (see the file-header note: ts-jest here strips
+ * types via `isolatedModules`).
+ */
+type AssertCjsonSafe<T> = T extends CjsonSafeLeaf
+  ? true
+  : T extends readonly (infer U)[]
+    ? AssertCjsonSafe<U>
+    : T extends object
+      ? // `-?` strips the optional modifier from the MAPPED TYPE (not from the
+        // value types): a homomorphic mapped type over a generic T otherwise
+        // preserves each key's "?", and indexing `{...}[keyof T]` then folds in
+        // a spurious extra `| undefined` for every optional field — which made
+        // this evaluate to `false` even when every field was already safe.
+        { [K in keyof T]-?: AssertCjsonSafe<T[K]> }[keyof T] extends true
+        ? true
+        : false
+      : false;
+
+// PIN: if a numeric field (or anything else that isn't string/boolean) is
+// ever added to PendingEntry or QueueEntry, ONE of these two lines fails to
+// compile under `npx tsc --noEmit` — jest/ts-jest will NOT catch it (see
+// above). The failure is a generic TS2322 ("Type 'false' is not assignable
+// to type 'true'") on the line below; when you see it, the field you just
+// added is the reason: it can't safely cross `lib/pending-store.ts`'s Lua
+// `cjson` round-trip (REJECT_ALL_PENDING_SCRIPT) without either a
+// string-encoded representation or a script update. See TICKET-56 FU-5.
+const _pendingEntryIsCjsonSafe: AssertCjsonSafe<PendingEntry> = true;
+const _queueEntryIsCjsonSafe: AssertCjsonSafe<QueueEntry> = true;
+void _pendingEntryIsCjsonSafe;
+void _queueEntryIsCjsonSafe;
+
+/**
+ * Recursively assert that every leaf of `value` is a string, boolean, or
+ * null (arrays/plain objects are walked). Throws an Error whose message
+ * explains the cjson `%.14g` hazard and points at the offending path and the
+ * source file, rather than a bare assertion failure.
+ */
+function assertCjsonSafeShape(value: unknown, path: string): void {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => assertCjsonSafeShape(v, `${path}[${i}]`));
+    return;
+  }
+  if (typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      assertCjsonSafeShape(v, `${path}.${k}`);
+    }
+    return;
+  }
+  throw new Error(
+    `cjson round-trip hazard at ${path}: value is a ${typeof value} ` +
+      `(${JSON.stringify(value)}), not a string/boolean/null.\n` +
+      `lib/pending-store.ts's REJECT_ALL_PENDING_SCRIPT decodes every persisted ` +
+      `PendingEntry with Lua's cjson.decode and re-encodes it with cjson.encode. ` +
+      `That round-trip is lossless ONLY because every persisted field today is a ` +
+      `string or boolean — cjson.encode reformats any Lua number through "%.14g" ` +
+      `on the way back out, which would silently corrupt a large integer id or ` +
+      `truncate a float's precision. A new numeric field needs an explicit ` +
+      `string-encoded representation (or the Lua script needs updating) before ` +
+      `it is safe to persist through this path. See TICKET-56 FU-5 / TICKET-63.`,
+  );
+}
+
+describe("cjson string/boolean-only invariant (TICKET-56 FU-5 / TICKET-63)", () => {
+  it("assertCjsonSafeShape is not a tautology: it throws on an injected numeric leaf", () => {
+    expect(() =>
+      assertCjsonSafeShape({ status: "pending", durationSeconds: 42 }, "PendingEntry"),
+    ).toThrow(/cjson/i);
+    expect(() =>
+      assertCjsonSafeShape({ status: "pending", durationSeconds: 42 }, "PendingEntry"),
+    ).toThrow(/%\.14g/);
+  });
+
+  it("assertCjsonSafeShape passes a string/boolean/null-only shape", () => {
+    expect(() =>
+      assertCjsonSafeShape(
+        { a: "x", b: true, c: null, d: ["y", false], e: { f: "z" } },
+        "root",
+      ),
+    ).not.toThrow();
+  });
+
+  it("the ACTUAL round-tripped PendingEntry (real rejectAllPending, Lua-emulating path) stays string/boolean/null-only", async () => {
+    const fake = new FakeRedis();
+    const s = new UpstashPendingStore(fake);
+    await s.clear(ROOM);
+
+    // Maximally populated: every optional QueueEntry/PendingEntry field set,
+    // so this instance actually exercises the fields the type check covers.
+    const full = makePending(UUID_A, {
+      title: "Total Eclipse of the Heart",
+      table: "12",
+      graceRequeue: true,
+    });
+    await s.add(full);
+
+    // Drives the real production method under test, against the same
+    // Lua-script-emulating FakeRedis.eval used throughout this file.
+    expect(await s.rejectAllPending(ROOM)).toBe(1);
+
+    const roundTripped = await s.get(ROOM, full.pendingId);
+    expect(roundTripped).not.toBeNull();
+    expect(roundTripped?.status).toBe("rejected");
+
+    // The actual persisted shape, not a hand-maintained list of field names.
+    assertCjsonSafeShape(roundTripped, "PendingEntry");
+  });
+});
