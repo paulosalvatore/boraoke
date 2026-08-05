@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-07-28T23:41:42Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-58", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/58-run-app-stale-clone-path", "short_sha": "8484a9f", "message_slug": "fix(run-app): repoint skill at the canonical boraoke clone"}}

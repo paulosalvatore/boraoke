@@ -8,7 +8,7 @@ description: Start the Boraoke app locally on port 3040.
 ## Quick start
 
 ```bash
-cd /Users/paulosalvatore/Documents/GitHub/cantai  # or the active worktree path
+cd /Users/paulosalvatore/Documents/GitHub/boraoke  # or the active worktree path
 npm install
 npm run dev
 ```
@@ -18,10 +18,12 @@ The app starts on **http://127.0.0.1:3040**.
 - Patron page: http://127.0.0.1:3040/
 - Venue screen: http://127.0.0.1:3040/tv
 
-## Worktree path (TICKET-1 branch)
+## Worktree path (any ticket branch)
+
+Worktrees live inside the repo as `<repo>/.worktrees/<slug>` (D-033), e.g. `ticket-1`:
 
 ```bash
-cd /Users/paulosalvatore/Documents/GitHub/cantai/.worktrees/ticket-1
+cd /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/<slug>
 npm install
 npm run dev
 ```
