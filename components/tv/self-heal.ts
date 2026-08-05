@@ -58,6 +58,14 @@ export interface ProactiveSelfHealInput {
  * interrupting anyone's song; a reload mid-playback would cut off the current
  * singer, so an old-but-playing page waits for the next idle window (a busy
  * venue naturally reaches idle between songs long before the 48h expiry).
+ *
+ * NOTE (TICKET-62): this predicate is intentionally UNCLAMPED and unguarded —
+ * it answers only "is the token old and the player idle?". It must never be
+ * called on its own from the page: `tokenAgeMs` is `Date.now() - mintedAt`, so a
+ * kiosk whose browser clock runs >20h AHEAD of the server computes a bogus old
+ * age that a reload cannot cure (the re-minted token reads as old again), and an
+ * unguarded caller would reload on every check forever. Callers go through
+ * `shouldSelfHealReload`, whose sessionStorage debounce guards BOTH layers.
  */
 export function shouldProactivelyReload({
   tokenAgeMs,
@@ -127,4 +135,111 @@ export function shouldSelfHealReload({
   if (!shouldReactivelyReload({ lastReloadAt, now })) return false;
   if (got401) return true; // reactive backstop: token rejected under enforce
   return shouldProactivelyReload({ tokenAgeMs, isPlaying });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * TICKET-62 — queue-poll if-changed diff.
+ *
+ * Lives here (rather than in TvScreen) for the same reason the self-heal
+ * decisions do: this is pure logic with no React/DOM dependency, so it is
+ * unit-provable in the node-env jest project, whereas `TvScreen.tsx` is a
+ * "use client" React component the suite cannot import.
+ *
+ * WHY: the TV polls `/api/queue` every 3s and wrote the fetched items into
+ * state unconditionally, so a kiosk re-rendered ~20x/min forever even with a
+ * completely static queue. Skipping the state write when nothing changed is a
+ * pure render optimization — but ONLY if the comparison is exactly right. A
+ * comparison that misses a real change would freeze the TV on a stale queue,
+ * which is far worse than the churn being fixed. So the rule for everything
+ * below is: **when in doubt, report "not equal"** (a false "changed" costs one
+ * needless re-render; a false "unchanged" wedges the screen).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * True when `value` is a plain JSON-ish object (`{...}` from a literal or from
+ * `JSON.parse`) — NOT an array, not `null`, and not a class instance such as
+ * `Date`/`Map`/`Set`. Only plain objects are compared structurally; anything
+ * exotic falls back to identity, because walking own-enumerable keys of a
+ * `Date` (which has none) would call two different dates equal.
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) return false;
+  if (Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value) as object | null;
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Structural deep equality for JSON-shaped values (the exact shape a
+ * `/api/queue` response can produce: primitives, plain objects, arrays).
+ *
+ * Deliberately generic rather than a hand-written field-by-field `QueueEntry`
+ * comparison: a field-list compare silently stops seeing any field added to the
+ * entry shape later, which is precisely the freeze-on-stale-queue failure. A
+ * structural walk keeps working when the shape grows.
+ *
+ * Deliberately NOT `JSON.stringify(a) === JSON.stringify(b)`: stringify is key-
+ * order sensitive and drops `undefined` values, so it is both noisier and — for
+ * key-order-equal-but-undefined-differing objects — subtly wrong.
+ *
+ * Semantics chosen to fail toward "changed":
+ * - `Object.is` fast path, so `NaN` equals `NaN` and `0`/`-0` count as changed.
+ * - Differing key SETS are unequal, so `{ title: undefined }` and `{}` are
+ *   unequal (a field appearing/disappearing is a real change).
+ * - Arrays are order-sensitive — a queue reorder IS a change.
+ * - Mismatched kinds (array vs object vs primitive) are unequal.
+ *
+ * Inputs come from `JSON.parse`, so cycles are impossible and no depth guard is
+ * needed.
+ */
+export function deepEqualJson(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (!deepEqualJson(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  // Non-plain objects (Date, Map, class instances) and primitives: identity
+  // only — already decided by the Object.is fast path above.
+  if (!isPlainObject(a) || !isPlainObject(b)) return false;
+
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  // Both directions of key containment, not just a matching COUNT. Count +
+  // one-way `hasOwnProperty` is sound only while `Object.keys` and
+  // `hasOwnProperty` agree, which holds for JSON-parsed objects but is defeated
+  // by a non-enumerable own property (equal counts, and b's extra enumerable
+  // field never compared → a false "unchanged"). Unreachable from a JSON
+  // payload, but the module's contract is fail-toward-changed REGARDLESS, and
+  // closing it costs nothing.
+  for (const key of bKeys) {
+    if (!Object.prototype.hasOwnProperty.call(a, key)) return false;
+  }
+  for (const key of aKeys) {
+    // Own-key presence, not just an equal value: `{ x: undefined }` vs `{}`
+    // have equal lookups but different shapes, and that is a change.
+    if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+    if (!deepEqualJson(a[key], b[key])) return false;
+  }
+  return true;
+}
+
+/**
+ * True when two fetched queue snapshots are identical, so the poll can skip the
+ * `setQueue` write and avoid a re-render. Order-sensitive (a reorder is a real
+ * change) and field-exact (any added/removed/changed field is a real change).
+ */
+export function queueItemsEqual<T>(a: readonly T[], b: readonly T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (!deepEqualJson(a[i], b[i])) return false;
+  }
+  return true;
 }

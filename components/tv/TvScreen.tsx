@@ -13,10 +13,7 @@ import {
   BOOTSTRAP_READY_TIMEOUT_MS,
   type StallState,
 } from "./watchdog";
-import {
-  shouldProactivelyReload,
-  shouldReactivelyReload,
-} from "./self-heal";
+import { shouldSelfHealReload, queueItemsEqual } from "./self-heal";
 
 declare global {
   interface Window {
@@ -127,6 +124,8 @@ export default function TvScreen({
   const stallStateRef = useRef<StallState>(createStallState(Date.now()));
   const skipNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skippingRef = useRef(false);
+  // TICKET-62: re-run timer for a failed YT.Player construction (TICKET-41c).
+  const playerRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Length of the TV "get to the mic" no-show call window (spec §no-shows). */
   const MIC_CALL_SECONDS = 30;
@@ -221,7 +220,14 @@ export default function TvScreen({
       const res = await fetch(`/api/queue${roomQuery}`);
       if (!res.ok) return;
       const data = await res.json();
-      setQueue(data.items ?? []);
+      // TICKET-62: if-changed write. The poll runs every 3s forever on a kiosk;
+      // writing an identical array re-rendered the whole TV (and re-ran the
+      // player effect's identity checks) ~20x/min for nothing. Returning `prev`
+      // from the updater makes React bail out of the render entirely. The
+      // comparison is deep + order-sensitive + field-exact and fails toward
+      // "changed", so a stale-queue freeze is not reachable (see self-heal.ts).
+      const items: QueueEntry[] = data.items ?? [];
+      setQueue((prev) => (queueItemsEqual(prev, items) ? prev : items));
       const nextMode: string | null = data.mode ?? null;
       if (nextMode) {
         if (prevModeRef.current && prevModeRef.current !== nextMode) {
@@ -243,34 +249,53 @@ export default function TvScreen({
     return () => clearInterval(interval);
   }, [fetchQueue]);
 
-  // ---- TICKET-46 Layer 2: reactive self-heal on a 401 from advance ----
+  // ---- TICKET-46 / TICKET-62: the ONE self-heal reload path (both layers) ----
   // Under `ADVANCE_AUTH=enforce`, an aged-out screen token makes advance return
-  // 401 and the queue wedges silently. As a last-resort backstop, reload the
-  // page (re-minting a fresh token via force-dynamic) — but debounced by a
-  // sessionStorage one-shot marker so a genuinely bad config (every fresh token
-  // still 401s) can never storm the page with reloads; after one attempt inside
-  // the window it fails quietly (the pre-existing silent behavior). Dormant in
-  // log mode, where advance never 401s.
-  const reactiveSelfHeal = useCallback(() => {
+  // 401 and the queue wedges silently. Layer 2 reloads the page (re-minting a
+  // fresh token via force-dynamic) as a last-resort backstop; Layer 1 reloads
+  // proactively while idle before the token ever ages out. BOTH now go through
+  // this single function so both are covered by the sessionStorage debounce
+  // marker — that is the whole point of `shouldSelfHealReload`, which Layer 1
+  // previously bypassed by calling `shouldProactivelyReload` directly
+  // (TICKET-62). Without it, a kiosk whose clock runs >20h ahead of the server
+  // computes a permanently-bogus token age and reloads on every 60s check, with
+  // a reload unable to cure it (the fresh token reads as old again).
+  //
+  // A genuinely bad config (every fresh token still 401s) likewise can never
+  // storm the page: after one attempt inside the window it fails quietly, which
+  // is the pre-existing silent behavior.
+  const clearSelfHealMarker = useCallback(() => {
     if (typeof window === "undefined") return;
-    let lastReloadAt: number | null = null;
     try {
-      const raw = window.sessionStorage.getItem(SELF_HEAL_MARKER_KEY);
-      lastReloadAt = raw ? Number(raw) : null;
-      if (lastReloadAt !== null && Number.isNaN(lastReloadAt)) lastReloadAt = null;
+      window.sessionStorage.removeItem(SELF_HEAL_MARKER_KEY);
     } catch {
-      // sessionStorage unavailable (private mode / disabled) — treat as no prior
-      // reload so the one-shot heal can still run once.
-      lastReloadAt = null;
+      // sessionStorage unavailable — nothing to clear
     }
-    if (!shouldReactivelyReload({ lastReloadAt, now: Date.now() })) return;
-    try {
-      window.sessionStorage.setItem(SELF_HEAL_MARKER_KEY, String(Date.now()));
-    } catch {
-      // best-effort marker; a reload still lands on a fresh token
-    }
-    window.location.reload();
   }, []);
+
+  const selfHealReload = useCallback(
+    (input: { tokenAgeMs: number; isPlaying: boolean; got401?: boolean }) => {
+      if (typeof window === "undefined") return;
+      let lastReloadAt: number | null = null;
+      try {
+        const raw = window.sessionStorage.getItem(SELF_HEAL_MARKER_KEY);
+        lastReloadAt = raw ? Number(raw) : null;
+        if (lastReloadAt !== null && Number.isNaN(lastReloadAt)) lastReloadAt = null;
+      } catch {
+        // sessionStorage unavailable (private mode / disabled) — treat as no
+        // prior reload so the one-shot heal can still run once.
+        lastReloadAt = null;
+      }
+      if (!shouldSelfHealReload({ ...input, lastReloadAt, now: Date.now() })) return;
+      try {
+        window.sessionStorage.setItem(SELF_HEAL_MARKER_KEY, String(Date.now()));
+      } catch {
+        // best-effort marker; a reload still lands on a fresh token
+      }
+      window.location.reload();
+    },
+    []
+  );
 
   // ---- Advance queue on the server and tell player to load the next video ----
   // `reason` (TICKET-41): forwarded so the server can emit the existing
@@ -295,19 +320,28 @@ export default function TvScreen({
       // TICKET-46 Layer 2: token rejected under enforce → self-heal by reloading
       // (debounced). Only 401 (auth) triggers it — other errors are transient.
       if (advanceRes.status === 401) {
-        reactiveSelfHeal();
+        selfHealReload({ tokenAgeMs: 0, isPlaying: false, got401: true });
         return;
       }
+      // TICKET-62: a successful advance PROVES the current token is accepted, so
+      // the debounce marker has done its job and must not linger for the rest of
+      // the kiosk session — a marker left behind would suppress the next genuine
+      // 401 heal for up to 5 minutes. Cleared only on success (2xx); a 429/5xx
+      // says nothing about the token, so the marker stays.
+      if (advanceRes.ok) clearSelfHealMarker();
       const res = await fetch(`/api/queue${roomQuery}`);
       if (!res.ok) return;
       const data = await res.json();
       const items: QueueEntry[] = data.items ?? [];
-      setQueue(items);
+      // TICKET-62: same if-changed write as the poll (see fetchQueue). The
+      // returned videoId is still read from the freshly fetched `items`, so the
+      // caller's behavior is unchanged either way.
+      setQueue((prev) => (queueItemsEqual(prev, items) ? prev : items));
       return items[0]?.videoId ?? null;
     } catch {
       return null;
     }
-  }, [roomQuery, screenToken, reactiveSelfHeal]);
+  }, [roomQuery, screenToken, selfHealReload, clearSelfHealMarker]);
 
   // ---- TICKET-41: skip a video that will never play here (onError / ladder top) ----
   const skipUnplayable = useCallback(async () => {
@@ -411,6 +445,17 @@ export default function TvScreen({
     } catch {
       playerRef.current = null;
       currentVideoIdRef.current = null; // retry cleanly on the next run
+      // TICKET-62: that retry USED to ride on the queue poll writing a brand-new
+      // array identity every 3s, which re-ran this effect for free. The poll is
+      // now if-changed, so on a static queue there is no identity change left to
+      // re-fire it — a constructor failure would sit dead forever. Schedule the
+      // re-run explicitly instead, at the same ~3s cadence the poll gave it.
+      // One outstanding timer per concern (TICKET-18), cleared on unmount.
+      if (playerRetryTimerRef.current) clearTimeout(playerRetryTimerRef.current);
+      playerRetryTimerRef.current = setTimeout(() => {
+        playerRetryTimerRef.current = null;
+        setPlayerEpoch((n) => n + 1);
+      }, POLL_INTERVAL);
     }
   }, [ytReady, queue, advance, skipUnplayable, playerEpoch]);
 
@@ -471,10 +516,11 @@ export default function TvScreen({
     return () => clearInterval(t);
   }, [ytReady, skipUnplayable]);
 
-  // Skip-notice timer hygiene: cleared on unmount (TICKET-18 pattern).
+  // Skip-notice + player-retry timer hygiene: cleared on unmount (TICKET-18).
   useEffect(() => {
     return () => {
       if (skipNoticeTimerRef.current) clearTimeout(skipNoticeTimerRef.current);
+      if (playerRetryTimerRef.current) clearTimeout(playerRetryTimerRef.current);
     };
   }, []);
 
@@ -604,16 +650,19 @@ export default function TvScreen({
     if (screenTokenMintedAt === undefined) return; // no-key room — nothing to heal
     const check = () => {
       const tokenAgeMs = Date.now() - screenTokenMintedAt;
-      if (shouldProactivelyReload({ tokenAgeMs, isPlaying })) {
-        window.location.reload();
-      }
+      // TICKET-62: routed through the shared, marker-debounced path instead of
+      // calling `shouldProactivelyReload` raw, so a skewed kiosk clock cannot
+      // turn this 60s check into an endless reload loop. In the healthy case
+      // this changes nothing: a proactive reload lands on a fresh token, so the
+      // next legitimate one is ~20h away — far outside the 5-minute window.
+      selfHealReload({ tokenAgeMs, isPlaying });
     };
     check(); // evaluate immediately on idle/playing transitions
     // Re-check periodically so an idle page still heals if it crossed the
     // threshold while sitting idle (no queue change to re-fire the effect).
     const interval = setInterval(check, 60_000);
     return () => clearInterval(interval);
-  }, [screenTokenMintedAt, isPlaying]);
+  }, [screenTokenMintedAt, isPlaying, selfHealReload]);
 
   const singerLine = (entry: QueueEntry) =>
     entry.mode === "listen-dance" ? `${entry.nickname} 🎶` : entry.nickname;
