@@ -44,6 +44,12 @@ export interface PendingRedisLike {
   /** Set a TTL (in ms) on an existing key (Upstash PEXPIRE). */
   pexpire(key: string, ms: number): Promise<unknown>;
   del(...keys: string[]): Promise<number>;
+  /**
+   * EVAL a Lua script — the only server-side atomic primitive the stateless
+   * Upstash REST transport exposes (no WATCH/CAS). Mirrors `RedisLike.eval` in
+   * lib/store/upstash.ts and @upstash/redis's own signature.
+   */
+  eval<T = unknown>(script: string, keys: string[], args: unknown[]): Promise<T>;
 }
 
 /**
@@ -198,6 +204,79 @@ export class MemoryPendingStore implements PendingStore {
 // Upstash driver
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Atomic bulk-reject. Runs the whole read→flip→write inside ONE `EVAL`, so it is
+ * serialized against every concurrent `take`/`add`/`reject` by Redis's
+ * single-threaded execution.
+ *
+ * WHY: the previous implementation was a client-side read-modify-write — one
+ * listing pass, then a `SET` per still-pending item. Anything that raced the gap
+ * between the read and the write was lost: a host approval (`take`) that popped
+ * an entry mid-loop had its deletion resurrected as a "rejected" record (the
+ * patron's approved song reappearing as refused), and the entry a patron
+ * submitted after the listing pass survived a "reject everything" sweep as still
+ * pending. The stateless Upstash REST transport has no WATCH and its MULTI/EXEC
+ * only pipelines a fixed command list, so — exactly as `MERGE_SCRIPT` in
+ * lib/store/upstash.ts — a Lua script is the only primitive that can do a
+ * read-then-conditional-write atomically. It also collapses O(N) round-trips
+ * into one.
+ *
+ * KEYS[1] = the room's pending index (list of pendingIds).
+ * ARGV[1] = item-key prefix; the item key is `prefix .. pendingId`.
+ * ARGV[2] = TTL in ms applied to each flipped record.
+ *
+ * NOTE — item keys are DERIVED from the ARGV prefix rather than declared in
+ * KEYS, a deliberate divergence from `MERGE_SCRIPT` (which declares every key it
+ * touches): the pendingIds live in the index and are not known client-side, so
+ * they cannot be enumerated into KEYS before the read. Correct on single-node
+ * Upstash; it would violate Redis Cluster's cross-slot key-declaration rules if
+ * this keyspace ever moved to a clustered deployment.
+ *
+ * COST — the flip is O(N) BLOCKING work on Redis's single thread (N = index
+ * length: pending plus not-yet-expired rejected entries), where the old loop was
+ * O(N) non-blocking client round-trips. That is the trade for atomicity, and it
+ * is comfortably safe at the default PENDING_ROOM_MAX of 100; anyone raising
+ * that ceiling substantially should re-check this script's hold on the event
+ * loop first.
+ *
+ * Semantics preserved from the loop it replaces, one-for-one: only entries whose
+ * stored status is still `pending` are flipped (already-`rejected` ones are left
+ * untouched, so the call stays idempotent), nothing is ever deleted or approved,
+ * the index is left intact so patron polls still surface the rejected entries,
+ * each flipped record gets the bounded TTL, and an id whose record is already
+ * gone (expired) is lazily LREM'd from the index — the same read-path prune
+ * `listRoom` performs. Returns the number of entries flipped.
+ *
+ * The record is decoded and re-encoded with cjson; every persisted field is a
+ * string or boolean, so the round-trip is lossless (no integer/float coercion).
+ */
+export const REJECT_ALL_PENDING_SCRIPT = `
+local indexKey = KEYS[1]
+local prefix = ARGV[1]
+local ttl = tonumber(ARGV[2])
+
+local ids = redis.call('LRANGE', indexKey, 0, -1)
+local flipped = 0
+
+for _, id in ipairs(ids) do
+  local itemKey = prefix .. id
+  local raw = redis.call('GET', itemKey)
+  if raw == false or raw == nil then
+    redis.call('LREM', indexKey, 0, id)
+  else
+    local ok, obj = pcall(cjson.decode, raw)
+    if ok and obj.status == 'pending' then
+      obj.status = 'rejected'
+      redis.call('SET', itemKey, cjson.encode(obj))
+      redis.call('PEXPIRE', itemKey, ttl)
+      flipped = flipped + 1
+    end
+  end
+end
+
+return flipped
+`;
+
 export class UpstashPendingStore implements PendingStore {
   constructor(private readonly redis: PendingRedisLike) {}
 
@@ -280,10 +359,46 @@ export class UpstashPendingStore implements PendingStore {
   }
 
   async rejectAllPending(roomId: string): Promise<number> {
-    // One listing pass, then a `set` per still-pending item to flip it to
-    // "rejected" (index untouched — rejected entries stay indexed so the patron
-    // poll still surfaces them, exactly like a single `reject`). Already-rejected
-    // entries are skipped, keeping the op idempotent.
+    // One atomic server-side script — see REJECT_ALL_PENDING_SCRIPT for why a
+    // client-side read-modify-write loop was unsafe here.
+    try {
+      const flipped = await this.redis.eval<number>(
+        REJECT_ALL_PENDING_SCRIPT,
+        [pendingKeys.index(roomId)],
+        [pendingKeys.item(roomId, ""), REJECTED_PENDING_TTL_MS],
+      );
+      return Number(flipped) || 0;
+    } catch (err) {
+      // Degrade, never throw: this runs on the moderation ON→OFF transition, and
+      // an EVAL-specific blip (scripting disabled/unsupported, a malformed-script
+      // reply) must not fail the host's toggle. A full Redis outage still
+      // surfaces as before — the fallback issues its own commands and its errors
+      // propagate to the route, unchanged from the pre-script behaviour. Falling
+      // back to the old non-atomic loop reinstates the (narrow) lost-update
+      // window for that one call but is otherwise identical, so behaviour is
+      // never worse than before the script existed. The fallback is itself
+      // idempotent — it only flips entries still stored as "pending" — so a
+      // partially-applied script followed by the fallback cannot double-count or
+      // undo anything.
+      //
+      // Loud on purpose: a PERMANENT EVAL failure would otherwise silently run
+      // the racy loop forever, which is exactly the bug the script exists to
+      // close. Never swallow the reason.
+      console.warn(
+        "[pending-store] bulk-reject EVAL failed — falling back to the NON-ATOMIC loop (lost-update window reopened)",
+        err,
+      );
+      return this.rejectAllPendingUnsafeFallback(roomId);
+    }
+  }
+
+  /**
+   * Pre-script bulk-reject: one listing pass, then a `set` + `pexpire` per
+   * still-pending item. Non-atomic (a concurrent take/add between the read and
+   * the write is lost) — used only when EVAL is unavailable. Index untouched, so
+   * rejected entries stay indexed and the patron poll still surfaces them.
+   */
+  private async rejectAllPendingUnsafeFallback(roomId: string): Promise<number> {
     let n = 0;
     for (const item of await this.listRoom(roomId)) {
       if (item.status !== "pending") continue;

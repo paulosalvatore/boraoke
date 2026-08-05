@@ -23,8 +23,17 @@ class FakeRedis implements PendingRedisLike {
   /** key → TTL(ms), set by pexpire. Deterministically drained by _expireNow. */
   private ttls = new Map<string, number>();
 
-  /** Call counters so tests can assert batching (one mget, zero per-id gets). */
-  public calls = { get: 0, mget: 0, pexpire: 0, lrem: 0 };
+  /**
+   * Call counters. `get`/`mget`/`set`/`eval` count commands the DRIVER issues
+   * (i.e. network round-trips), so tests can assert batching — one mget and zero
+   * per-id gets on listRoom, one eval and zero sets on the bulk reject.
+   * `pexpire`/`lrem` additionally count the emulated script's own server-side
+   * calls, matching what a real Redis would execute.
+   */
+  public calls = { get: 0, mget: 0, set: 0, pexpire: 0, lrem: 0, eval: 0 };
+
+  /** Test-only: make EVAL fail, to exercise the driver's fail-open fallback. */
+  public evalThrows = false;
 
   /** Test-only: simulate the TTL elapsing on a key — it vanishes like Redis expiry. */
   _expireNow(key: string): void {
@@ -71,8 +80,48 @@ class FakeRedis implements PendingRedisLike {
     });
   }
   async set(key: string, value: unknown): Promise<unknown> {
+    this.calls.set++;
     this.kv.set(key, JSON.stringify(value));
     return "OK";
+  }
+  /**
+   * Emulate REJECT_ALL_PENDING_SCRIPT. The real script runs on the Redis server
+   * over the stored JSON strings; this fake applies the identical algorithm to
+   * the same stored strings, synchronously — which models the script's
+   * server-side atomicity (nothing can interleave mid-flip). Mirrors the
+   * MERGE_SCRIPT emulation in `store.test.ts`.
+   *
+   * keys[0] = the room's pending index; args[0] = item-key prefix; args[1] = TTL ms.
+   */
+  async eval<T = unknown>(
+    _script: string,
+    keys: string[],
+    args: unknown[],
+  ): Promise<T> {
+    this.calls.eval++;
+    if (this.evalThrows) throw new Error("EVAL unsupported");
+    const indexKey = keys[0];
+    const prefix = args[0] as string;
+    const ttl = Number(args[1]);
+    let flipped = 0;
+    for (const id of [...(this.lists.get(indexKey) ?? [])]) {
+      const itemKey = prefix + id;
+      const raw = this.kv.get(itemKey);
+      if (raw == null) {
+        // Lazy index prune: the record is gone (expired), drop its dead id.
+        await this.lrem(indexKey, 0, id);
+        continue;
+      }
+      const obj = JSON.parse(raw) as PendingEntry;
+      if (obj.status !== "pending") continue;
+      obj.status = "rejected";
+      // Written straight to the store: this is the script's server-side SET, not
+      // a driver round-trip, so it must not bump `calls.set`.
+      this.kv.set(itemKey, JSON.stringify(obj));
+      await this.pexpire(itemKey, ttl);
+      flipped++;
+    }
+    return flipped as T;
   }
   async pexpire(key: string, ms: number): Promise<unknown> {
     this.calls.pexpire++;
@@ -328,6 +377,103 @@ describe("UpstashPendingStore — batch / TTL / lazy-prune (TICKET-53)", () => {
     expect(fake._ttlOf(pendingKeys.item(ROOM, a2.pendingId))).toBe(
       REJECTED_PENDING_TTL_MS,
     );
+  });
+
+  it("rejectAllPending flips in ONE eval round-trip — no listing pass, no per-item sets", async () => {
+    await s.add(makePending(UUID_A));
+    await s.add(makePending(UUID_A));
+    await s.add(makePending(UUID_B));
+    fake.calls.eval = 0;
+    fake.calls.set = 0;
+    fake.calls.mget = 0;
+    fake.calls.get = 0;
+
+    expect(await s.rejectAllPending(ROOM)).toBe(3);
+
+    // The whole flip is one atomic server-side script: no read pass to race
+    // against, and no O(N) client-issued writes.
+    expect(fake.calls.eval).toBe(1);
+    expect(fake.calls.set).toBe(0);
+    expect(fake.calls.mget).toBe(0);
+    expect(fake.calls.get).toBe(0);
+    // …and the flip really happened.
+    expect((await s.listRoom(ROOM)).every((p) => p.status === "rejected")).toBe(
+      true,
+    );
+  });
+
+  it("rejectAllPending leaves the index intact so patron polls still see the rejections", async () => {
+    const a1 = makePending(UUID_A);
+    const a2 = makePending(UUID_B);
+    await s.add(a1);
+    await s.add(a2);
+    const indexKey = pendingKeys.index(ROOM);
+
+    expect(await s.rejectAllPending(ROOM)).toBe(2);
+
+    expect(fake._listLen(indexKey)).toBe(2);
+    expect(await fake.lrange<string>(indexKey, 0, -1)).toEqual([
+      a1.pendingId,
+      a2.pendingId,
+    ]);
+    expect(await s.listRoom(ROOM)).toHaveLength(2);
+  });
+
+  it("rejectAllPending lazily prunes an already-expired id from the index", async () => {
+    const live = makePending(UUID_A);
+    const doomed = makePending(UUID_A);
+    await s.add(live);
+    await s.add(doomed);
+    // The record vanished (TTL elapsed) but its id still sits in the index.
+    fake._expireNow(pendingKeys.item(ROOM, doomed.pendingId));
+    fake.calls.lrem = 0;
+
+    // Only the live entry is flipped; the dead id is dropped, not counted.
+    expect(await s.rejectAllPending(ROOM)).toBe(1);
+    expect(fake.calls.lrem).toBe(1);
+    expect(await fake.lrange<string>(pendingKeys.index(ROOM), 0, -1)).toEqual([
+      live.pendingId,
+    ]);
+  });
+
+  it("rejectAllPending on an empty room is a clean 0 and writes nothing", async () => {
+    fake.calls.set = 0;
+    fake.calls.pexpire = 0;
+    expect(await s.rejectAllPending(ROOM)).toBe(0);
+    expect(fake.calls.set).toBe(0);
+    expect(fake.calls.pexpire).toBe(0);
+  });
+
+  it("rejectAllPending falls back (never throws) when EVAL is unsupported", async () => {
+    const a1 = makePending(UUID_A);
+    const a2 = makePending(UUID_B);
+    await s.add(a1);
+    await s.add(a2);
+    await s.reject(ROOM, a1.pendingId); // already rejected — must stay skipped
+    fake.evalThrows = true;
+    fake.calls.set = 0;
+    fake.calls.pexpire = 0;
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Same observable result as the atomic path: only the still-pending entry
+    // flips, and the host's moderation toggle never sees an error.
+    expect(await s.rejectAllPending(ROOM)).toBe(1);
+    // …but the degradation is NOT silent — a permanent failure must be visible.
+    expect(warn).toHaveBeenCalled();
+    expect(String(warn.mock.calls[0][0])).toContain("NON-ATOMIC");
+    expect(await s.countRoom(ROOM)).toBe(0);
+    expect((await s.listRoom(ROOM)).every((p) => p.status === "rejected")).toBe(
+      true,
+    );
+    // The fallback is the pre-script per-item loop: one client set + TTL.
+    expect(fake.calls.set).toBe(1);
+    expect(fake.calls.pexpire).toBe(1);
+    expect(fake._ttlOf(pendingKeys.item(ROOM, a2.pendingId))).toBe(
+      REJECTED_PENDING_TTL_MS,
+    );
+    // Still idempotent on the fallback path.
+    expect(await s.rejectAllPending(ROOM)).toBe(0);
+    warn.mockRestore();
   });
 
   it("after a rejected item's TTL expires, listRoom omits it AND lazily lrem's its dead id", async () => {
