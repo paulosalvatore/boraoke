@@ -1,10 +1,12 @@
 # TICKET-61 — Independent Reviewer gate
 
 **Reviewer:** independent gate agent, clean context (did not build this branch).
-**Branch:** `ticket/61-paste-embeddability-warning` @ `c28a490` · worktree `.worktrees/ticket-61` · tree clean.
+**Branch:** `ticket/61-paste-embeddability-warning` · worktree `.worktrees/ticket-61` · tree clean.
 **Method:** every load-bearing claim re-derived from the code and from tests I ran myself. The dev report and the two gate reports were read but treated as unverified.
 
-**Verdict: APPROVE-WITH-FOLLOWUPS**
+**Verdict: APPROVE-WITH-FOLLOWUPS** — merge now; two follow-up tickets to file (see §9).
+
+> **Two passes.** §§1-8 are the first pass, at `c28a490`. §9 is the re-review at `4fd1989` after the builder addressed F1 and the weak-test note. The first pass is left intact rather than rewritten, so the record shows what was found and what closing it looked like.
 
 ## 1. Observed test + build output (re-run by me, not quoted from the dev report)
 
@@ -136,4 +138,69 @@ None of F1–F4 blocks the merge: none is a correctness defect on the shipped pa
 | Response contract (TICKET-54) preserved | PASS | both 201 and 202 verified §4 |
 | Locale copy exact | PASS | pt-BR byte-identical §5 |
 
-**Verdict: APPROVE-WITH-FOLLOWUPS** — merge as-is; file F1 (202 test), F2/F4 (cache + limiter, one combined ticket as the ticket already proposes), and F3 (explicit `source` on `SongSelection` once `components/SongSearch.tsx` is free).
+**First-pass verdict: APPROVE-WITH-FOLLOWUPS** — merge as-is; file F1 (202 test), F2/F4 (cache + limiter, one combined ticket as the ticket already proposes), and F3 (explicit `source` on `SongSelection` once `components/SongSearch.tsx` is free).
+
+---
+
+## 9. Re-review at `4fd1989` (second pass)
+
+The builder reported closing F1, F2, F3 and the weak-test note, and asked for a final verdict. Re-verified independently.
+
+### Scope of the change — confirmed, not taken on trust
+
+`git diff c28a490..HEAD --stat` shows exactly four paths touched: `__tests__/api-queue.test.ts` (+48/-6), `work/tickets/TICKET-61-paste-embeddability-warning.md` (+8/-2), this review file, and the auto-committed event-log JSONL. **No file under `app/`, `lib/`, `components/` or `messages/` changed.** The builder's claim that no production code moved is true, so §§2-6 of the first pass — the fail-open trace, the paste/search derivation, the response contract, the locale copy, the design-conformance check — all still hold verbatim against the shipped code. That is also why I did not re-run `npm run build`: the build's inputs are byte-identical to the green run recorded in §1, and a test-only diff cannot change its result.
+
+### Test run (re-run by me)
+
+```
+Test Suites: 43 passed, 43 total
+Tests:       639 passed, 639 total
+Snapshots:   0 total
+Time:        4.039 s
+Ran all test suites.
+```
+
+639 = the previous 637, minus the one weak test that was replaced, plus three. Targeted `npx jest __tests__/api-queue.test.ts --verbose` confirms 26/26 passing in that suite and — importantly — that the three new tests **actually executed** rather than being skipped:
+
+```
+✓ AC1c: the 202 moderation path also carries the warning (and stays trimmed) (1 ms)
+✓ validation failure (400) short-circuits before the pre-check
+✓ a rotation-rule refusal (409 duplicate) spends no quota (1 ms)
+```
+
+### F1 — CLOSED, and the test is non-vacuous
+
+`AC1c` builds a real moderated room (`createRoom` + `setRoomModeration(true)`), submits a non-embeddable paste to it, and asserts `202`, `pending === true`, a string `pendingId`, `warning === PT_WARNING`, and `Object.keys(json).sort() === ["pending","pendingId","warning"]`. That exact-keys assertion is what makes it non-vacuous in both directions: delete the `...(warning ? {warning} : {})` spread on line 289 and the test fails on the missing key; re-echo the `QueueEntry` or `patronUuid` and it fails on the extra ones. So the 202 half of AC1 *and* the TICKET-54 trim on that branch are now both locked by a test, not only by my reading. It also guards against the ordering that would break it — moving the pre-check below the moderation branch would leave `warning` undefined at line 289 and fail here.
+
+The `if (!created) throw` guard on the room ceiling is the right call: it fails loudly rather than silently degrading into a test that asserts nothing.
+
+### Weak test — CLOSED, and the replacement is stronger than the name it replaced
+
+The original test claimed "rate-limited / refused never reach the check" while only exercising a 400 that short-circuits before the derivation even runs. It is now a two-test block: the 400 case (kept, honestly re-titled to say only what it proves) plus a genuine `checkSubmit` refusal — submit once as `source:"search"` (201, spends nothing), `fetchMock.mockClear()`, then resubmit the same uuid+videoId as `source:"paste"` and assert `409` with no outbound call.
+
+That second test is real evidence for the ordering claim in the ticket's quota section, because it is the *rotation-rule* gate at `route.ts:198` — the one immediately upstream of the pre-check — rather than a validation gate ~70 lines further up. If anyone moved the pre-check above `checkSubmit`, this test fails. Note also that `fetchMock` carries no configured resolution in that test, so a stray call would return `undefined` and blow up on `res.ok` — the assertion is the thing catching it, and it is a real assertion, not a tautology.
+
+### F2 — CLOSED (documentation, as scoped)
+
+The ticket now carries a "Latency cost" section stating the single serial round-trip bounded at 1500ms by `EMBEDDABLE_CHECK_TIMEOUT_MS`, and 0ms on the search path / with no API key. I verified the constant is genuinely `1500` and genuinely wired into `AbortSignal.timeout` at `lib/youtube.ts:84` and `:138`, so the documented bound is the real one rather than an aspirational number. F2 was a documentation finding and it is documented accurately.
+
+### F3 — documented, not eliminated (this is the honest reading)
+
+The ticket's follow-up note now states the coupling explicitly: the derivation depends on `SongSearch` comparing against a *localized* copy string, rewording it would make paste warnings vanish silently with a green suite, and the explicit-`source`-on-`SongSelection` follow-up must not be dropped. It also records the one-directional nature of the imprecision, which matches what I derived independently in §3.
+
+To be precise about what changed: **the code-level fragility still exists on the shipped branch.** What closed is the risk of it being *forgotten* — it is now written down where the follow-up ticket will be cut from, instead of living only in a review report. That was the right scope for this ticket (the fix requires touching `components/SongSearch.tsx`, which a parallel ticket owns and this ticket deliberately does not touch). It is a follow-up, not a merge blocker: the failure mode requires someone to reword a specific catalog string, and its blast radius is one missing advisory on a non-blocking warning.
+
+### F4 — unchanged, correctly deferred
+
+Still INFO. Self-declared `source:"paste"` can force 1 unit per accepted submit, bounded by the existing 10/min-per-uuid + 60/min-per-IP limiter and dominated ~50x by `/api/search`. The combined cache + limiter follow-up remains the right home.
+
+### Final verdict
+
+**APPROVE-WITH-FOLLOWUPS.** Nothing blocks the merge — merge now. Both first-pass findings that were mine to close (F1, the weak test) are genuinely closed with non-vacuous tests I watched execute, F2 is accurately documented, and the production code is provably unchanged from the pass that already cleared §§2-6.
+
+The verdict stays "-WITH-FOLLOWUPS" rather than a bare APPROVE for one honest reason: two pieces of real work remain to be *filed*, not done —
+
+1. **Explicit `source` on `SongSelection`** (`components/SongSearch.tsx`), once the parallel ticket releases that file. Removes the localized-string coupling in F3 entirely.
+2. **Cache + shared limiter** — an Upstash cache for the embeddability verdict (embeddability is stable for days; TICKET-55's search cache is the natural home) and a durable submit limiter to replace the in-memory per-instance `Map`. Covers F2's latency and F4's quota exposure, and the pre-existing `/api/search` exposure the cyber gate flagged, in one ticket.
+
+Neither is a condition on merging this branch. They are a condition on the review being complete.
