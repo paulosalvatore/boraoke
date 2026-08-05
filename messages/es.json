@@ -211,7 +211,8 @@
     "submitDuplicate": "Ya pediste esa canción — ya está en la fila.",
     "submitTableCap": "Tu mesa ya tiene {cap} canciones en la fila — espera a que suene una.",
     "submitPersonCap": "Ya tienes {cap} canciones en la fila — espera a que suene una para agregar otra.",
-    "pendingFull": "Hay muchas canciones esperando aprobación ahora — intenta de nuevo en un rato."
+    "pendingFull": "Hay muchas canciones esperando aprobación ahora — intenta de nuevo en un rato.",
+    "submitNotEmbeddable": "este video no permite la reproducción en pantallas — puede que no suene"
   },
   "Meta": {
     "title": "Boraoke — la fila de karaoke de tu bar",

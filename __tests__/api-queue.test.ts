@@ -134,3 +134,188 @@ describe("POST /api/queue validation", () => {
     });
   });
 });
+
+/* ------------------------------------------------------------------------- *
+ * TICKET-61 — non-blocking embeddability warning on the PASTE path.
+ *
+ * The YouTube Data API is mocked at the network boundary (global.fetch), so the
+ * REAL `checkEmbeddable` code path in lib/youtube.ts runs — the route wiring and
+ * the fail-open behavior are both exercised, and nothing touches the network.
+ * ------------------------------------------------------------------------- */
+describe("POST /api/queue — embeddability warning (TICKET-61)", () => {
+  const PT_WARNING =
+    "esse vídeo não permite reprodução em telões — pode não tocar";
+  const realFetch = global.fetch;
+  const realKey = process.env.YOUTUBE_API_KEY;
+  let fetchMock: jest.Mock;
+
+  // Distinct uuid/video per test: the submit rate limit is per-uuid and
+  // `checkSubmit` refuses a duplicate (same uuid + same video).
+  let n = 0;
+  function freshBody(overrides: Record<string, unknown> = {}) {
+    n += 1;
+    return validBody({
+      patronUuid: `123e4567-e89b-42d3-a456-4266141740${String(10 + n).slice(-2)}`,
+      videoId: `vid${String(n).padStart(2, "0")}xxxxxx`,
+      ...overrides,
+    });
+  }
+
+  function ytResponse(body: unknown, status = 200) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    } as unknown as Response;
+  }
+
+  beforeEach(async () => {
+    await store.clear(DEFAULT_ROOM);
+    process.env.YOUTUBE_API_KEY = "test-key";
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  afterAll(() => {
+    global.fetch = realFetch;
+    if (realKey === undefined) delete process.env.YOUTUBE_API_KEY;
+    else process.env.YOUTUBE_API_KEY = realKey;
+  });
+
+  it("AC1: a NON-EMBEDDABLE pasted video still succeeds (201) and carries a warning", async () => {
+    const body = freshBody({ source: "paste" });
+    fetchMock.mockResolvedValue(
+      ytResponse({ items: [{ id: body.videoId, status: { embeddable: false } }] }),
+    );
+
+    const res = await POST(makeRequest(body));
+    expect(res.status).toBe(201);
+
+    const json = await res.json();
+    expect(json.ok).toBe(true);
+    expect(json.warning).toBe(PT_WARNING);
+    // The submit is NEVER blocked: the entry really is in the queue.
+    expect(await store.getQueue(DEFAULT_ROOM)).toHaveLength(1);
+  });
+
+  it("AC1b: the response stays trimmed — warning is a plain string, no echoed entry fields", async () => {
+    const body = freshBody({ source: "paste" });
+    fetchMock.mockResolvedValue(
+      ytResponse({ items: [{ id: body.videoId, status: { embeddable: false } }] }),
+    );
+
+    const json = await (await POST(makeRequest(body))).json();
+    expect(Object.keys(json).sort()).toEqual(["ok", "warning"]);
+    expect(typeof json.warning).toBe("string");
+    expect(json).not.toHaveProperty("patronUuid");
+    expect(json).not.toHaveProperty("entry");
+    expect(json).not.toHaveProperty("videoId");
+  });
+
+  it("AC2: an EMBEDDABLE pasted video gets no warning", async () => {
+    const body = freshBody({ source: "paste" });
+    fetchMock.mockResolvedValue(
+      ytResponse({ items: [{ id: body.videoId, status: { embeddable: true } }] }),
+    );
+
+    const res = await POST(makeRequest(body));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  describe("AC3: fail-open — a broken check never degrades the endpoint", () => {
+    it("quota exhausted (403 quotaExceeded) → 201, no warning", async () => {
+      fetchMock.mockResolvedValue(
+        ytResponse({ error: { errors: [{ reason: "quotaExceeded" }] } }, 403),
+      );
+      const res = await POST(makeRequest(freshBody({ source: "paste" })));
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ ok: true });
+    });
+
+    it("API 5xx → 201, no warning", async () => {
+      fetchMock.mockResolvedValue(ytResponse({}, 500));
+      const res = await POST(makeRequest(freshBody({ source: "paste" })));
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ ok: true });
+    });
+
+    it("network error / timeout → 201, no warning, no 5xx", async () => {
+      fetchMock.mockRejectedValue(
+        Object.assign(new Error("aborted"), { name: "TimeoutError" }),
+      );
+      const res = await POST(makeRequest(freshBody({ source: "paste" })));
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(await store.getQueue(DEFAULT_ROOM)).toHaveLength(1);
+    });
+
+    it("no API key configured → 201, no warning, and no outbound call", async () => {
+      delete process.env.YOUTUBE_API_KEY;
+      const res = await POST(makeRequest(freshBody({ source: "paste" })));
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("AC4: the SEARCH path skips the check entirely (no quota spent)", () => {
+    it("source:'search' with a pre-parsed videoId makes no outbound call", async () => {
+      const res = await POST(makeRequest(freshBody({ source: "search" })));
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("a legacy client (videoId, no source) is treated as search — no outbound call", async () => {
+      const res = await POST(makeRequest(freshBody()));
+      expect(res.status).toBe(201);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("an unrecognised source value is treated as search — no outbound call", async () => {
+      const res = await POST(makeRequest(freshBody({ source: "wat" })));
+      expect(res.status).toBe(201);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("a URL-only body (no pre-parsed videoId) is inherently a paste and IS checked", async () => {
+    n += 1;
+    const body = {
+      youtubeUrl: `https://youtu.be/${VALID_VIDEO_ID}`,
+      nickname: "Alice",
+      patronUuid: "99999999-9999-4999-8999-999999999999",
+      mode: "sing",
+    };
+    fetchMock.mockResolvedValue(
+      ytResponse({ items: [{ id: VALID_VIDEO_ID, status: { embeddable: false } }] }),
+    );
+
+    const res = await POST(makeRequest(body));
+    expect(res.status).toBe(201);
+    expect((await res.json()).warning).toBe(PT_WARNING);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("spends exactly ONE quota unit per checked paste (part=status videos.list)", async () => {
+    const body = freshBody({ source: "paste" });
+    fetchMock.mockResolvedValue(
+      ytResponse({ items: [{ id: body.videoId, status: { embeddable: true } }] }),
+    );
+    await POST(makeRequest(body));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = new URL(fetchMock.mock.calls[0][0] as string);
+    expect(url.pathname).toBe("/youtube/v3/videos");
+    expect(url.searchParams.get("part")).toBe("status");
+    expect(url.searchParams.get("id")).toBe(body.videoId);
+  });
+
+  it("does not spend quota on a rejected submit (rate-limited / refused never reach the check)", async () => {
+    // A validation failure short-circuits long before the pre-check.
+    const res = await POST(makeRequest(freshBody({ source: "paste", videoId: "short" })));
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

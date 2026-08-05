@@ -56,3 +56,98 @@ export function parseYouTubeVideoId(input: string): string | null {
 export function isValidVideoId(id: string): boolean {
   return /^[A-Za-z0-9_-]{11}$/.test(id);
 }
+
+/* ------------------------------------------------------------------------- *
+ * Embeddability pre-check (TICKET-61)
+ *
+ * A pasted YouTube link bypasses search, so it is never filtered by the
+ * `videoEmbeddable`/`videoSyndicated` search params. Some videos refuse to play
+ * outside youtube.com — on the venue TV they simply die and the TICKET-41
+ * watchdog skips them mid-night. This helper asks `videos.list` for
+ * `status.embeddable` (1 quota unit) so the patron can be warned at submit time.
+ *
+ * Design rules, deliberate and load-bearing:
+ *   - It NEVER throws and NEVER blocks: every failure mode (no key, bad id,
+ *     HTTP error, quota exhaustion, timeout, malformed JSON) collapses to
+ *     "unknown", which the caller renders as "no warning".
+ *   - It is bounded by an abort timeout, so a hanging Google call cannot pin an
+ *     unauthenticated request open.
+ *   - The id is re-validated here (not just at the route) before it is placed in
+ *     an outbound URL, and it goes through URLSearchParams — no string
+ *     concatenation into the query.
+ * ------------------------------------------------------------------------- */
+
+const VIDEOS_ENDPOINT_PATH = "/youtube/v3/videos";
+const DEFAULT_API_ORIGIN = "https://www.googleapis.com";
+
+/** Outbound-call budget for the pre-check. Short: it must not slow a submit. */
+export const EMBEDDABLE_CHECK_TIMEOUT_MS = 1500;
+
+/**
+ * Result of the pre-check. `unknown` is the fail-open value: the caller must
+ * treat it exactly like `embeddable` (no warning, no error, submit proceeds).
+ */
+export type EmbeddableStatus = "embeddable" | "not-embeddable" | "unknown";
+
+/**
+ * Resolve the Data API origin. Production is always the constant above; a
+ * non-production process may point the helper at a local stub for end-to-end
+ * testing (there is no way to intercept a server-side fetch from the browser).
+ * Guarded by NODE_ENV so the override can never be honored on the live site.
+ */
+function apiOrigin(): string {
+  const override = process.env.YOUTUBE_API_ORIGIN;
+  if (process.env.NODE_ENV === "production" || !override) return DEFAULT_API_ORIGIN;
+  // Loopback only (cyber gate): the call carries the API key, so the override
+  // must not be able to ship a real key to an arbitrary host even by operator
+  // mistake. A local stub is the only legitimate use.
+  try {
+    const host = new URL(override).hostname;
+    if (host === "127.0.0.1" || host === "localhost" || host === "[::1]" || host === "::1") {
+      return override;
+    }
+  } catch {
+    /* unparseable override → ignore it */
+  }
+  return DEFAULT_API_ORIGIN;
+}
+
+/**
+ * Ask the YouTube Data API whether `videoId` may be embedded on a third-party
+ * page. Costs 1 quota unit per call. Returns "unknown" for every failure —
+ * see the design rules above. `fetchImpl` is injectable for tests.
+ */
+export async function checkEmbeddable(
+  videoId: string,
+  key: string | undefined,
+  opts: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+): Promise<EmbeddableStatus> {
+  if (!key) return "unknown"; // no key configured (dev/CI) → no check, no warning
+  if (!isValidVideoId(videoId)) return "unknown"; // never put an unvalidated id in a URL
+
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? EMBEDDABLE_CHECK_TIMEOUT_MS;
+
+  try {
+    const url = new URL(VIDEOS_ENDPOINT_PATH, apiOrigin());
+    url.searchParams.set("part", "status");
+    url.searchParams.set("id", videoId);
+    url.searchParams.set("key", key);
+
+    const res = await fetchImpl(url.toString(), {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    // Any non-OK (403 quotaExceeded, 400, 5xx, …) is a fail-open "unknown".
+    if (!res.ok) return "unknown";
+
+    const json = (await res.json()) as {
+      items?: Array<{ status?: { embeddable?: boolean } }>;
+    };
+    const embeddable = json?.items?.[0]?.status?.embeddable;
+    if (typeof embeddable !== "boolean") return "unknown"; // deleted/private/absent
+    return embeddable ? "embeddable" : "not-embeddable";
+  } catch {
+    // Network error, abort timeout, malformed JSON — all fail open.
+    return "unknown";
+  }
+}

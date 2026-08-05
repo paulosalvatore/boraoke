@@ -55,6 +55,13 @@ export default function PatronRoom({
   const [searchKey, setSearchKey] = useState(0);
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  // TICKET-61: non-blocking server warning shown NEXT TO the success message
+  // (the submit succeeded — this only says the video may not play on the TV).
+  const [submitWarning, setSubmitWarning] = useState("");
+  // TICKET-61: how the current selection was made, forwarded to the API so the
+  // server only spends a quota unit on the paste path (search results are
+  // already filtered to embeddable+syndicated videos). See the route comment.
+  const [selectionSource, setSelectionSource] = useState<"paste" | "search">("search");
   const [submitting, setSubmitting] = useState(false);
 
   // Queue state
@@ -190,6 +197,20 @@ export default function PatronRoom({
 
   const handleSelect = useCallback((sel: SongSelection | null) => {
     setParsedVideoId(sel?.videoId ?? null);
+    // TICKET-61: derive the selection SOURCE from the selection shape, which is
+    // the only signal SongSearch exposes today (`SongSelection` is
+    // `{ videoId, title? }`). SongSearch emits a title ONLY for a picked search
+    // result; a resolved pasted link — and a pick of the synthetic row that a
+    // paste creates — always come through with `title` undefined. So
+    // "no title" == "paste" for every path in that component.
+    //
+    // Being wrong here is cheap by design: a mislabelled search result costs at
+    // most one extra quota unit (and its check comes back embeddable anyway,
+    // since search only returns embeddable results), and a mislabelled paste
+    // just loses one advisory warning. Nothing about acceptance changes.
+    // FOLLOW-UP: have SongSearch carry an explicit `source` on SongSelection —
+    // that file is owned by a parallel ticket right now.
+    setSelectionSource(sel && sel.title === undefined ? "paste" : "search");
     if (sel?.title) {
       setTitle((prev) => (prev.trim() ? prev : sel.title!));
     }
@@ -240,6 +261,7 @@ export default function PatronRoom({
     e.preventDefault();
     setSubmitError("");
     setSubmitSuccess(false);
+    setSubmitWarning("");
 
     if (!parsedVideoId) {
       setSubmitError(t("errorPasteUrl"));
@@ -263,6 +285,7 @@ export default function PatronRoom({
           patronUuid,
           table: table.trim() || undefined,
           mode,
+          source: selectionSource,
         }),
       });
       if (!res.ok) {
@@ -270,6 +293,12 @@ export default function PatronRoom({
         setSubmitError(err.error ?? t("errorAddFailed"));
         return;
       }
+      // TICKET-61: the success body may carry an optional, non-blocking
+      // `warning` (a localized string). Absent = nothing to show. A body that
+      // fails to parse must never turn a successful submit into an error.
+      const data = await res.json().catch(() => null);
+      const w = (data as { warning?: unknown } | null)?.warning;
+      if (typeof w === "string" && w) setSubmitWarning(w);
       setSubmitSuccess(true);
       setTitle("");
       setParsedVideoId(null);
@@ -412,6 +441,14 @@ export default function PatronRoom({
 
           {submitError && <p style={{ color: "var(--accent)", fontSize: "0.875rem" }}>{submitError}</p>}
           {submitSuccess && <p style={{ color: "#4ade80", fontSize: "0.875rem" }}>{t("songAdded")}</p>}
+          {/* TICKET-61: advisory only — the song IS in the queue; this warns the
+              patron that the venue screen may refuse to play it. Amber, not red,
+              and rendered below the success line so the two read together. */}
+          {submitWarning && (
+            <p role="status" data-testid="submit-warning" style={{ color: "#fbbf24", fontSize: "0.8rem" }}>
+              ⚠️ {submitWarning}
+            </p>
+          )}
 
           <button
             ref={submitBtnRef}

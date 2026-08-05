@@ -6,7 +6,7 @@ import { checkSubmit, orderQueue, relayQueue } from "@/lib/rotation";
 import { submitRateLimitOk } from "@/lib/queue-rate-limit";
 import { getTranslations } from "next-intl/server";
 import { clientIpFrom } from "@/lib/host-auth";
-import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
+import { checkEmbeddable, isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
 import { track } from "@/lib/telemetry";
 import { pendingStore } from "@/lib/pending-store";
 import {
@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
     patronUuid,
     table,
     mode,
+    source,
   } = body as Record<string, unknown>;
 
   const roomId = resolveRoomId(room);
@@ -99,6 +100,27 @@ export async function POST(req: NextRequest) {
     typeof rawVideoId === "string" && rawVideoId
       ? rawVideoId
       : parseYouTubeVideoId(typeof youtubeUrl === "string" ? youtubeUrl : "");
+
+  // TICKET-61 — PASTE vs SEARCH, the one place the distinction is made.
+  //
+  // A submission is a PASTE when either:
+  //   (a) it carried no pre-parsed `videoId` at all (a raw `youtubeUrl` body —
+  //       inherently a pasted link: nothing but a paste produces a URL), or
+  //   (b) the client explicitly declared `source: "paste"`.
+  // Anything else — a pre-parsed `videoId` with `source` absent or "search" —
+  // is treated as SEARCH and skips the embeddability pre-check entirely, because
+  // `lib/youtube-search.ts` already constrains results with
+  // `videoEmbeddable=true` + `videoSyndicated=true`; re-checking burns quota to
+  // re-learn what the search filter guaranteed.
+  //
+  // `source` is a client hint, and that is safe by construction: it can only
+  // cause ONE extra quota unit or ONE missing (non-blocking) warning — it can
+  // never affect acceptance, storage, or authorization. An unknown value is
+  // treated as "search" (the quota-conservative default), which also keeps
+  // already-cached older clients — which send `videoId` with no `source` —
+  // behaving exactly as they do today.
+  const submittedAsUrl = !(typeof rawVideoId === "string" && rawVideoId);
+  const isPaste = submittedAsUrl || source === "paste";
 
   if (!resolvedVideoId || !isValidVideoId(resolvedVideoId)) {
     return NextResponse.json(
@@ -192,6 +214,37 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // TICKET-61: embeddability pre-check for the PASTE path only (1 quota unit).
+  // Deliberately placed HERE — after body validation, after the dual-bucket rate
+  // limit, and after `checkSubmit` — so a malformed, throttled or refused submit
+  // can never spend a quota unit, and the outbound call is only ever made on
+  // behalf of a request that is already going to be accepted.
+  //
+  // NON-BLOCKING BY CONSTRUCTION: `checkEmbeddable` never throws and collapses
+  // every failure (no key, HTTP error, quota exhaustion, timeout, bad payload)
+  // to "unknown". Only the explicit "not-embeddable" verdict produces a warning,
+  // so a broken/absent YouTube API degrades to exactly today's behavior.
+  // The whole block is try/caught (cyber gate LOW-1): `checkEmbeddable` cannot
+  // throw, but `getTranslations` is a dependency call on what is now the SUCCESS
+  // path — and it runs BEFORE `store.addEntry`, so an i18n failure here would
+  // turn an about-to-be-accepted submit into a 500 and silently drop the song.
+  // "This never blocks" has to cover the advisory's own machinery too.
+  let warning: string | undefined;
+  if (isPaste) {
+    try {
+      const status = await checkEmbeddable(
+        resolvedVideoId,
+        process.env.YOUTUBE_API_KEY,
+      );
+      if (status === "not-embeddable") {
+        const tw = await getTranslations("Errors");
+        warning = tw("submitNotEmbeddable");
+      }
+    } catch {
+      warning = undefined; // advisory only — never degrade the submit
+    }
+  }
+
   // TICKET-44: venue-optional moderation. When the room has moderation ON, the
   // entry does NOT enter the queue — it is diverted to the parallel pending
   // keyspace so it never reaches the rotation engine / public queue / TV. The
@@ -230,8 +283,10 @@ export async function POST(req: NextRequest) {
     // we do NOT echo the full QueueEntry (drops patronUuid et al. — PR#25 sec
     // LOW-1: no needless PII/enumeration surface). `pending`/`pendingId` stay:
     // they are non-PII and the moderation test asserts them.
+    // TICKET-61: `warning` is additive and OPTIONAL — a localized string only,
+    // never entry/video metadata, so the trimmed TICKET-54 shape is preserved.
     return NextResponse.json(
-      { pending: true, pendingId: pendingEntry.pendingId },
+      { pending: true, pendingId: pendingEntry.pendingId, ...(warning ? { warning } : {}) },
       { status: 202 },
     );
   }
@@ -252,9 +307,13 @@ export async function POST(req: NextRequest) {
   // AND the store-head-based advance/skip all reflect the new entry's fair slot.
   await relayQueue(roomId, roomMode);
 
-  void track("song_queued", { roomId, uuid: entry.patronUuid, props: { kind: typeof rawVideoId === "string" && rawVideoId ? "search" : "paste", mode: resolvedMode } }); // TICKET-12: fire-and-forget, fail-open
+  // TICKET-61: `kind` now uses the single `isPaste` derivation above. It used to
+  // read `videoId`-presence alone, which the patron form always sets (it parses
+  // pasted links client-side) — so every submit was logged as "search".
+  void track("song_queued", { roomId, uuid: entry.patronUuid, props: { kind: isPaste ? "paste" : "search", mode: resolvedMode } }); // TICKET-12: fire-and-forget, fail-open
   // Minimal ack — the patron client discards this body and refetches the queue
   // (GET /api/queue), so we do NOT echo the full QueueEntry / patronUuid back
-  // (PR#25 sec LOW-2: trim needless PII/enumeration surface).
-  return NextResponse.json({ ok: true }, { status: 201 });
+  // (PR#25 sec LOW-2: trim needless PII/enumeration surface). TICKET-61 adds at
+  // most one OPTIONAL localized `warning` string — no entry/video metadata.
+  return NextResponse.json({ ok: true, ...(warning ? { warning } : {}) }, { status: 201 });
 }
