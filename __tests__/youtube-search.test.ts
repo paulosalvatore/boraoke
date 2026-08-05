@@ -207,6 +207,12 @@ describe("query cache", () => {
     expect(getCached(cacheKey("evidências", "BR"))).toHaveLength(1);
   });
 
+  it("normalizes whitespace in the key (trim + collapse runs, TICKET-55)", () => {
+    expect(cacheKey("  Foo   Bar ", "BR")).toBe("BR::foo bar");
+    expect(cacheKey("foo bar", "BR")).toBe("BR::foo bar");
+    expect(cacheKey("foo\t \nbar", "BR")).toBe("BR::foo bar");
+  });
+
   it("expires entries past the TTL", () => {
     const key = cacheKey("q", "BR");
     setCached(key, [], 1000);
