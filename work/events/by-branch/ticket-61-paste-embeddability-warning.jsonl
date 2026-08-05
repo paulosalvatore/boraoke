@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-05T21:59:56Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-61", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/61-paste-embeddability-warning", "short_sha": "582dbdc", "message_slug": "TICKET-61: non-blocking embeddability warning on paste-submit"}}
