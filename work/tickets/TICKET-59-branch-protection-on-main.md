@@ -1,6 +1,6 @@
 # TICKET-59 — Enable branch protection on `main` (the safety net the board believed already existed)
 
-**Status:** OPEN — GATED (repo-settings change affecting the TL's own merge flow; an unattended fire must not apply it)
+**Status:** **WON'T-DO — decided 2026-08-06 (interactive TM session, Tech Lead present).** The TL chose to leave `main` unprotected, deliberately. See "Resolution" at the bottom.
 **Filed:** 2026-07-29, heartbeat fire #33 (autonomous, unattended)
 **Priority:** HIGH (safety) — this is the missing server-side backstop for a defect class that is live in this repo today
 **Type:** Infra / repo settings. Zero product code, zero deploy.
@@ -77,3 +77,13 @@ Minor stale field spotted alongside: the repo's `homepage` is still `https://can
 2. A direct push of a fast-forward commit from a ticket worktree onto `main` is **refused by the server**, not merely by fast-forward luck.
 3. `BOARD.md`'s "Notes" line is corrected — the "GitHub Free + private repo (403)" rationale is retired, replaced by the actual configured state.
 4. The TL has recorded a deliberate answer on repo visibility (public intentional, or flip to private).
+
+## Resolution — 2026-08-06 (interactive TM session, Tech Lead present)
+
+**Decided: leave `main` unprotected. TICKET-59 is closed WON'T-DO.**
+
+The three claims above still hold and were re-confirmed this session: no protection (`branches/main/protection` → 404), no rulesets (`[]`), repo still public. The TL reviewed the proposed minimum-viable protection (require `build-and-test`, no required GitHub reviews, no force-push/deletion) and chose not to apply it.
+
+**Accepted risk, recorded plainly rather than left implicit:** there is no server-side backstop on `main`. A freshly-created ticket worktree, being 0 commits behind at creation, can push a fast-forward commit straight onto `main` and auto-deploy live boraoke.com without going through any gate. The 2026-07-28 near-miss (heartbeat #32) was stopped by the branch in question happening to be stale (a non-fast-forward rejection), not by any protection that actually exists — that was luck, not a safety net, and this ticket's whole finding is that the luck will not always hold. The TL's call is to accept that risk rather than add the server-side check.
+
+Acceptance criteria 1–2 above are deliberately NOT met and will not be pursued. Criterion 3 (BOARD.md Notes line correction) is done — see `work/status/BOARD.md` Notes section. Criterion 4 (repo-visibility governance question) remains open as a separate, smaller question — not blocking this closure.
