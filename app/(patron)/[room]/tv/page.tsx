@@ -11,7 +11,9 @@ import { loadMessages } from "@/i18n/request";
  * Thin server component: resolves the POWERED_BY_FOOTER flag at REQUEST time
  * (force-dynamic) and the venue name, then hands off to the client TvScreen
  * which owns playback, polling, fullscreen, wake lock — now room-scoped, with a
- * real QR of this room's join URL.
+ * real QR of this room's join URL. Note: force-dynamic means no CODE deploy is
+ * needed to pick up the flag, but on Vercel changing the env var's value still
+ * requires a redeploy to take effect — it is not read live off Vercel's config.
  */
 export const dynamic = "force-dynamic";
 
