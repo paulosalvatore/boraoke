@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-06T22:10:09Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-65", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/65-tv-e2e-deflake", "short_sha": "7f9a747", "message_slug": "TICKET-65: deflake the TV e2e specs (shared memory-driver warm-up helper"}}
