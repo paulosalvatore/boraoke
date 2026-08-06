@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { drainQueue } from "./helpers";
+import { drainQueue, warmTvRoutes } from "./helpers";
 
 /**
  * E2E: /tv player watchdog (TICKET-41) — an unplayable video (onError
@@ -83,6 +83,12 @@ const fireError = (page: Page, code: number) =>
   }, code);
 
 test.describe("/tv watchdog (TICKET-41)", () => {
+  test.beforeEach(async ({ page }) => {
+    // TICKET-65: warm-compile /default/tv + the queue routes it polls BEFORE
+    // any seeding — see helpers.ts warmTvRoutes for the confirmed mechanism.
+    await warmTvRoutes(page.request);
+  });
+
   test.afterEach(async ({ page }) => {
     await drainQueue(page.request); // leave the shared in-memory store clean
   });
@@ -101,7 +107,10 @@ test.describe("/tv watchdog (TICKET-41)", () => {
     });
 
     await page.goto("/default/tv");
-    await expect(page.getByTestId("tv-hero")).toHaveText("Vídeo Bloqueado");
+    // Bounded-longer wait: first post-goto assertion depending on the seeded
+    // queue surviving the page render — headroom over the 5s default for slow
+    // CI runners (TICKET-65).
+    await expect(page.getByTestId("tv-hero")).toHaveText("Vídeo Bloqueado", { timeout: 10_000 });
     // Player was created by the stubbed API.
     await expect
       .poll(() => page.evaluate(() => (window as unknown as { __ytCreated: number }).__ytCreated))
@@ -132,7 +141,7 @@ test.describe("/tv watchdog (TICKET-41)", () => {
     await seed(page, { videoId: "bbbbbbbbbbb", title: "Sobrevivente", nickname: "Duda", patronUuid: uuid(), mode: "sing" });
 
     await page.goto("/default/tv");
-    await expect(page.getByTestId("tv-hero")).toHaveText("Sumiu do YouTube");
+    await expect(page.getByTestId("tv-hero")).toHaveText("Sumiu do YouTube", { timeout: 10_000 });
     await expect
       .poll(() => page.evaluate(() => (window as unknown as { __ytCreated: number }).__ytCreated))
       .toBeGreaterThan(0);

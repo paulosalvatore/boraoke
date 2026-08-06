@@ -70,8 +70,11 @@ export async function advanceOnce(
   request: APIRequestContext,
   roomId = DEFAULT_ROOM,
   rawHostCode?: string,
+  reason?: "unplayable",
 ) {
-  return request.post(`/api/queue/advance${roomQuery(roomId)}`, {
+  const q = roomQuery(roomId);
+  const reasonParam = reason ? `${q ? "&" : "?"}reason=${reason}` : "";
+  return request.post(`/api/queue/advance${q}${reasonParam}`, {
     headers: { [SCREEN_TOKEN_HEADER]: screenTokenFor(roomId, rawHostCode) },
   });
 }
@@ -100,6 +103,36 @@ export async function warmModerationRoutes(request: APIRequestContext) {
   await request.get(
     "/api/queue/pending?uuid=00000000-0000-4000-8000-000000000000",
   );
+}
+
+/**
+ * Warm-compile the `/[room]/tv` venue-screen route AND the queue endpoints it
+ * polls (shared deflake helper, TICKET-65).
+ *
+ * WHY: same singleton-reset caveat {@link warmModerationRoutes} documents — a
+ * route's FIRST compilation re-evaluates the shared store module in its OWN
+ * dev-server bundle, discarding any state seeded before that compile. Confirmed
+ * directly for `/tv` (2026-08-05): seeding a queue entry via `POST /api/queue`
+ * (already-compiled route), then requesting `/default/tv` for the first time,
+ * silently reset the queue to empty — even though `/api/queue` itself was
+ * already warm. `tv.spec.ts` had NO warm-up at all (unlike e.g.
+ * moderation.spec.ts, which happens to warm `/default/tv` as a side effect of
+ * its own flow) — that gap is TICKET-65's root cause, not a timing issue.
+ *
+ * Call this BEFORE any seeding, from every spec that seeds queue state and
+ * then loads `/tv`.
+ */
+export async function warmTvRoutes(request: APIRequestContext, roomId = DEFAULT_ROOM) {
+  await request.get(`/${roomId}/tv`);
+  await request.get(`/api/queue${roomQuery(roomId)}`);
+  // Compile /api/queue/advance (no-op on an empty queue). Charged to the
+  // `unplayable` bucket (40/room/60s, see lib/advance-rate-limit.ts) rather
+  // than the anti-grief singer-skip bucket (12/room/60s) — this warm-up fires
+  // once per TEST via beforeEach, and the singer-skip ceiling is tight enough
+  // that a handful of tests would exhaust it and leave the store dirty for
+  // later tests in the same run (a smaller, order-dependent flake vector the
+  // opus reviewer flagged on TICKET-65).
+  await advanceOnce(request, roomId, undefined, "unplayable");
 }
 
 /**
