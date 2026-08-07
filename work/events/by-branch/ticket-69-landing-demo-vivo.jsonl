@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-07T19:46:55Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-69", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/69-landing-demo-vivo", "short_sha": "1b5bddd", "message_slug": "test(TICKET-69): app tester visual gate evidence + PASS report"}}
