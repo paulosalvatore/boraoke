@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-07T19:42:41Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-66", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/66-accent-token-split", "short_sha": "19fd703", "message_slug": "[TICKET-66] split the accent token by role to clear WCAG AA on every CTA"}}
