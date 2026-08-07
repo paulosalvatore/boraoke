@@ -106,6 +106,24 @@ export async function warmModerationRoutes(request: APIRequestContext) {
 }
 
 /**
+ * Dedicated, never-real room id used ONLY to trigger route compilation
+ * (TICKET-65 §2 revision). Compilation under `next dev` is a PROCESS-WIDE
+ * event scoped to the ROUTE FILE, not to the dynamic `[room]` value that
+ * happens to trigger it first — `GET /<any-id>/tv` compiles the exact same
+ * page bundle as `GET /default/tv`. Routing every warm-up request through a
+ * synthetic id that no spec ever seeds, asserts on, or rate-limits against
+ * means {@link warmTvRoutes} gets the compile side-effect it needs WITHOUT
+ * ever touching a real room's queue contents or advance rate-limit budget —
+ * including the shared `default` room that most of this suite's other specs
+ * also warm/seed. A full-suite TM investigation on the first version (which
+ * warmed straight against the caller's own roomId, almost always
+ * DEFAULT_ROOM) found it added measurable contention on that hot shared room
+ * under a full-suite run; this id sidesteps the contention instead of just
+ * reducing it.
+ */
+const TV_WARMUP_ROOM = "tv-warmup-e2e";
+
+/**
  * Warm-compile the `/[room]/tv` venue-screen route AND the queue endpoints it
  * polls (shared deflake helper, TICKET-65).
  *
@@ -119,20 +137,25 @@ export async function warmModerationRoutes(request: APIRequestContext) {
  * moderation.spec.ts, which happens to warm `/default/tv` as a side effect of
  * its own flow) — that gap is TICKET-65's root cause, not a timing issue.
  *
+ * All three warm requests target {@link TV_WARMUP_ROOM}, never the room the
+ * calling test actually seeds/asserts against — see that constant's doc
+ * comment for why. The room-agnostic signature (no `roomId` param) reflects
+ * that: compiling is a one-time, room-independent, process-wide event, so a
+ * caller never needs to name its own room here.
+ *
  * Call this BEFORE any seeding, from every spec that seeds queue state and
  * then loads `/tv`.
  */
-export async function warmTvRoutes(request: APIRequestContext, roomId = DEFAULT_ROOM) {
-  await request.get(`/${roomId}/tv`);
-  await request.get(`/api/queue${roomQuery(roomId)}`);
-  // Compile /api/queue/advance (no-op on an empty queue). Charged to the
-  // `unplayable` bucket (40/room/60s, see lib/advance-rate-limit.ts) rather
-  // than the anti-grief singer-skip bucket (12/room/60s) — this warm-up fires
-  // once per TEST via beforeEach, and the singer-skip ceiling is tight enough
-  // that a handful of tests would exhaust it and leave the store dirty for
-  // later tests in the same run (a smaller, order-dependent flake vector the
-  // opus reviewer flagged on TICKET-65).
-  await advanceOnce(request, roomId, undefined, "unplayable");
+export async function warmTvRoutes(request: APIRequestContext) {
+  await request.get(`/${TV_WARMUP_ROOM}/tv`);
+  await request.get(`/api/queue${roomQuery(TV_WARMUP_ROOM)}`);
+  // Compile /api/queue/advance. Fire-to-compile only — the response (likely a
+  // 401/400 against an unregistered synthetic room) is irrelevant, same
+  // posture as warmModerationRoutes' dummy-id calls above. Charged (if
+  // charged at all) to the `unplayable` bucket via `reason`, never the tight
+  // anti-grief singer-skip bucket — and to TV_WARMUP_ROOM's own budget, not
+  // any real room's.
+  await advanceOnce(request, TV_WARMUP_ROOM, undefined, "unplayable");
 }
 
 /**
