@@ -166,7 +166,7 @@
 .removeBtn {
   background: none;
   border: 0;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0.8rem;
   font-weight: 700;
   padding: 6px 8px;
@@ -174,7 +174,7 @@
 .removeBtn:hover { text-decoration: underline; }
 .confirm { display: flex; align-items: center; gap: 0.35rem; }
 .confirmYes {
-  background: var(--accent);
+  background: var(--accent-strong);
   border: 0;
   border-radius: 6px;
   color: #fff;
@@ -257,7 +257,7 @@
 .gate h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
 .gate p { color: var(--text-muted); margin-bottom: 1.5rem; }
 .gateForm { display: flex; flex-direction: column; gap: 0.75rem; text-align: left; }
-.error { color: var(--accent); font-size: 0.85rem; }
+.error { color: var(--accent-text); font-size: 0.85rem; }
 
 /* ── Moderation toggle + pending approvals (TICKET-44) ──────────────────────── */
 .moderationCard {
@@ -338,7 +338,7 @@
   padding: 0 0.4rem;
   margin-left: 0.5rem;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--accent-strong);
   color: #fff;
   font-size: 0.8rem;
   font-weight: 700;
@@ -383,7 +383,7 @@
 }
 .rejectBtn {
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   border: 1px solid var(--accent);
 }
 .approveBtn:disabled,

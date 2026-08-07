@@ -52,3 +52,23 @@ decision**, not a mechanical fix. An unattended fire must not redesign a token u
 
 Redesigning `--accent` wholesale, or touching any other token — this ticket is narrowly the two
 measured failures above.
+
+---
+
+## Decision (2026-08-07) — Option B, role-split accent tokens
+
+**Status:** IMPLEMENTED on `ticket/66-accent-token-split`.
+
+The TL approved landing-rethink **Direction 2**, whose mockups are built on the **Option B palette**. Option B is implemented here.
+
+`--accent` (`#e63946`) is retained unchanged as the brand hue for borders, focus rings, badges and large/decorative text. Two derived tokens do the AA-critical work: `--accent-strong` (`#d92330`) fills CTAs under white text (4.96:1), and `--accent-text` (`#ee5a64`) is the accent used AS text on dark surfaces (5.21:1 on `--surface`, 5.81:1 on `--bg`, 5.45:1 on the mode-switcher tint).
+
+**Rationale — why not a single darker hex.** White-on-accent ≥4.5:1 requires luminance ≤0.183; accent-as-text-on-dark ≥4.5:1 requires the opposite. Every single-hex candidate fixes `.btn-primary` and breaks accent-as-text everywhere else (`#e42735` → 4.53 on the button but 3.85 on `--surface`). The constraints are mathematically incompatible for one colour, so the token is split by role. Full measured proof: `work/design/landing-rethink/CONTRAST.md`.
+
+**Scope note — a third failure was fixed, not two.** Beyond the two recorded `test.fixme` findings, `#e63946` as normal-size text on `--surface` (4.18:1) was latent and untested — it hit admin `.error`, `.removeBtn`, `.rejectBtn`, the mode-switcher "ATIVO" chip, patron rejected-pending text, `SavedRooms` links and `SongSearch` status. Two new e2e tests now cover that class so it cannot hide again. Two further genuine misses surfaced during the call-site sweep (accent-as-text on the `.12`-over-`--bg` tint = 4.26, and on the `.10`-over-`--surface` tint = 3.84); both are fixed by the same swap.
+
+**One call site is deliberately NOT fixed here:** `app/page.tsx:93` (`last-room-link`) is owned by the concurrent landing rebuild. It needs `--accent` → `--accent-text` and must be routed after that branch merges.
+
+**One call site must NOT be changed:** `app/admin/analytics/analytics.module.css:49` `.button` pairs `--accent` with **dark** `#0a0a0a` text (4.75:1 PASS). Moving it to `--accent-strong` would drop it to 3.99:1 and introduce a regression.
+
+Delivery: `work/reports/dev/TICKET-66-dev-report.md`, review at `work/reports/review/TICKET-66-review.md`, evidence in `work/evidence/TICKET-66/`.

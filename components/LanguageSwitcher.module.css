@@ -72,7 +72,7 @@
 }
 
 .check {
-  color: var(--accent, #ff3d71);
+  color: var(--accent-text, #ff3d71);
   font-weight: 700;
 }
 

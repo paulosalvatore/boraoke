@@ -118,7 +118,7 @@ async function RoomNotFound({
       )}
 
       <p>
-        <Link href="/" style={{ color: "var(--accent)", fontSize: "0.9rem" }}>
+        <Link href="/" style={{ color: "var(--accent-text)", fontSize: "0.9rem" }}>
           {t("notFoundBack")}
         </Link>
       </p>
