@@ -300,7 +300,8 @@ test.describe("landing page contrast", () => {
     async ({ page }) => {
       await page.goto("/");
       await assertAA(
-        page.getByRole("link", { name: /criar a sala do seu bar/i }),
+        // TICKET-69 renamed this CTA to "Começar agora — é grátis" (Direction 2).
+        page.getByRole("link", { name: /começar agora/i }),
         "landing: create-room CTA button text",
       );
     },

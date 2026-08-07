@@ -78,7 +78,11 @@ test.beforeEach(async ({ page }) => {
 test("landing renders create CTA + a working join-code input", async ({ page }) => {
   await page.goto("/");
   // create-your-room CTA
-  await expect(page.getByRole("link", { name: /criar a sala do seu bar/i })).toBeVisible();
+  // TICKET-69: the landing is now Direction 2 ("Demo vivo") — the create CTA
+  // reads "Começar agora — é grátis" and still points at /new in one click.
+  const createCta = page.getByRole("link", { name: /começar agora/i });
+  await expect(createCta).toBeVisible();
+  await expect(createCta).toHaveAttribute("href", "/new");
   // join-by-code input (TICKET-20 bug #2: must be present + usable)
   const codeInput = page.getByLabel(/código da sala/i);
   await expect(codeInput).toBeVisible();

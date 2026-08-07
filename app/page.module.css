@@ -1,0 +1,421 @@
+/*
+ * Landing — Direction 2 "Demo vivo" (TICKET-69).
+ *
+ * Ported from the approved mockup work/design/landing-rethink/mockup-2-demo-vivo.html.
+ * Two deliberate deviations from that mockup, both accessibility-driven:
+ *
+ *  1. The mockup uses `--accent-strong` / `--accent-text`, tokens that do NOT
+ *     exist yet (a sibling ticket, TICKET-66, adds them to globals.css — which
+ *     this ticket must not touch). Everything here therefore uses the tokens
+ *     that ship today, and accent-coloured TEXT only ever sits on `--bg`
+ *     (#e63946 on #0d0d0d = 4.64:1, AA-clean) and never on `--surface`
+ *     (4.18:1, which would fail). That is why the rotation tag is filled with
+ *     `--bg` rather than the mockup's `--surface`.
+ *  2. The TV screen uses flat fills instead of the mockup's gradient, so the
+ *     computed-contrast suite (e2e/contrast.spec.ts) can resolve a real painted
+ *     background for every text node inside the mock.
+ *
+ * The CTA reuses the GLOBAL `.btn-primary` class for colour, so whatever
+ * TICKET-66 lands there applies here automatically; the module only overrides
+ * layout (width/display), with an element-qualified selector so the override
+ * wins regardless of stylesheet order.
+ */
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.pill {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+/* ── venue chips ────────────────────────────────────────────────────────── */
+
+.chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+  list-style: none;
+  padding: 0;
+}
+
+.chips li {
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  color: var(--text-muted);
+}
+
+.chips li.chipOn {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── hero ───────────────────────────────────────────────────────────────── */
+
+.hero {
+  display: grid;
+  grid-template-columns: 5fr 6fr;
+  gap: 2.5rem;
+  align-items: center;
+  padding: 1.5rem 0 3rem;
+}
+
+.hero h1 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin-bottom: 1rem;
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.heroSub {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  margin-bottom: 1.75rem;
+  max-width: 46ch;
+}
+
+/* Layout-only override of the global .btn-primary (which is width: 100%). */
+a.cta {
+  display: inline-block;
+  width: auto;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.9rem 2rem;
+}
+
+.fine {
+  margin-top: 0.8rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ── TV + phone mock (purely presentational: no iframe, no fetch) ───────── */
+
+.stage {
+  position: relative;
+  /* Room for the phone card that overhangs the TV's bottom-left corner. */
+  margin-bottom: 5.5rem;
+}
+
+.tv {
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.1rem;
+  box-shadow: 0 20px 60px rgba(230, 57, 70, 0.12);
+}
+
+.screen {
+  background: #140d0e;
+  border-radius: 8px;
+  padding: 1.1rem;
+}
+
+.now {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.thumb {
+  width: 92px;
+  height: 56px;
+  border-radius: 6px;
+  background: #5c1f25;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+}
+
+.nowLabel {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.nowTitle {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.nowMeta {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.railLabel {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.rail ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.rail li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  padding: 0.42rem 0.5rem;
+  border-radius: 6px;
+}
+
+.rail li:nth-child(odd) {
+  background: #211a1b;
+}
+
+.rail .who {
+  color: var(--text-muted);
+  flex: none;
+}
+
+.rotationTag {
+  position: absolute;
+  top: -0.85rem;
+  right: 1rem;
+  /* --bg, not the mockup's --surface: accent-as-text needs 4.5:1 and only
+     clears it on --bg until TICKET-66 lands --accent-text. */
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 11px;
+}
+
+.phone {
+  position: absolute;
+  /* Nudged down/left vs the mockup so the up-next rail stays readable — the
+     whole point of this direction is that the visitor SEES the queue. */
+  bottom: -4.75rem;
+  left: -3rem;
+  width: 138px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0.7rem;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+}
+
+.qr {
+  background: #fff;
+  border-radius: 8px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.qr svg {
+  width: 74%;
+  height: 74%;
+}
+
+.phone p {
+  font-size: 0.68rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.phone p strong {
+  color: var(--text);
+  display: block;
+  font-size: 0.75rem;
+}
+
+/* ── feature bullets ────────────────────────────────────────────────────── */
+
+.bullets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  padding: 1rem 0 2.5rem;
+}
+
+.bullet {
+  border-top: 2px solid var(--accent);
+  padding-top: 0.8rem;
+}
+
+.bullet h2 {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.bullet p {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+/* ── join-by-code strip ─────────────────────────────────────────────────── */
+
+.joinStrip {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  flex-wrap: wrap;
+}
+
+.joinStrip h2 {
+  font-size: 1rem;
+  flex: none;
+}
+
+.joinForm {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 230px;
+}
+
+.joinInput {
+  flex: 1;
+  min-width: 0;
+  /* Must NOT be --surface: that is the strip's own fill (the TICKET-20
+     camouflage bug, now guarded by e2e/contrast.spec.ts). */
+  background: var(--bg);
+  border-color: var(--text-muted);
+}
+
+button.joinBtn {
+  width: auto;
+  min-width: 90px;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.95rem;
+}
+
+.joinHint {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.lastRoom {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── footer ─────────────────────────────────────────────────────────────── */
+
+.footer {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 2.5rem 0;
+}
+
+.freePromise {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+    padding-top: 0.5rem;
+  }
+
+  .bullets {
+    grid-template-columns: 1fr;
+  }
+
+  a.cta {
+    display: block;
+    width: 100%;
+  }
+
+  /* Keep the overhanging phone card inside the viewport at every width. */
+  .phone {
+    left: auto;
+    right: 0;
+    bottom: -3rem;
+    width: 124px;
+  }
+
+  .stage {
+    margin-bottom: 3rem;
+  }
+
+  .thumb {
+    width: 72px;
+    height: 44px;
+  }
+
+  .rail li {
+    /* Long song titles must wrap rather than push the page sideways. */
+    flex-wrap: wrap;
+    gap: 0 0.5rem;
+  }
+
+  .rail .who {
+    flex: none;
+  }
+}
