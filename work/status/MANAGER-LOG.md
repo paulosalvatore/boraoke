@@ -1,5 +1,21 @@
 # boraoke — Manager Log
 
+## 2026-08-07 — Durable-record accuracy pass (status docs only, no product code/branch/PR)
+
+Verified `work/roadmap.md` and `work/status/BOARD.md` against `git log` / `gh pr list --state merged` and corrected staleness found there. Convention going forward, recorded here so the next agent follows it: **where a standing claim is simply wrong, edit it in place with a short inline correction (date + what superseded it) — do not just append a refutation elsewhere in the file.** Append-only stays reserved for genuine history (this log's dated entries, the board's dated heartbeat log lines) — those are a record of what was believed at the time and must not be rewritten. The board had drifted into append-not-edit for standing claims (e.g. the "FELL THROUGH" list and the Upstash-pending-driver line below), which meant a fresh reader hit the wrong claim before the correction.
+
+Changes made:
+- `work/roadmap.md:33` — replaced the stale "boraoke is a fully-GATED product" premise (every merge = a TL-gated live deploy) with the current rule: pre-launch/non-live for deploy-gating purposes (no payments, no real venue accounts, free early access), so gate-green backend/test/docs-only work auto-merges and auto-deploys; the TL still gates patron-facing changes. Reconciles the 2026-08-06 merge-cadence decision with the 2026-08-07 pre-launch/non-live correction in one place.
+- `work/roadmap.md:25` — "42 PRs merged" → "48 PRs merged as of 2026-08-07" with a note pointing at `gh pr list --state merged | wc -l` so the figure doesn't silently rot again.
+- `work/roadmap.md:40,148` — the "remaining growth-arc decisions" line still listed bot-prevention vendor, i18n language set, and merge cadence as open; all three were decided/shipped by 2026-08-06. Corrected to the accurate 4-still-open set (YT quota, payments setup, first paid feature, venue-type shortlist), matching `BOARD.md`'s own tally.
+- `work/status/BOARD.md:175` (FELL THROUGH list) — TICKET-26 and TICKET-31 were still listed as never-started; both merged 2026-07-20 (PR #37, PR #38). Corrected in place (struck through + inline note), not just left to the existing correction further down the file.
+- `work/status/BOARD.md:177` (operational debt list) — "Upstash pending driver built but not provisioned in prod" was refuted 2026-07-27 (heartbeat #30): production has resolved to the Upstash pending driver since 2026-07-07. Corrected in place; also closed out the still-stale "TICKET-20 contrast follow-up never done" and "Upstash search cache never built" sub-claims in the same line (both since merged).
+- **Date correction, `gh`-verified:** PRs #39/#40/#41/#42 merged **2026-08-05T21:40Z**, not 2026-08-06 as the board had it in ~8 places (banner parenthetical, Needs-user resolved item, the four per-PR entries, and three Tickets-table rows). Corrected the Tickets-table rows, the per-PR entries, and the main Needs-user "4-PR pile DRAINED" item; left the compressed historical banner parenthetical as-is (it's presented as retained history, "Prior banner"). #43/#44/#47 genuinely merged 2026-08-06 (22:07–23:06Z) — unaffected.
+- **Checked and found correct, no change needed:** roadmap's TICKET-30/PR #23 date (2026-07-09) matches `gh` (`2026-07-09T02:58:53Z`) — the audit brief's suggested correction to "2026-07-08T20:09Z" does not match reality; left as-is.
+- Refreshed the `_Last updated:_` banner on `BOARD.md` and the roadmap's "Last groomed" line.
+
+**Outcome:** progressed. No product code, branch, worktree, or PR touched — status docs only, per this task's scope.
+
 _(H1 corrected from "cantai" by heartbeat #30, 2026-07-27 — TICKET-57(b) scope, same precedent as heartbeat #27's BOARD.md H1 fix. No `cantai*` code identifier was touched: those are the deliberate live-localStorage / legacy-redirect / negative-assertion strings flagged as a HAZARD in TICKET-57(c).)_
 
 ## 2026-08-07 — Autonomous dispatch (TL correction: pre-launch/non-live, deploy not gated) — 🟢 PR #45 + PR #46 MERGED and DEPLOYED

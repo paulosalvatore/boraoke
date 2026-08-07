@@ -1,7 +1,7 @@
 # boraoke — Product Roadmap v2 (platform vision)
 
 - **Owner:** Product Owner (TICKET-22; supersedes the TICKET-5 roadmap)
-- **Last groomed:** 2026-07-07 (structure); brought current against the board/log on 2026-08-05 (TICKET-64)
+- **Last groomed:** 2026-07-07 (structure); brought current against the board/log on 2026-08-05 (TICKET-64); accuracy pass 2026-08-07 (deploy-gating premise superseded, PR count refreshed, growth-arc decision tally corrected — see MANAGER-LOG.md)
 - **Status:** proposed — priorities are the Tech Lead's to confirm (PO proposes, never imposes)
 - **Naming note:** the rename to **Boraoke** is DONE and has been live for weeks. `boraoke.com` was bought 2026-07-07, the code rebrand shipped as **TICKET-33 (PR #20, merged 2026-07-08)**, and DNS has been live since 2026-07-08 (re-verified `https://boraoke.com/` → HTTP 200 as of this edit). Below, "the product" means Boraoke throughout — no naming ambiguity remains. The only place the retired `cantai` name legitimately survives is a short, deliberate list of live production identifiers (localStorage keys, an HMAC salt, the `cantai-snowy.vercel.app` legacy-host redirect, and one negative test assertion) — see `work/status/BOARD.md`'s hazard note. Renaming those would drop live patron identity, so they are out of scope for any docs cleanup.
 
@@ -22,7 +22,7 @@ Primary early market remains Brazil (pt-BR-first), with multi-language support o
 
 ## Where we are (honest snapshot, brought current 2026-08-05 against `work/status/BOARD.md`, `MANAGER-LOG.md` and `git log`)
 
-### LIVE at https://boraoke.com (42 PRs merged as of this writing)
+### LIVE at https://boraoke.com (48 PRs merged as of 2026-08-07 — check `gh pr list --state merged | wc -l` for the current count; this figure rots, don't trust it beyond its as-of date)
 
 Multi-room + QR join + table capture, host controls, all three rotation modes, in-app YouTube search (key provisioned, quota-increase request still not filed — see Open questions), feedback widget, telemetry baseline, TV fullscreen mode, durable store LIVE on Upstash (provisioned + verified 2026-07-07), the code rebrand to **Boraoke** (TICKET-33/33a, PRs #19–#20, merged 2026-07-08), anonymous identity registry Layer 1 (TICKET-26, PR #37, merged 2026-07-20), read-only admin analytics (TICKET-31, PR #38, merged 2026-07-20), and the operational hardening batch below.
 
@@ -30,14 +30,14 @@ All four wave-0 items are DONE, not "in flight": **TICKET-20** (P0 UX fixes, PR 
 
 ### Recently delivered and merged (2026-08-05)
 
-boraoke is a **fully-GATED product** — every merge to `main` auto-deploys the live client site, so no unattended fire ever merges without the TL. **PR #39** (TICKET-55, Upstash-backed YouTube search cache — the biggest quota lever), **PR #40** (TICKET-56, atomic Lua EVAL for `rejectAllPending`), **PR #41** (TICKET-57(a), archive boraoke prompts under the registered slug), and **PR #42** (TICKET-58, repoint the `run-app` skill at the canonical clone) were all delivered gate-green as a file-disjoint, mergeable-in-any-order batch, and **all four were merged 2026-08-05.** See `work/status/BOARD.md` for whatever is currently open — that list turns over fast and the board, not this roadmap, is the place to check before acting on it.
+**Deploy-gating rule (superseded 2026-08-07, corrected here — do not restate the old "fully-GATED" premise elsewhere in this doc).** boraoke is **pre-launch / non-live** for deploy-gating purposes — no payments, no real venue accounts, free early access per the README — so the earlier blanket "every merge is a live-client deploy, an unattended fire never merges without the TL" rule no longer holds. Current rule, stated once here: **gate-green backend/test/docs-only work auto-merges and auto-deploys** without per-PR TL sign-off (the TM merges it directly, same as any other gated product under D-043); **the TL still gates anything patron-facing** (UI/UX-visible changes) before merge. This is the 2026-08-06 merge-cadence decision (see `work/status/BOARD.md` Needs-user) reconciled with the 2026-08-07 pre-launch/non-live correction — together they are the one standing deploy rule for this product; check `work/status/BOARD.md` for anything more current, since it turns over faster than this roadmap. **PR #39** (TICKET-55, Upstash-backed YouTube search cache — the biggest quota lever), **PR #40** (TICKET-56, atomic Lua EVAL for `rejectAllPending`), **PR #41** (TICKET-57(a), archive boraoke prompts under the registered slug), and **PR #42** (TICKET-58, repoint the `run-app` skill at the canonical clone) were all delivered gate-green as a file-disjoint, mergeable-in-any-order batch, and **all four were merged 2026-08-05.** See `work/status/BOARD.md` for whatever is currently open — that list turns over fast and the board, not this roadmap, is the place to check before acting on it.
 
 ### BLOCKED ON TL (needs-user, carried from the board — see BOARD.md for the current, larger list)
 
 - 🟢 RESOLVED: **Upstash Redis provisioned 2026-07-07** (live in prod, verified) — queues, feedback and the pending-moderation store are all durable.
 - 🟢 RESOLVED: **Boraoke DNS** — domain bought 2026-07-07, DNS cutover executed, live since 2026-07-08 (`https://boraoke.com/` → HTTP 200).
 - 🟡 **YouTube Data API quota-increase request** — key is provisioned in prod; the quota-increase form is drafted (`work/youtube-quota-form.md`) but has not been submitted, so the ~99-searches/day default ceiling still applies. The Upstash search cache (TICKET-55, merged) reduces quota burn but is a mitigation, not a substitute for filing the form.
-- 🟡 **The remaining growth-arc decisions** (bot-prevention vendor, payments business setup, first paid feature sign-off, venue-type shortlist, i18n language set, merge cadence) — see `work/status/BOARD.md` for the current, up-to-date list; it changes more often than this roadmap does.
+- 🟡 **The remaining growth-arc decisions, corrected 2026-08-07 against `work/status/BOARD.md`'s "4 of the original 8 are now CLOSED" tally: YouTube quota (file or accept degraded), payments business setup, first paid feature sign-off, venue-type shortlist.** (Bot-prevention vendor = Turnstile, decided 2026-08-06; i18n language set = shipped, TICKET-30 live; merge cadence = decided 2026-08-06 — all three now closed, see above.) See `work/status/BOARD.md` for the current, up-to-date list; it changes more often than this roadmap does.
 
 ## Phases (v2)
 
@@ -137,7 +137,7 @@ Retired from the v1 backlog: #14 "venue accounts + rooms model" is superseded by
 
 ## Open questions (for the Tech Lead)
 
-_(Still open as of 2026-08-05 — cross-check `work/status/BOARD.md`'s "remaining growth-arc decisions" line before acting; that file is updated more frequently than this roadmap.)_
+_(Still open as of 2026-08-07 — cross-check `work/status/BOARD.md`'s "remaining growth-arc decisions" line before acting; that file is updated more frequently than this roadmap.)_
 
 - **YouTube quota:** file the drafted increase request (`work/youtube-quota-form.md`) or accept the ~99-searches/day default ceiling permanently? The Upstash search cache (TICKET-55, merged) reduces burn but doesn't remove the ceiling.
 - **Bot-prevention vendor:** Turnstile (recommended) vs reCAPTCHA — see TICKET-27 rationale. Blocks TICKET-27, which blocks 28.
@@ -145,5 +145,5 @@ _(Still open as of 2026-08-05 — cross-check `work/status/BOARD.md`'s "remainin
 - **Venue-type shortlist:** proposal is party/event + condo + corporate as the first three beyond bars (schools/churches deferred — content-moderation prerequisite); see `venue-generalization.md`.
 - **First paid feature + rail:** pay-to-boost via Pix/Mercado Pago recommended — see `platform-aggregation.md` for the scoring; the fairness-bounding design needs TL sign-off since it touches the product's soul.
 - **Payments business setup (blocks TICKET-34 arming):** receiving money needs TL decisions — CNPJ vs MEI, which Mercado Pago account receives, fiscal/refund posture, and the venue revenue-share % (proposed 50/50). One needs-user round before the payments wave.
-- **Merge cadence:** every `main` merge auto-deploys live boraoke.com, so an unattended fire never merges — batch-merge cadence for whatever sits in the deliver-not-merge pile at any given time (check `work/status/BOARD.md` for the live list) is a standing TL decision.
+- ~~**Merge cadence:** every `main` merge auto-deploys live boraoke.com, so an unattended fire never merges — batch-merge cadence for whatever sits in the deliver-not-merge pile at any given time (check `work/status/BOARD.md` for the live list) is a standing TL decision.~~ ✅ **DECIDED 2026-08-06** (see the deploy-gating rule at the top of "Where we are" above): gate-green backend/test/docs-only auto-merges; patron-facing stays TL-gated. No longer open.
 - **Rename timing:** name decided (Boraoke) — TICKET-33 can pull forward from wave 6 to any solo merge window once brand assets land; DNS remains on the TL for the cutover step.
