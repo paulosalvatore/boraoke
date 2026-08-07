@@ -211,7 +211,8 @@
     "submitDuplicate": "You already requested that song — it's in the queue.",
     "submitTableCap": "Your table already has {cap} songs in the queue — wait for one to play.",
     "submitPersonCap": "You already have {cap} songs in the queue — wait for one to play before adding another.",
-    "pendingFull": "Lots of songs are waiting for approval right now — try again in a bit."
+    "pendingFull": "Lots of songs are waiting for approval right now — try again in a bit.",
+    "submitNotEmbeddable": "this video doesn't allow playback on external screens — it may not play"
   },
   "Meta": {
     "title": "Boraoke — your bar's karaoke queue",
