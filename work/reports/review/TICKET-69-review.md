@@ -1,8 +1,8 @@
 # TICKET-69 — Reviewer report (clean context, independent re-derivation)
 
-**Verdict: APPROVE-WITH-FOLLOWUPS** — conditional on the working tree being committed or reverted first (see BLOCKING-1, which is a process/hygiene block, not a code defect).
+**Verdict: APPROVE-WITH-FOLLOWUPS** — no blockers remain. (BLOCKING-1 was raised mid-review against a dirty tree and has since been **RESOLVED**; see the addendum at the foot of this report for the resolution and the re-run gate output that clears it.)
 
-**Reviewed:** branch `ticket/69-landing-demo-vivo`, worktree `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/ticket-69`, committed HEAD `5a1d6c7` (base `8a93fdf`).
+**Reviewed:** branch `ticket/69-landing-demo-vivo`, worktree `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/ticket-69`, base `8a93fdf`. Main pass ran against committed HEAD `5a1d6c7`; final gate re-run against `914bc9e` (see addendum).
 **Ports:** 3181 exclusively. No `.env` (in-memory store, degraded YouTube search) — expected, not a defect.
 I did not write this code and re-ran every claim rather than trusting either report.
 
@@ -156,7 +156,7 @@ Both edits are honest and narrow.
 
 ## Findings, severity-ranked
 
-### BLOCKING-1 — the working tree is dirty; the branch as committed is not what is currently on disk
+### ~~BLOCKING-1~~ (RESOLVED during review — see addendum) — the working tree was dirty; the branch as committed was not what was on disk
 `git status --short` in the review worktree, *during* this review:
 
 ```
@@ -204,4 +204,34 @@ The filename and the App Tester's index entry describe it as the plain `/` captu
 
 ## Recommendation
 
-Resolve BLOCKING-1 (commit the `.lastRoomLink` delta and re-run the landing gates, or revert it), and this merges. File MEDIUM-1, MEDIUM-2 and MEDIUM-3 as follow-ups; MEDIUM-2 in particular is a one-line CSS nudge that would fully deliver the direction's core promise.
+**Merge.** File MEDIUM-1, MEDIUM-2 and MEDIUM-3 as follow-ups; MEDIUM-2 in particular is a one-line CSS nudge that would fully deliver the direction's core promise.
+
+---
+
+## Addendum — BLOCKING-1 resolved
+
+While I was writing this report the implementer committed the pending delta as **`914bc9e` "TICKET-69: route the last-room link through --accent-text (from TICKET-66)"** (+ its event-log commit `bdb591a`), covering `app/page.module.css`, `app/page.tsx` and `work/reports/dev/TICKET-69-dev-report.md`. `git status --short` is now clean.
+
+I verified the committed hunks are **byte-identical** to the working-tree edit I had already measured live (the `.lastRoomLink { color: var(--accent-text); text-decoration: underline }` rule plus its `className`), so my substantive assessment of that change in BLOCKING-1 carries over unchanged: AA-clean in both the pre- and post-TICKET-66 states (4.91:1 muted fallback today, 5.21:1 once `--accent-text` lands), affordance preserved by the underline, no token redefined in a file this ticket may not touch.
+
+The only thing outstanding was that no gate had run against it. I re-ran them on a clean `.next` at HEAD `914bc9e`:
+
+```
+Test Suites: 43 passed, 43 total
+Tests:       683 passed, 683 total
+Ran all test suites.
+
+  ✓  26 render-and-links.spec.ts:152 › /[room]/admin: login → controls + mode switcher + customer-screen links (4.2s)
+  ✓  28 render-and-links.spec.ts:211 › link-crawler: landing, /new, and a live room's pages have no 404 links (11.9s)
+  ✓  30 rooms.spec.ts:91 › landing join-by-code navigates into the room (6.4s)
+  ✓  32 saved-rooms.spec.ts:39 › a created room appears under Suas salas with working links (5.2s)
+  ✓  33 saved-rooms.spec.ts:61 › joining a room as a patron remembers it (joined role) (7.2s)
+  ✓  34 saved-rooms.spec.ts:82 › the ✕ control forgets a room (4.9s)
+
+  2 skipped
+  32 passed (3.0m)
+```
+
+Same result as the main pass: 683/683 unit, 32 passed / 2 skipped e2e, the 2 skips still exactly the two TICKET-66 `test.fixme` blocks. **BLOCKING-1 is cleared and the branch is merge-ready**, subject only to the three MEDIUM follow-ups above.
+
+Process note for the TM, not a defect in the work: a branch under formal review moved twice under the reviewer (HEAD `2c94753` → `5a1d6c7` → `914bc9e`, with an uncommitted window in between). It worked out here because the change was small, correct, and I could re-derive it — but a review verdict is only meaningful against a frozen commit, and the next one may not be so cheap to re-verify.
