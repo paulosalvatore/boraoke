@@ -209,6 +209,21 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+/*
+ * TICKET-70 follow-up (TL review, 2026-08-07): fixing `.join`'s width fixed
+ * the reported "Br…" bug, but a Reviewer break-it pass found the fix only
+ * moved the truncation threshold — names past ~6 characters (Estêvão,
+ * Fernanda, Gabriel: ordinary Brazilian first names, not edge cases) still
+ * clipped, because `.mesa` (the "Mesa N" table badge) used to sit BESIDE the
+ * whole `.info` column as a full-height sibling, permanently taking ~98px of
+ * a ~340px card away from the name — even on rows with a short table number.
+ *
+ * Fix: `.mesa` now shares a row with `.what` (the song title, already
+ * secondary/muted text) instead of the whole card height. `.who` (the name)
+ * is the only thing on its own line, so it gets the full `.info` column width
+ * — roughly DOUBLE what it had before (~110px → ~230px @1920x1080) — while
+ * the table badge still renders, just no longer at the name's expense.
+ */
 .nextCard .who {
   font-size: 2vw;
   font-weight: 700;
@@ -216,19 +231,39 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.nextCard .metaRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6vw;
+  margin-top: 0.2vw;
+  min-width: 0;
+}
 .nextCard .what {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 1.5vw;
   color: var(--c-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 0.2vw;
 }
 .nextCard .mesa {
   font-size: 1.5vw;
   color: var(--c-amber);
   font-weight: 700;
   flex: none;
+  /* TICKET-70 re-review (opus, Finding 4): `.mesa` had no overflow handling,
+     so the server's max-length (10-char) table label in the narrowest
+     3-card layout could push it past `.metaRow`'s bound and spill outside
+     the card. `max-width` + ellipsis caps it the same way `.join .url`
+     already degrades — table numbers are normally 1-2 digits, this only
+     ever engages on a pathological label, same posture as the name/title
+     ellipsis above it. */
+  max-width: 9vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---- join / powered-by footer card (POWERED_BY_FOOTER) ---- */

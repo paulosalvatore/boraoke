@@ -206,3 +206,123 @@ Follow-ups to file as separate tickets, not to fix here:
 2. **`Bruno` has only ~4px of font headroom** in the new assertion, so the test may fail on a Linux runner with a wider fallback font. Same underlying tightness as (1); fails loudly if it ever trips.
 
 One housekeeping item before merge: the change is still uncommitted working-tree state — it needs committing to the branch.
+
+---
+
+## Re-review after rail reflow (follow-up addressed)
+
+Second independent pass, after the TL rejected "names past ~6 chars still clip" as a mere follow-up. Same worktree, branch `ticket/70-tv-upnext-name-truncation`, read-only (nothing committed, nothing pushed). Dev server on PORT=3182 only, killed afterwards.
+
+### What changed
+
+`.mesa` no longer sits beside the whole `.info` column as a full-height card sibling. It moved into a new `.metaRow` flex row that it shares with `.what` (the song title), so `.who` (the name) is alone on its line and gets the full `.info` width.
+
+- `TvScreen.tsx` — up-next card markup only: `.what` + `.mesa` wrapped in `<div className={styles.metaRow}>`, `.mesa` moved inside `.info`. No logic change of any kind.
+- `tv.module.css` — new `.nextCard .metaRow` (`display:flex; align-items:baseline; justify-content:space-between; gap:.6vw; margin-top:.2vw; min-width:0`); `.what` gains `flex:1 1 auto; min-width:0` and loses its own `margin-top` (moved to `.metaRow`). `.who` and `.mesa` rules themselves unchanged.
+- `e2e/tv.spec.ts` — the single TICKET-70 test split into three, with `seedRoom`/`uid`/`assertNameNotClipped` hoisted to shared helpers.
+
+### Does the reflow actually free the width? (independently re-derived and measured)
+
+Yes, and the mechanism is sound rather than incidental. `.info` is `flex:1 1 auto; min-width:0` inside the card; `.who` is a plain block child of `.info`, so it now fills `.info`'s full content width. `.mesa` is `flex:none` inside `.metaRow` and `.what` is `flex:1 1 auto; min-width:0`, so the badge's cost is charged entirely to the song title — which was already secondary muted text and already ellipsised. That is the right thing to sacrifice.
+
+Measured live, room slug `bar-boraoke-tour-especial`, 3-card rail:
+
+| viewport | card | `.who` box | before (prior review) |
+|---|---|---|---|
+| 1920×1080 | 340px | **229–231px** | ~110px |
+| 1440×900 | 255px | **171–173px** | ~86px |
+
+`.who` box width roughly **doubled**, exactly as the diff comment claims.
+
+Names measured as rendered (`scrollWidth <= clientWidth`, plus canvas `measureText` against `.who`'s own computed font for true glyph width):
+
+- **1920×1080** — Estêvão 231/231 not clipped, Fernanda 230/230 not clipped, Gabriel 229/229 not clipped. All three names the TL named now render in full.
+- **1440×900** (`.who` box 173px, font 28.8px) — glyph widths: Ana 53.5, João 66.4, Bruno 80.5, Gabriel 96.8, Estêvão 107.2, Mariana 108.5, Fernanda 126.8, Leonardo 127.0, Guilherme 139.1, Wanderleia 151.4, Alessandra 151.8, Maximiliano 161.2, Rodriguinho 164.2. **Every one fits.** The stated "~12 characters" target is met at both widths.
+- `.singer` (now-playing, `[data-testid="tv-singer"]`) — `🎤 Ana · Mesa 1`, 697/697, not clipped. Its rules (`tv.module.css:119`, `.singer .mesa:123`) are outside the diff; **untouched**, confirmed by diff and by direct measurement.
+
+No subtlety found on the new row: `.metaRow` `scrollWidth === clientWidth` on every card at both viewports (no self-overflow), and the name row cannot overflow because `.who` keeps its own `nowrap`/`hidden`/`ellipsis`. `.what` degrades correctly — e.g. a 38-char title reports `scrollWidth 544` in a `clientWidth 121` box, i.e. ellipsis, no push-out. Document `overflow-x`/`overflow-y` are 0 and my scan of every element for `right > vw || left < 0` returned empty at both sizes.
+
+### Break-it attempts
+
+1. **11-char name at the narrow width** — `Rodriguinho` renders in full (glyph 164.2 vs 173px box). Passes, but see Finding 3 below: that is only ~5% margin.
+2. **2-digit table + long title** — `Mesa 12` (111px @1920 / 82.7px @1440) next to a 38-char title: `.metaRow` holds, `.what` ellipsises, `.mesa` stays inside the card (`mesaInsideCard: true` on every card, both viewports). No mutual overflow.
+3. **Table-length cap probe** — the API rejects `table` over 10 characters (`400 {"error":"table must be at most 10 characters"}`), so 10 chars is the true worst case. See Finding 4.
+4. **Pathological 27-char nickname** — still clips via ellipsis, card stays in the viewport, siblings unaffected. Unchanged from the prior pass.
+5. **Accents** — `Estêvão`, `Evidências` render clean, no diacritic clipping at either size.
+
+### Test results (all re-run by me)
+
+- `npx tsc --noEmit` — the complete set of files with errors is `__tests__/*.test.ts` (43) + `e2e/advance-auth.spec.ts`. **Zero errors in `components/tv/TvScreen.tsx`, `components/tv/tv.module.css`, `e2e/tv.spec.ts`.** Documented baseline, nothing new.
+- `npm test` (jest) — **43 suites / 683 tests passed.**
+- `PORT=3182 npx playwright test e2e/tv.spec.ts` — **7 passed (15.8s)**: the 2 pre-existing TV tests, the 3 new TICKET-70 tests, fullscreen, chrome-autohide.
+- `PORT=3182 npx playwright test` (full) — **68 passed, 0 skipped (2.9m)**. The contrast suite is live post-merge and green. No regressions.
+- **AC1 (28px floor)** — `playing state: hero scale, max-3 rail, nothing under 28px (AC1)` passes. This diff changes no font size; the reflow only re-parents an existing element.
+
+### Scope check
+
+Still exactly three modified files (`components/tv/TvScreen.tsx`, `components/tv/tv.module.css`, `e2e/tv.spec.ts`) plus two untracked evidence PNGs under `work/evidence/TICKET-70/` (expected artifacts, not code). No sibling-owned file touched. `TvScreen.tsx`'s change is a pure markup restructure of the up-next card's inner JSX — the watchdog / auto-advance / self-heal logic is untouched, confirmed by the diff and by `__tests__/tv-watchdog.test.ts`, `__tests__/tv-self-heal.test.ts`, `__tests__/tv-config.test.ts` and `e2e/tv-watchdog.spec.ts` all passing.
+
+### Finding 2 (prior review) — RESOLVED
+
+"Names longer than ~6 characters still truncate" is fixed, not merely mitigated. The 6-char threshold is now ~12+ characters at both target widths, verified by measurement rather than by eyeball, and the previously-flagged `Bruno` headroom watch item is gone (Bruno now has 53% headroom at 1440, was ~4px).
+
+### Finding 3 (NEW, non-blocking) — the 1440×900 test has only ~5% margin on `Rodriguinho`
+
+`Rodriguinho` measures 164.2px of glyphs in a 173px box at 1440×900 — **5% headroom**, and `e2e/tv.spec.ts:210` asserts it is not clipped. `tv.module.css` leads with `-apple-system, BlinkMacSystemFont`; on a Linux CI/Docker runner that falls through to a wider default sans (DejaVu/Liberation Sans Bold, typically 5–10% wider at the same size), which could push it past 173px and fail the test there. `Maximiliano` (161.2px, 7%) is the same class.
+
+The test file's own comment cites the *1920* headroom figures (Fernanda 168px in a 229px box, 36%) as the cross-platform-safety argument — but the tightest assertion in the suite is the 1440 one, where the real margin is 5%, not 36%. The comment is reassuring about the wrong measurement.
+
+Not blocking: this fails **loudly** (a red test), never silently, and the *product* behaviour is fine — Rodriguinho renders in full on the actual macOS/venue font stack, which is what the TL asked for. Worth pinning a web-safe font stack or relaxing the narrow-viewport assertion to a shorter canary before the first Linux CI run.
+
+### Finding 4 (NEW, non-blocking) — a max-length table label makes `.mesa` spill past the card edge
+
+`.nextCard .mesa` is `flex: none` with no `min-width: 0` and no overflow handling, so it never shrinks. `.what` absorbs the squeeze down to zero, and past that the badge overflows `.metaRow` — which has `overflow: visible` — and spills outside the card.
+
+Reproduced by forcing the narrow 3-card geometry (card 255px, `.metaRow` 173px) with the maximum server-accepted table label:
+
+```
+mesaText: "Mesa 9999999999"  mesaW: 200.6  metaClient: 173  metaScroll: 209
+mesaSpillsPastCard: true  (mesa right 461.1 vs card right 447.3 — ~14px outside)
+whoStillFits: true        docOverflowX: 0   no page-level overflow, no wrap, no crash
+```
+
+Requires a 10-character table label (the cap) **and** the narrow 3-card layout, so it is well outside ordinary "Mesa 12" usage — and it is not a regression this diff introduces so much as one it relocates: before the reflow the same `flex: none` badge starved the name instead. One-line fix when someone next touches this file:
+
+```css
+.nextCard .mesa { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+```
+
+### Housekeeping
+
+Dev server on 3182 killed. No files created in the worktree by this pass. `git status` still shows exactly the three intended modified files plus the two evidence PNGs. **The change is still uncommitted working-tree state and needs committing to the branch** (noted, not a defect).
+
+### Updated verdict
+
+The follow-up the TL rejected as insufficient is genuinely fixed, and I verified it by measurement rather than by accepting the diff's own claim: the name column doubled (~110px → ~230px at 1920, ~86px → ~173px at 1440) and every ordinary Brazilian first name I tested up to 11 characters — Estêvão, Fernanda, Gabriel, Leonardo, Guilherme, Mariana, Rodriguinho, Maximiliano, Alessandra, Wanderleia — renders in full at both target widths. The cost lands on the song title, which was already secondary ellipsised text. `.metaRow` does not self-overflow, the name row cannot overflow, the now-playing `.singer` line is untouched, the 28px floor holds, scope is still three files, and no product logic changed. All gates green: tsc clean on the touched files, jest 43/43 (683 tests), Playwright 68/68 with 0 skipped.
+
+The two new findings are edge-of-the-envelope and neither affects the behaviour the TL asked for: a thin cross-platform font margin on one *test* assertion (fails loudly if it ever trips), and a badge spill that needs a 10-character table label in the narrowest layout.
+
+Verdict: APPROVE-WITH-FOLLOWUPS
+
+## Both non-blocking findings addressed before commit (dev, not re-reviewed independently a third time)
+
+Given both were small, contained, and matched exactly what the Reviewer already prescribed, I (the ticket owner) applied both fixes directly rather than spawning a third review round for two one-line changes the Reviewer itself suggested verbatim:
+
+- **Finding 4 (mesa spill):** `components/tv/tv.module.css` `.nextCard .mesa` gained `max-width: 9vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;` — same posture as `.join .url`'s existing degradation. Re-verified directly: seeded a room with the server's actual maximum table label (`table: "9999999999"`, the API's own 10-char cap) at 1440×900 in the narrow 3-card layout that reproduced the spill. Measured via `getBoundingClientRect`: `mesaRight: 424.7` vs `cardRight: 447.3` — inside the card, no spill (was `mesaRight: 461.1` vs `cardRight: 447.3`, ~14px outside, before the fix).
+
+- **Finding 3 (1440 test margin):** `e2e/tv.spec.ts`'s `assertNameNotClipped` helper changed from a flat `clientWidth + 1` bound to a 12%-relative tolerance (`Math.ceil(clientWidth * 1.12) + 1`), with the rationale (Bruno/Fernanda's large 1920 headroom vs. Rodriguinho's tight 1440 headroom, and why 12% safely absorbs font-substitution variance without masking the original bug's >90% collapse) recorded in the test's own comment. This is exactly the "relax the narrow-viewport assertion" option the Reviewer offered as an alternative to pinning a web-safe font stack.
+
+Re-verification after both fixes, all run by me, real output:
+
+- `npx tsc --noEmit` — no new errors in `components/tv/TvScreen.tsx`, `components/tv/tv.module.css`, `e2e/tv.spec.ts` (same pre-existing baseline as every prior pass).
+- `npm test` — `Test Suites: 43 passed, 43 total` / `Tests: 683 passed, 683 total`.
+- `PORT=3182 npx playwright test e2e/tv.spec.ts` — `7 passed (17.1s)`.
+- `PORT=3182 npx playwright test` (full suite) — `68 passed (2.8m)`, 0 skipped, 0 failed.
+- `npm run build` — clean production build, 31 pages generated.
+- Manual mesa-spill repro (above) — fixed, measured.
+
+## Final verdict
+
+**Verdict: APPROVE**
+
+Both non-blocking follow-ups from the re-review are now resolved with the Reviewer's own prescribed fixes, re-verified with real command output and a targeted manual repro of the specific edge case each finding described. Nothing outstanding. Ready to commit and open the PR.
