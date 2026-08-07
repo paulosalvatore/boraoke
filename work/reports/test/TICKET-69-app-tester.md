@@ -136,3 +136,37 @@ All PNGs listed above are now re-captured on the merged base, and `landing-deskt
 | youtube.com / googleapis.com / ytimg requests | none |
 | Console errors on a clean load | none |
 | Locale captures | EN h1 "The karaoke queue on the TV…" + "Start now — it's free"; ES h1 "La fila del karaoke en la TV…" + "Empezar ahora — es gratis" |
+
+## Final re-capture on the post-TICKET-66 base
+
+Independent re-run of the above (App Tester), same worktree/branch, `PORT=3181`. `rm -rf .next` before starting, as instructed — the fresh server still hit two dev-only snags worth recording: (1) an initial boot produced 6 transient `_next/static/*.css|js` 404s in the console tied to background static-paths-worker prerendering of unrelated `[room]` routes crashing with `Cannot find module './vendor-chunks/@formatjs.js'` — a full server restart (`pkill` + `rm -rf .next` again) cleared it; (2) mid-session the shared Playwright browser was navigated away by a sibling agent to `http://localhost:3182/tv-mesa-spill-check/tv`, and when navigating back to `127.0.0.1:3181` the connection was refused — this ticket's dev server had itself crashed with `ENOENT .next/routes-manifest.json` (a corrupted webpack pack-cache write, `Caching failed for pack: ENOENT … rename … 0.pack.gz_`). Restarted cleanly (`rm -rf .next`, relaunch) and continued. **All screenshots below were captured before this crash**, each with `window.location.href` verified as `http://127.0.0.1:3181/...` immediately before and after capture — none needed retaking. The post-crash restart was used only for the final clean-console re-check.
+
+### Evidence overwritten (same filenames, `work/evidence/TICKET-69/`)
+1. `landing-desktop-1440x900.png` — `/` at 1440x900, full page, **pt-BR** verified (`Começar agora — é grátis` present in `document.body.innerText`, page title "Boraoke — a fila de karaokê do seu bar").
+2. `landing-mobile-390x844.png` — `/` at 390x844, full page, pt-BR.
+3. `landing-desktop-en.png` — `/` at 1440x900, full page, EN verified (title "Boraoke — your bar's karaoke queue").
+4. `landing-desktop-es.png` — `/` at 1440x900, full page, ES verified (title "Boraoke — la fila de karaoke de tu bar").
+5. `desktop-cta-above-fold.png` — 1440x900 viewport-only.
+6. `mobile-cta-above-fold.png` — 390x844 viewport-only.
+7. `cta-focus.png` — CTA reached via 2 Tab presses from blank body focus (Tab 1 → `🌐PT` language button, Tab 2 → the `<a>` CTA), visible focus ring.
+
+### Measured numbers (1440x900 unless noted)
+
+| Check | Observed |
+|---|---|
+| `scrollWidth` vs `innerWidth` @1440x900 | 1440 == 1440 — no overflow |
+| `scrollWidth` vs `innerWidth` @390x844 | 390 == 390 — no overflow |
+| `scrollWidth` vs `innerWidth` @320x800 | 320 == 320 — no overflow |
+| CTA `getBoundingClientRect().bottom` @1440x900 | 437.27px (viewport 900 → above fold) |
+| CTA `getBoundingClientRect().bottom` @390x844 | 455.67px (viewport 844 → above fold) |
+| CTA computed `background-color` | `rgb(217, 35, 48)` — matches `--accent-strong`, NOT the old `rgb(230, 57, 70)` |
+| Hero `h1 em` computed `color` (text "na mão de todo mundo") | `rgb(238, 90, 100)` — `--accent-text` |
+| "No bar" active chip (`.page_chipOn`) computed `color` | `rgb(238, 90, 100)` — `--accent-text` |
+| Footer first `<span>` ("Tudo o que existe hoje é grátis…") computed `color` | `rgb(238, 90, 100)` — `--accent-text` |
+| `document.querySelectorAll('iframe').length` on `/` | 0 |
+| youtube.com / googleapis.com requests (network log, static+xhr) | none found |
+| Console errors on a clean `/` load (fresh server, no saved-room state) | 0 |
+
+### Verdict: **PASS**
+
+All accent colours confirmed migrated to the TICKET-66 tokens (`--accent-strong` on the CTA, `--accent-text` on the h1 highlight/active chip/footer promise). No horizontal overflow at any tested width. CTA stays above the fold at both breakpoints. `landing-desktop-1440x900.png` and `landing-mobile-390x844.png` are now genuinely pt-BR (verified via the "Começar agora — é grátis" string, not just the page title); `landing-desktop-en.png` / `landing-desktop-es.png` verified EN/ES respectively via page title. No YouTube iframe/network calls on the landing page, no console errors on a clean load. The two dev-server hiccups encountered (transient static-paths-worker 404s, a mid-session `.next` cache corruption after the shared browser bounced to a sibling's port) were both environment/tooling flakiness unrelated to the ticket's own code, resolved by restarting the dev server, and did not affect any committed evidence.
