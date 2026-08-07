@@ -116,3 +116,23 @@ Unchanged and correct — matches the prior full-pass capture: header, wrapping 
 ### Verdict: **PASS, with a residual follow-up**
 
 The nudge delivers a genuine, measurable improvement: the phone card no longer meaningfully touches the first up-next row, and its horizontal intrusion into rows 2–4 dropped by roughly a third (70px → 45.8px). CTA position, fold placement, and both breakpoints' overflow are all unaffected and clean. This is a real step forward, not a wash, so it is not a regression to block on. However the original defect — the phone card visually occluding up-next title text — is only partially resolved: 3 of 4 titles still lose their leading word/fragment behind the card at 1440x900. Recommend one more small nudge (a few more `rem` of `.phone` left offset, or trimming `.phone` width) if full legibility of all four rows is required before this ships; otherwise this is an acceptable, documented residual for a follow-up ticket.
+
+## Final evidence re-capture on the post-TICKET-66 base (by the Ticket Manager)
+
+Every screenshot above this section was captured **before** `origin/main` (TICKET-66's accent-token split) was merged in, so they showed the pre-split colours. One delegated re-capture attempt also produced a completely unstyled `landing-desktop-1440x900.png` — the CSS module had not painted when the shot was taken (the stale-`.next` trap that bit three agents on this ticket). **That broken artifact was discarded, not committed**, and the capture was redone directly with an explicit "has the stylesheet painted?" gate before every screenshot.
+
+All PNGs listed above are now re-captured on the merged base, and `landing-desktop-1440x900.png` / `landing-mobile-390x844.png` are genuinely **pt-BR** (a previous pass had silently captured the desktop one in English via Playwright's default `en-US` Accept-Language).
+
+**Verdict: PASS.** Measured live:
+
+| Check | Observed |
+|---|---|
+| CTA text / href | "Começar agora — é grátis" · `/new` |
+| CTA background | `rgb(217, 35, 48)` — `--accent-strong`, i.e. the TICKET-66 fix arrived via the global `.btn-primary` |
+| h1 highlight / active chip / footer promise colour | `rgb(238, 90, 100)` — `--accent-text` on all three |
+| Horizontal overflow @1440 / @390 / @320 | 1440==1440 · 390==390 · 320==320 — none at any width |
+| CTA above the fold | `bottom` 437.27px @1440x900 · 455.67px @390x844 |
+| `<iframe>` count on `/` | 0 |
+| youtube.com / googleapis.com / ytimg requests | none |
+| Console errors on a clean load | none |
+| Locale captures | EN h1 "The karaoke queue on the TV…" + "Start now — it's free"; ES h1 "La fila del karaoke en la TV…" + "Empezar ahora — es gratis" |
