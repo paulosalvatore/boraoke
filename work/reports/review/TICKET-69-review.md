@@ -235,3 +235,124 @@ Ran all test suites.
 Same result as the main pass: 683/683 unit, 32 passed / 2 skipped e2e, the 2 skips still exactly the two TICKET-66 `test.fixme` blocks. **BLOCKING-1 is cleared and the branch is merge-ready**, subject only to the three MEDIUM follow-ups above.
 
 Process note for the TM, not a defect in the work: a branch under formal review moved twice under the reviewer (HEAD `2c94753` → `5a1d6c7` → `914bc9e`, with an uncommitted window in between). It worked out here because the change was small, correct, and I could re-derive it — but a review verdict is only meaningful against a frozen commit, and the next one may not be so cheap to re-verify.
+
+---
+
+# Delta re-review
+
+Scope: only what is new since `914bc9e` — three changes (the contrast-coverage commit, the `origin/main` merge, the token-role commit). Everything I signed off in the main pass above I did not re-derive, except where the new base could have invalidated it. Same worktree, PORT=3181.
+
+**Final verdict: APPROVE.**
+
+## New commits reviewed
+
+```
+4c1e8df chore(events) …
+f7a5dd1 TICKET-69: route accent-as-text onto --accent-text now that TICKET-66 is on main
+5a3e89d chore(events) …
+25b97fc review(TICKET-69): resolve BLOCKING-1 …            ← my own
+f46c90b Merge remote-tracking branch 'origin/main' into ticket/69-landing-demo-vivo
+faf293b chore(events) …
+152a859 TICKET-69: pin the new landing's text styles in the contrast suite
+118ad06 TICKET-66: split the accent token by role … (#49)  ← arrived via the merge
+```
+
+Branch scope vs the new `origin/main` is exactly the 7 files this ticket owns — `app/page.module.css`, `app/page.tsx`, `e2e/contrast.spec.ts`, `e2e/render-and-links.spec.ts` and the three `messages/*.json`. Nothing else.
+
+## Gate output I observed
+
+```
+Test Suites: 43 passed, 43 total
+Tests:       683 passed, 683 total
+
+npm run build →  ✓ Compiled successfully in 5.1s
+
+rm -rf .next && PORT=3181 npx playwright test   (WHOLE suite)
+  66 passed (2.9m)
+```
+
+**66 passed, 0 failed, 0 skipped** — reproduces the TM's number exactly. i18n parity re-checked on the new base: pt-BR / en / es all 47 `Landing` keys, identical sets, 41 used in `page.tsx`, none missing.
+
+> **My own false alarm, recorded because it is the same trap twice.** My first attempt at the full suite reported `5 failed / 61 passed` (2 × `advance-auth`, 3 × patron/admin `contrast`). Self-inflicted: I ran `npm run build` immediately *before* the suite, so `next dev` booted on top of the production `.next` — the exact failure mode I flagged in the main pass, which I then walked into myself. A second attempt died on `EADDRINUSE :::3181` from a leftover server. With a killed port and `rm -rf .next` it is 66/66. **Recommended house habit: never `npm run build` in the same breath as `npx playwright test`, and free the port first.**
+
+## 1. MEDIUM-3 closed — assertions are real, with one precise gap
+
+I resolved all 19 new locators myself and dumped the true computed paint each one measures. Every locator resolves to **exactly one** element, and to the *intended* element (no silent parent-walk). Ratios (pt-BR, 1440x900):
+
+| Node | fg on bg | px/weight | ratio | floor |
+|---|---|---|---|---|
+| early-access pill | `238,90,100` on `13,13,13` | 11.5/700 | 5.81 | 4.5 |
+| active venue chip | `238,90,100` on `13,13,13` | 13.1/600 | 5.81 | 4.5 |
+| inactive venue chip | `136,136,136` on `13,13,13` | 13.1/600 | 5.48 | 4.5 |
+| hero h1 | `241,241,241` on `13,13,13` | 41.6/700 | 17.21 | 3 |
+| hero h1 accent span | `238,90,100` on `13,13,13` | 41.6/700 | 5.81 | 3 |
+| hero sub-copy | `136,136,136` on `13,13,13` | 16.8/400 | 5.48 | 4.5 |
+| CTA microcopy | `136,136,136` on `13,13,13` | 13.6/400 | 5.48 | 4.5 |
+| rotation tag | `238,90,100` on `13,13,13` | 11.5/700 | 5.81 | 4.5 |
+| now-playing label | `238,90,100` on `20,13,14` | 10.9/800 | 5.74 | 4.5 |
+| now-playing title | `241,241,241` on `20,13,14` | 16.8/700 | 17.00 | 4.5 |
+| now-playing meta | `136,136,136` on `20,13,14` | 13.1/400 | 5.42 | 4.5 |
+| up-next label | `136,136,136` on `20,13,14` | 10.9/800 | 5.42 | 4.5 |
+| **up-next `who` on STRIPED row** | `136,136,136` on `33,26,27` | 13.6/400 | **4.82** | 4.5 |
+| up-next title on flat row | `241,241,241` on `20,13,14` | 13.6/400 | 17.00 | 4.5 |
+| phone caption heading | `241,241,241` on `26,26,26` | 12/700 | 15.41 | 4.5 |
+| bullet heading | `241,241,241` on `13,13,13` | 16/700 | 17.21 | 4.5 |
+| bullet body | `136,136,136` on `13,13,13` | 14.1/400 | 5.48 | 4.5 |
+| footer span 1 (free promise) | `238,90,100` on `13,13,13` | 12.5/600 | 5.81 | 4.5 |
+| footer span 2 (muted) | `136,136,136` on `13,13,13` | 12.5/400 | 5.48 | 4.5 |
+
+Not tautological: the helper (`assertAA` / `computeContrast` / `inPageContrast`) is **unchanged by this branch** — I diffed it against `origin/main` and only call-sites moved, no threshold and no resolution logic. The suite's own three "contrast math sanity" tests still prove the helper (21:1 canonical max, ~1:1 on the known-bad pair, correct ancestor-walk on a transparent background). The striped-row pair the commit calls "tightest" genuinely is the tightest new one at 4.82:1 — my hand-sweep had estimated 4.67, so the commit's claim is honest and my earlier estimate was the conservative one. Coverage matches what I swept.
+
+**MEDIUM-4 (new, follow-up) — the one accent node where the token split is actually load-bearing is the one node not asserted.** I ran a negative control: forcing `--accent-text` back to `--accent` and re-measuring. **All 17 new assertions still pass** (pill/chip/tag/em/footer drop only 5.81 → 4.66, still over the floor). That is not a defect in the tests — it is a property of the page: every accent-as-text node here sits on `--bg`, where *both* tokens clear AA. So the new coverage guards backgrounds and the muted token, but it does **not** guard the accent-text split on this page.
+
+The single exception is `.lastRoomLink` (`app/page.module.css:381-384`), the only accent-as-text node on the `--surface` join strip. Measured under both states:
+
+```
+normal (--accent-text live)          PASS 5.21:1  fg rgb(238,90,100) on rgb(26,26,26)  13.6px/400  underline
+REGRESSED (--accent-text := --accent) FAIL 4.18:1  fg rgb(230,57,70)  on rgb(26,26,26)  13.6px/400  underline
+```
+
+Exactly the 5.21 / 4.18 the code comment claims — verified, not taken on faith. That node is the one the new test block does not cover (it needs `cantai_last_room` seeded first). One extra assertion that seeds localStorage would make the coverage genuinely regression-proof. Not blocking: the value is correct today and the underline means it is not colour-alone identifiable even if the colour regressed.
+
+Two smaller uncovered nodes, both fine today: `.phone p` body copy (0.68rem `--text-muted` on `--surface`) and `.joinHint`.
+
+## 2. Merge is clean in both directions — including the one collision that mattered
+
+`f46c90b` is a true merge (parents `faf293b` + `118ad06`), no rebase, no force-push. I checked both sides rather than trusting "clean":
+
+- **vs the main side (`118ad06`):** the only deletions in `contrast.spec.ts` are the five landing lines TICKET-69 legitimately replaced (two retitles, the stale `/criar a sala do seu bar/i` locator, the single-span footer assertion that became two). **Nothing from TICKET-66 was dropped** — its two new latent-C3 tests, its rewritten FINDING comments and its unskips are all present.
+- **vs the branch side (`faf293b`):** the only changes are TICKET-66's. **Nothing from TICKET-69 was dropped** — the 17-assertion Direction-2 block is intact.
+- `components/SavedRooms.tsx` is byte-identical to `origin/main` (TICKET-66 owns it; the branch carries its version verbatim, not a stale copy).
+
+**The collision worth naming:** TICKET-66 unskipped the CTA `test.fixme` while TICKET-69 renamed that very CTA. A merge that took main's side wholesale would have produced a newly-*live* test pointing at dead copy (`/criar a sala do seu bar/i`) and a red suite. The resolution took **both** — TICKET-66's `test(` + its new `--accent-strong` rationale, wrapped around TICKET-69's `/começar agora/i` locator. That is the correct outcome and it is why the suite is green.
+
+**Both ex-fixmes are live and passing:** `grep -rn "test.fixme(" e2e/` returns **nothing** — zero skips remain anywhere in the suite, consistent with the 66/0/0 run. The former CTA fixme now asserts against this landing's CTA and passes on `--accent-strong` (#fff on #d92330).
+
+## 3. Token roles are correct
+
+Verified against the definitions TICKET-66 landed in `globals.css:14-17`, which document `--accent` as "borders, focus rings, non-text UI, large text" and `--accent-text` as "accent used AS text on dark surfaces".
+
+- `--accent` survives at exactly four sites, **all non-text**: pill border (`:63`), chip border-color (`:90`), rotation-tag border (`:242`), bullet `border-top` (`:300`).
+- `--accent-text` at seven sites, **all text**: pill label (`:62`), active chip (`:91`), h1 `em` (`:113`), now-playing label (`:186`), rotation-tag label (`:243`), last-room link (`:382`), free promise (`:396`).
+- `--accent-strong` is never referenced directly; it reaches the CTA through the global `.btn-primary`, which this module overrides for layout only. Correct — that is what keeps the CTA on the token TICKET-66 fixed.
+- `f7a5dd1` is surgical: six `color: var(--accent)` → `var(--accent-text)`, zero border changes.
+
+`app/page.module.css` defines **zero** custom properties (grep for `^\s*--x:` → empty). `app/globals.css` is **byte-identical to `origin/main`** (`git diff origin/main -- app/globals.css` → empty), as are `components/tv/**`, `components/FeedbackWidget.tsx` and `components/feedback/**`.
+
+I also re-derived the arithmetic in the new comments rather than trusting it — all three are exact: `--accent-strong` #d92330 under #fff = **4.96:1**; `--accent-text` #ee5a64 on `--surface` = **5.21:1**; on `--bg` = **5.81:1**.
+
+### NIT-4 — the h1 highlight is now stricter than the token doc requires
+`app/page.module.css:113`. The `em` is 41.6px/700 — unambiguously large text, where `--accent` is explicitly permitted. Moving it to `--accent-text` is defensible (one rule: accent text always uses the text token) but it does lighten the hero highlight from #e63946 to #ee5a64 versus the approved mockup. Deliberate, consistent, and cosmetically minor — flagging only so the visual shift is a decision on record rather than a side effect.
+
+### NIT-5 — a recorded follow-up was closed by re-justification, not by doing it
+The main pass recorded "once `--accent-text` exists, the rotation tag can move back to a `--surface` fill". `--accent-text` now exists, and the tag **stayed** on `--bg` — but the comment (`:237-240`) was honestly rewritten from an AA constraint to a design rationale ("reads as a tag lifted off the TV", plus 5.81 vs 5.21 headroom). I have no objection to the call; I flag it because it turns a temporary, constraint-driven deviation from the approved mockup into a permanent, taste-driven one. Worth the TM knowing it is now a design decision, not a leftover.
+
+## Item-by-item on the three delta questions
+
+1. **Contrast assertions real and covering what I swept** — **YES**, with MEDIUM-4 as the one precise gap (the load-bearing `.lastRoomLink` is unasserted; the other 17 would survive a token regression because they sit on `--bg`). Helper untouched, no threshold loosened, no test newly skipped.
+2. **Merge dropped nothing from either side; both fixmes live and passing** — **CONFIRMED**, both directions diffed, the CTA-rename/unskip collision resolved correctly, zero `test.fixme` left, 66/66 green.
+3. **Token split correct, zero custom properties, `globals.css` untouched** — **CONFIRMED**, all three, with the comment arithmetic independently re-derived.
+
+Evidence PNGs deliberately not judged — the App Tester is re-capturing them on the new base (I see `work/evidence/TICKET-69/landing-desktop-1440x900.png` modified in the tree as I write).
+
+**Nothing here blocks. Verdict: APPROVE.** Carry forward MEDIUM-1 (venue-chip active styling), MEDIUM-2 (phone card occluding up-next titles), and add MEDIUM-4 (assert the last-room link's contrast) as follow-ups.
