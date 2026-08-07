@@ -218,7 +218,7 @@ export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchPro
 
       {/* Rate-limit notice */}
       {rateLimitMsg && !loading && (
-        <p role="status" style={{ marginTop: "0.6rem", fontSize: "0.85rem", color: "var(--accent)" }}>
+        <p role="status" style={{ marginTop: "0.6rem", fontSize: "0.85rem", color: "var(--accent-text)" }}>
           {rateLimitMsg}
         </p>
       )}
@@ -277,7 +277,7 @@ export default function SongSearch({ patronUuid, mode, onSelect }: SongSearchPro
                     </span>
                   </span>
                   {selected && (
-                    <span aria-hidden style={{ color: "var(--accent)", fontWeight: 700, fontSize: "1.1rem" }}>
+                    <span aria-hidden style={{ color: "var(--accent-text)", fontWeight: 700, fontSize: "1.1rem" }}>
                       ✓
                     </span>
                   )}

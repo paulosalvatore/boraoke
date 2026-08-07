@@ -134,7 +134,7 @@ export default function SavedRooms() {
                 >
                   <Link
                     href={`/${room.id}`}
-                    style={{ color: "var(--accent)" }}
+                    style={{ color: "var(--accent-text)" }}
                     data-testid="saved-room-patron"
                   >
                     {t("savedEnter")}
@@ -143,14 +143,14 @@ export default function SavedRooms() {
                     <>
                       <Link
                         href={adminHref}
-                        style={{ color: "var(--accent)" }}
+                        style={{ color: "var(--accent-text)" }}
                         data-testid="saved-room-admin"
                       >
                         {t("savedAdmin")}
                       </Link>
                       <Link
                         href={`/${room.id}/tv`}
-                        style={{ color: "var(--accent)" }}
+                        style={{ color: "var(--accent-text)" }}
                         data-testid="saved-room-tv"
                       >
                         {t("savedTv")}

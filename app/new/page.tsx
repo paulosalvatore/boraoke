@@ -155,7 +155,7 @@ export default function NewRoomPage() {
           </Link>
         </div>
         <p style={{ textAlign: "center", marginTop: "1.25rem" }}>
-          <Link href={`/${room.id}`} style={{ color: "var(--accent)", fontSize: "0.9rem" }}>
+          <Link href={`/${room.id}`} style={{ color: "var(--accent-text)", fontSize: "0.9rem" }}>
             {t("viewPublicRoom")}
           </Link>
         </p>
@@ -187,7 +187,7 @@ export default function NewRoomPage() {
             onChange={(e) => setName(e.target.value)}
           />
         </div>
-        {error && <p style={{ color: "var(--accent)", fontSize: "0.875rem" }}>{error}</p>}
+        {error && <p style={{ color: "var(--accent-text)", fontSize: "0.875rem" }}>{error}</p>}
         <button className="btn-primary" type="submit" disabled={creating || !name.trim()}>
           {creating ? t("creating") : t("createButton")}
         </button>
