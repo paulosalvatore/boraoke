@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { drainQueue } from "./helpers";
+import { drainQueue, warmTvRoutes } from "./helpers";
 
 /**
  * E2E: /tv venue screen (TICKET-18) — 10-foot layout, idle poster,
@@ -32,6 +32,13 @@ async function seedShow(page: Page) {
 }
 
 test.describe("/tv", () => {
+  test.beforeEach(async ({ page }) => {
+    // TICKET-65: warm-compile /default/tv + the queue routes it polls BEFORE
+    // any seeding — see warmTvRoutes' doc comment for the confirmed mechanism
+    // (a route's first compile resets the in-memory store singleton).
+    await warmTvRoutes(page.request);
+  });
+
   test.afterEach(async ({ page }) => {
     await drainQueue(page.request); // leave the shared in-memory store clean
   });
@@ -43,7 +50,7 @@ test.describe("/tv", () => {
     await drainQueue(page.request);
     await page.goto("/default/tv");
 
-    await expect(page.getByTestId("tv-idle")).toBeVisible();
+    await expect(page.getByTestId("tv-idle")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Escaneia e canta! 🎤")).toBeVisible();
     // no dead video panel in idle
     await expect(page.locator("#yt-player")).toHaveCount(0);
@@ -60,7 +67,10 @@ test.describe("/tv", () => {
     await page.goto("/default/tv");
 
     const hero = page.getByTestId("tv-hero");
-    await expect(hero).toHaveText("Garota de Ipanema");
+    // Bounded-longer wait (not a masked timeout): right after goto, this is the
+    // FIRST assertion that depends on the seeded queue surviving the page's
+    // render — give slow CI runners headroom over Playwright's 5s default.
+    await expect(hero).toHaveText("Garota de Ipanema", { timeout: 10_000 });
 
     // tv-hero: 4.4vw @1920 = ~84.5px, weight 800
     const heroStyle = await hero.evaluate((el) => {
@@ -135,7 +145,7 @@ test.describe("/tv", () => {
 
     // Affordance is visible on load (chrome shown, re-shows after reloads)
     const btn = page.getByTestId("tv-fullscreen");
-    await expect(btn).toBeVisible();
+    await expect(btn).toBeVisible({ timeout: 10_000 });
     await expect(btn).toHaveText(/Tela cheia/);
 
     await btn.click();
@@ -166,11 +176,15 @@ test.describe("/tv", () => {
     await page.goto("/default/tv");
 
     const chrome = page.getByTestId("tv-chrome");
-    await expect(chrome).toBeVisible();
+    await expect(chrome).toBeVisible({ timeout: 10_000 });
 
-    // after the idle window the chrome fades and the cursor is hidden
-    await page.waitForTimeout(4600);
-    await expect(chrome).toHaveClass(/chromeHidden/);
+    // After the idle window (~4s, CHROME_HIDE_MS) the chrome fades and the
+    // cursor is hidden. Deterministic wait: poll the class via Playwright's
+    // web-first `toHaveClass` (bounded to 8s) instead of a fixed
+    // `waitForTimeout` immediately followed by a one-shot assert — the fixed
+    // sleep raced the component's own timer on slow CI runners and was one of
+    // the two flaky assertions TICKET-65 diagnosed.
+    await expect(chrome).toHaveClass(/chromeHidden/, { timeout: 8000 });
     const cursor = await page
       .getByTestId("tv-root")
       .evaluate((el) => getComputedStyle(el).cursor);
