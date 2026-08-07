@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 1: Pra qualquer festa</title>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --surface: #1a1a1a;
+    --border: #2e2e2e;
+    --accent: #e63946;        /* decorative / borders / large text only */
+    --accent-strong: #d92330; /* CTA background — white on it = 4.96:1 */
+    --accent-hover: #c1121f;  /* white on it = 6.22:1 */
+    --accent-text: #ee5a64;   /* accent as text on dark — 5.81:1 on bg */
+    --text: #f1f1f1;
+    --text-muted: #9a9a9a;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 1.25rem; }
+  a { color: var(--accent-text); text-decoration: none; }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 0; }
+  .brand { font-size: 1.35rem; font-weight: 800; }
+  .pill { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-text); border: 1px solid var(--accent); border-radius: 999px; padding: 3px 10px; }
+
+  .hero { padding: 3.5rem 0 2.5rem; text-align: center; }
+  .hero h1 { font-size: clamp(1.9rem, 5vw, 3rem); line-height: 1.15; letter-spacing: -0.01em; max-width: 21ch; margin: 0 auto 1rem; }
+  .hero h1 em { font-style: normal; color: var(--accent-text); }
+  .hero p { color: var(--text-muted); font-size: 1.1rem; max-width: 52ch; margin: 0 auto 2rem; }
+  .cta-row { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+  .btn-primary { display: inline-block; background: var(--accent-strong); color: #fff; font-size: 1.05rem; font-weight: 700; padding: 0.9rem 2rem; border-radius: var(--radius); border: none; cursor: pointer; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-ghost { display: inline-block; color: var(--text); font-size: 1.05rem; font-weight: 600; padding: 0.9rem 1.5rem; border-radius: var(--radius); border: 1px solid var(--border); }
+  .hero .fine { margin-top: 0.9rem; font-size: 0.85rem; color: var(--text-muted); }
+
+  section { padding: 2.5rem 0; }
+  h2 { font-size: 1.5rem; margin-bottom: 0.4rem; }
+  .lead { color: var(--text-muted); margin-bottom: 1.5rem; max-width: 60ch; }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .step { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+  .step .num { display: inline-flex; width: 2rem; height: 2rem; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-strong); color: #fff; font-weight: 800; margin-bottom: 0.75rem; }
+  .step h3 { font-size: 1.05rem; margin-bottom: 0.35rem; }
+  .step p { font-size: 0.9rem; color: var(--text-muted); }
+
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .mode { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+  .mode.active { border-color: var(--accent); }
+  .mode .icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  .mode h3 { font-size: 1rem; margin-bottom: 0.3rem; }
+  .mode p { font-size: 0.88rem; color: var(--text-muted); }
+  .modes-note { margin-top: 1rem; font-size: 0.88rem; color: var(--text-muted); }
+
+  .venues { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+  .venue { border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem; text-align: center; }
+  .venue .icon { font-size: 1.7rem; display: block; margin-bottom: 0.5rem; }
+  .venue h3 { font-size: 0.95rem; margin-bottom: 0.2rem; }
+  .venue p { font-size: 0.8rem; color: var(--text-muted); }
+
+  .host { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .chip { font-size: 0.88rem; border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 0.45rem 0.9rem; }
+  .chip::before { content: "✓ "; color: var(--accent-text); font-weight: 700; }
+
+  .join { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; max-width: 520px; margin: 0 auto; }
+  .join h2 { font-size: 1.1rem; }
+  .join p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+  .join form { display: flex; gap: 0.5rem; }
+  .join input { flex: 1; background: var(--bg); border: 1px solid var(--text-muted); border-radius: var(--radius); color: var(--text); font-size: 1rem; padding: 0.6rem 0.85rem; min-width: 0; }
+  .join button { background: var(--accent-strong); color: #fff; border: none; border-radius: var(--radius); font-weight: 700; padding: 0.6rem 1.2rem; cursor: pointer; }
+
+  .promise { text-align: center; border-top: 1px solid var(--border); margin-top: 2rem; padding: 2rem 0 1rem; }
+  .promise strong { color: var(--accent-text); }
+  .promise p { color: var(--text-muted); font-size: 0.9rem; max-width: 56ch; margin: 0 auto; }
+  footer { text-align: center; color: var(--text-muted); font-size: 0.78rem; padding: 1.5rem 0 2.5rem; }
+
+  @media (max-width: 720px) {
+    .steps, .modes { grid-template-columns: 1fr; }
+    .venues { grid-template-columns: repeat(2, 1fr); }
+    .hero { padding-top: 2.25rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">🎤 Boraoke</div>
+    <span class="pill">Grátis · acesso antecipado</span>
+  </header>
+
+  <div class="hero">
+    <h1>Karaokê com fila <em>justa</em>, em qualquer lugar com uma TV</h1>
+    <p>Seus convidados escaneiam um QR, escolhem a música no celular e a TV toca a fila sozinha. Sem instalar nada, sem cadastro, sem pagar nada.</p>
+    <div class="cta-row">
+      <a class="btn-primary" href="#">Criar minha sala grátis</a>
+      <a class="btn-ghost" href="#join">Já tenho um código</a>
+    </div>
+    <p class="fine">Pronto em 30 segundos · funciona em português, inglês e espanhol</p>
+  </div>
+
+  <section>
+    <h2>Como funciona</h2>
+    <p class="lead">Três passos entre criar a sala e a primeira música tocando na TV.</p>
+    <div class="steps">
+      <div class="step">
+        <span class="num">1</span>
+        <h3>Crie a sala e mostre o QR</h3>
+        <p>Um clique gera a sala, o QR de entrada e a tela de TV. Nada pra instalar.</p>
+      </div>
+      <div class="step">
+        <span class="num">2</span>
+        <h3>Cada um escolhe no celular</h3>
+        <p>Apelido, número da mesa e a música — buscando no YouTube ou colando um link.</p>
+      </div>
+      <div class="step">
+        <span class="num">3</span>
+        <h3>A TV toca sozinha</h3>
+        <p>Player em tela cheia com &ldquo;tocando agora&rdquo; e &ldquo;próximas&rdquo;, avançando automaticamente.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ninguém monopoliza o microfone</h2>
+    <p class="lead">O rodízio é o coração do Boraoke: a fila se reorganiza sozinha pra ordem ficar justa. Você escolhe o modo — e troca quando quiser.</p>
+    <div class="modes">
+      <div class="mode active">
+        <span class="icon">🎤</span>
+        <h3>Karaokê completo</h3>
+        <p>Ordem de chegada, clássica. Quem pediu primeiro, canta primeiro.</p>
+      </div>
+      <div class="mode">
+        <span class="icon">🍻</span>
+        <h3>Duas por mesa</h3>
+        <p>Cada mesa emplaca até duas músicas por rodada — nenhuma mesa domina a noite.</p>
+      </div>
+      <div class="mode">
+        <span class="icon">🧑‍🤝‍🧑</span>
+        <h3>Uma por pessoa</h3>
+        <p>Todo mundo canta uma vez antes de alguém repetir. Justiça máxima.</p>
+      </div>
+    </div>
+    <p class="modes-note">Quem só quer pedir uma música pra curtir (sem cantar) também entra na fila — o Boraoke separa quem canta de quem só quer ouvir.</p>
+  </section>
+
+  <section>
+    <h2>Feito pro seu bar — e pra muito mais</h2>
+    <p class="lead">Qualquer lugar com uma TV e gente animada vira um palco. É a mesma sala, criada do mesmo jeito.</p>
+    <div class="venues">
+      <div class="venue"><span class="icon">🍺</span><h3>Bar &amp; restaurante</h3><p>Fila por mesa, noite organizada</p></div>
+      <div class="venue"><span class="icon">🎉</span><h3>Festa &amp; aniversário</h3><p>Os convidados são o show</p></div>
+      <div class="venue"><span class="icon">🏢</span><h3>Condomínio</h3><p>Salão de festas sem briga pelo mic</p></div>
+      <div class="venue"><span class="icon">💼</span><h3>Empresa</h3><p>Happy hour e confraternização</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Você no controle</h2>
+    <p class="lead">Quem cria a sala vira o host, com painel próprio:</p>
+    <div class="host">
+      <span class="chip">Reordenar a fila</span>
+      <span class="chip">Remover músicas</span>
+      <span class="chip">Pausar a noite</span>
+      <span class="chip">Aprovar sugestões antes de tocar</span>
+      <span class="chip">Estatísticas da noite</span>
+    </div>
+  </section>
+
+  <section id="join">
+    <div class="join">
+      <h2>Já tem um código?</h2>
+      <p>Digite o código da sala (ou cole o link que você recebeu).</p>
+      <form>
+        <input aria-label="Código da sala" placeholder="ex.: bar-do-ze">
+        <button type="submit">Entrar</button>
+      </form>
+    </div>
+  </section>
+
+  <div class="promise">
+    <p><strong>Tudo o que existe hoje é grátis — e vai continuar grátis.</strong></p>
+    <p>Estamos em acesso antecipado. Recursos pagos, quando vierem, serão extras — nunca uma cobrança pelo que você já usa, e nunca um pedágio na fila justa.</p>
+  </div>
+
+  <footer>Boraoke — early access · pt-BR / EN / ES</footer>
+</div>
+</body>
+</html>

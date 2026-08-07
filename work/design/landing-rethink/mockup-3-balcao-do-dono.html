@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 3: Balcão do dono</title>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --surface: #1a1a1a;
+    --border: #2e2e2e;
+    --accent: #e63946;
+    --accent-strong: #d92330;
+    --accent-hover: #c1121f;
+    --accent-text: #ee5a64;
+    --text: #f1f1f1;
+    --text-muted: #9a9a9a;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; }
+  .wrap { max-width: 620px; margin: 0 auto; padding: 0 1.25rem; }
+  a { color: var(--accent-text); text-decoration: none; }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 0 0; }
+  .brand { font-size: 1.3rem; font-weight: 800; }
+  .lang { color: var(--text-muted); font-size: 0.8rem; }
+
+  .hero { padding: 2.75rem 0 0; }
+  .hero h1 { font-size: clamp(2rem, 6vw, 2.7rem); line-height: 1.12; letter-spacing: -0.01em; margin-bottom: 0.9rem; }
+  .hero .sub { color: var(--text-muted); font-size: 1.08rem; margin-bottom: 1.75rem; }
+  .hero .sub strong { color: var(--text); font-weight: 600; }
+
+  .btn-primary { display: block; text-align: center; background: var(--accent-strong); color: #fff; font-size: 1.1rem; font-weight: 700; padding: 1rem 2rem; border-radius: var(--radius); border: none; cursor: pointer; width: 100%; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .micro { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin-top: 0.7rem; font-size: 0.82rem; color: var(--text-muted); }
+  .micro span::before { content: "· "; }
+  .micro span:first-child::before { content: ""; }
+
+  .checklist { margin: 2.75rem 0 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.4rem 1.5rem; }
+  .checklist h2 { font-size: 1.05rem; margin-bottom: 0.9rem; }
+  .checklist ul { list-style: none; }
+  .checklist li { display: flex; gap: 0.65rem; padding: 0.45rem 0; font-size: 0.95rem; align-items: baseline; }
+  .checklist li + li { border-top: 1px solid var(--border); }
+  .checklist .tick { color: var(--accent-text); font-weight: 800; flex: none; }
+  .checklist li span em { font-style: normal; color: var(--text-muted); font-size: 0.85rem; display: block; }
+
+  .beyond { margin: 1.75rem 0 0; border: 1px dashed var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; font-size: 0.92rem; color: var(--text-muted); }
+  .beyond strong { color: var(--text); }
+
+  .join { margin: 2.5rem 0 0; }
+  .join h2 { font-size: 1.05rem; margin-bottom: 0.25rem; }
+  .join p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+  .join form { display: flex; gap: 0.5rem; }
+  .join input { flex: 1; background: var(--surface); border: 1px solid var(--text-muted); border-radius: var(--radius); color: var(--text); font-size: 1rem; padding: 0.6rem 0.85rem; min-width: 0; }
+  .join button { background: var(--accent-strong); color: #fff; border: none; border-radius: var(--radius); font-weight: 700; padding: 0.6rem 1.2rem; cursor: pointer; }
+
+  .promise { margin-top: 2.75rem; text-align: center; font-size: 0.88rem; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 1.5rem; }
+  .promise strong { color: var(--accent-text); }
+  footer { text-align: center; color: var(--text-muted); font-size: 0.75rem; padding: 1.5rem 0 2.5rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">🎤 Boraoke</div>
+    <span class="lang">PT · EN · ES</span>
+  </header>
+
+  <div class="hero">
+    <h1>Aposenta o caderninho do karaokê.</h1>
+    <p class="sub">Fila digital, justa e automática pro seu bar: os clientes pedem música <strong>pelo próprio celular</strong> e a sua TV toca sozinha. <strong>Pronta em 30 segundos, grátis.</strong></p>
+    <button class="btn-primary">Criar a sala do meu bar</button>
+    <div class="micro">
+      <span>Sem cadastro</span>
+      <span>Sem app pros clientes</span>
+      <span>Grátis no acesso antecipado</span>
+    </div>
+  </div>
+
+  <div class="checklist">
+    <h2>Ao criar a sala, você já sai com:</h2>
+    <ul>
+      <li><span class="tick">✓</span><span>Tela de TV pronta<em>Player em tela cheia, &ldquo;tocando agora&rdquo; + próximas, avança sozinho</em></span></li>
+      <li><span class="tick">✓</span><span>QR de entrada dos clientes<em>Escaneou, escolheu apelido e mesa, pediu música do YouTube</em></span></li>
+      <li><span class="tick">✓</span><span>Fila com rodízio justo<em>3 modos: karaokê completo, duas por mesa, uma por pessoa</em></span></li>
+      <li><span class="tick">✓</span><span>Painel do host<em>Reordenar, remover, pausar e aprovar pedidos antes de tocar</em></span></li>
+      <li><span class="tick">✓</span><span>Estatísticas da noite<em>Quantas músicas, quem participou, o que bombou</em></span></li>
+    </ul>
+  </div>
+
+  <div class="beyond">
+    <strong>Não é um bar?</strong> Funciona igual em festas, condomínios e confraternizações de empresa — cria a sala do mesmo jeito.
+  </div>
+
+  <div class="join">
+    <h2>Já tem um código?</h2>
+    <p>Digite o código da sala (ou cole o link que você recebeu).</p>
+    <form>
+      <input aria-label="Código da sala" placeholder="ex.: bar-do-ze">
+      <button type="submit">Entrar</button>
+    </form>
+  </div>
+
+  <p class="promise"><strong>O que existe hoje continua grátis.</strong><br>Recursos pagos, quando vierem, serão extras — nunca um pedágio na sua fila.</p>
+
+  <footer>Boraoke — early access</footer>
+</div>
+</body>
+</html>

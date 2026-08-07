@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 2: Demo vivo</title>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --surface: #1a1a1a;
+    --border: #2e2e2e;
+    --accent: #e63946;
+    --accent-strong: #d92330;
+    --accent-hover: #c1121f;
+    --accent-text: #ee5a64;
+    --text: #f1f1f1;
+    --text-muted: #9a9a9a;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 1.25rem; }
+  a { color: var(--accent-text); text-decoration: none; }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 0; }
+  .brand { font-size: 1.35rem; font-weight: 800; }
+  .pill { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-text); border: 1px solid var(--accent); border-radius: 999px; padding: 3px 10px; }
+
+  .chips { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+  .chips span { font-size: 0.82rem; font-weight: 600; border: 1px solid var(--border); border-radius: 999px; padding: 0.35rem 0.85rem; color: var(--text-muted); }
+  .chips span.on { border-color: var(--accent); color: var(--accent-text); }
+
+  .hero { display: grid; grid-template-columns: 5fr 6fr; gap: 2.5rem; align-items: center; padding: 2.5rem 0 3rem; }
+  .hero h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); line-height: 1.15; letter-spacing: -0.01em; margin-bottom: 1rem; }
+  .hero h1 em { font-style: normal; color: var(--accent-text); }
+  .hero > div > p { color: var(--text-muted); font-size: 1.05rem; margin-bottom: 1.75rem; max-width: 46ch; }
+  .btn-primary { display: inline-block; background: var(--accent-strong); color: #fff; font-size: 1.05rem; font-weight: 700; padding: 0.9rem 2rem; border-radius: var(--radius); border: none; cursor: pointer; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .fine { margin-top: 0.8rem; font-size: 0.85rem; color: var(--text-muted); }
+
+  /* TV mock */
+  .stage { position: relative; margin-bottom: 2.75rem; }
+  .tv { background: #000; border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem; box-shadow: 0 20px 60px rgba(230, 57, 70, 0.12); }
+  .tv .screen { background: linear-gradient(160deg, #241012, #120c0d 60%); border-radius: 8px; padding: 1.1rem; }
+  .now { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 1rem; }
+  .thumb { width: 92px; height: 56px; border-radius: 6px; background: linear-gradient(135deg, #3d1a1e, #6b2229); flex: none; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+  .now .label { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); }
+  .now h3 { font-size: 1.05rem; line-height: 1.25; }
+  .now p { font-size: 0.82rem; color: var(--text-muted); }
+  .rail .label { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.4rem; display: block; }
+  .rail ol { list-style: none; }
+  .rail li { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.85rem; padding: 0.42rem 0.5rem; border-radius: 6px; }
+  .rail li:nth-child(odd) { background: rgba(255, 255, 255, 0.04); }
+  .rail li .who { color: var(--text-muted); flex: none; }
+  .rotation-tag { position: absolute; top: -0.85rem; right: 1rem; background: var(--surface); border: 1px solid var(--accent); color: var(--accent-text); font-size: 0.72rem; font-weight: 700; border-radius: 999px; padding: 3px 11px; }
+
+  /* phone + QR mock */
+  .phone { position: absolute; bottom: -3.4rem; left: -1.25rem; width: 138px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 0.7rem; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55); }
+  .phone .qr { background: #fff; border-radius: 8px; aspect-ratio: 1; display: grid; place-items: center; margin-bottom: 0.5rem; }
+  .qr svg { width: 74%; height: 74%; }
+  .phone p { font-size: 0.68rem; text-align: center; color: var(--text-muted); }
+  .phone p strong { color: var(--text); display: block; font-size: 0.75rem; }
+
+  .bullets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; padding: 1rem 0 2.5rem; }
+  .bullet { border-top: 2px solid var(--accent); padding-top: 0.8rem; }
+  .bullet h3 { font-size: 1rem; margin-bottom: 0.25rem; }
+  .bullet p { font-size: 0.88rem; color: var(--text-muted); }
+
+  .join-strip { display: flex; align-items: center; gap: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.25rem; flex-wrap: wrap; }
+  .join-strip h2 { font-size: 1rem; flex: none; }
+  .join-strip form { display: flex; gap: 0.5rem; flex: 1; min-width: 230px; }
+  .join-strip input { flex: 1; background: var(--bg); border: 1px solid var(--text-muted); border-radius: var(--radius); color: var(--text); font-size: 0.95rem; padding: 0.55rem 0.8rem; min-width: 0; }
+  .join-strip button { background: var(--accent-strong); color: #fff; border: none; border-radius: var(--radius); font-weight: 700; padding: 0.55rem 1.1rem; cursor: pointer; }
+
+  footer { text-align: center; color: var(--text-muted); font-size: 0.78rem; padding: 2.5rem 0; }
+  footer strong { color: var(--accent-text); font-weight: 600; }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; gap: 3rem; padding-top: 1.5rem; }
+    .bullets { grid-template-columns: 1fr; }
+    .phone { left: auto; right: -0.4rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">🎤 Boraoke</div>
+    <span class="pill">Grátis · acesso antecipado</span>
+  </header>
+
+  <div class="hero">
+    <div>
+      <div class="chips">
+        <span class="on">No bar</span><span>Na festa</span><span>No condomínio</span><span>Na empresa</span>
+      </div>
+      <h1>A fila do karaokê na TV. O controle, <em>na mão de todo mundo</em>.</h1>
+      <p>Cada pessoa escaneia o QR, escolhe a música no próprio celular e a TV toca a fila sozinha — em rodízio justo. Sem app, sem cadastro.</p>
+      <a class="btn-primary" href="#">Começar agora — é grátis</a>
+      <p class="fine">Sua sala fica pronta em 30 segundos, com TV e QR incluídos.</p>
+    </div>
+
+    <div class="stage">
+      <span class="rotation-tag">rodízio: uma por pessoa</span>
+      <div class="tv">
+        <div class="screen">
+          <div class="now">
+            <div class="thumb">▶️</div>
+            <div>
+              <span class="label">Tocando agora</span>
+              <h3>Evidências — Chitãozinho &amp; Xororó</h3>
+              <p>Ana · mesa 4 · vai cantar 🎤</p>
+            </div>
+          </div>
+          <div class="rail">
+            <span class="label">Próximas</span>
+            <ol>
+              <li><span>Como É Grande o Meu Amor por Você</span><span class="who">Rafa · mesa 7</span></li>
+              <li><span>Garota de Ipanema</span><span class="who">Bia · mesa 2</span></li>
+              <li><span>Bohemian Rhapsody</span><span class="who">Dudu · mesa 4</span></li>
+              <li><span>Deixa Acontecer</span><span class="who">Carla · mesa 1 · só ouvir 🎧</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+      <div class="phone">
+        <div class="qr">
+          <svg viewBox="0 0 21 21" aria-hidden="true"><path fill="#0d0d0d" d="M0 0h7v7H0zM2 2h3v3H2zM14 0h7v7h-7zM16 2h3v3h-3zM0 14h7v7H0zM2 16h3v3H2zM9 0h1v2H9zM11 0h2v1h-2zM12 2h1v3h-1zM9 3h2v1H9zM9 5h1v2H9zM11 6h2v1h-2zM0 9h1v2H0zM2 9h2v1H2zM5 9h2v2H5zM3 11h1v2H3zM0 12h2v1H0zM5 12h1v2H5zM8 8h2v2H8zM11 8h1v2h-1zM13 9h2v1h-2zM16 8h1v2h-1zM18 9h3v1h-3zM8 11h1v3H8zM10 11h3v2h-3zM14 11h1v2h-1zM16 11h2v1h-2zM19 11h2v2h-2zM9 14h2v2H9zM12 14h1v1h-1zM14 14h3v3h-3zM18 14h1v2h-1zM20 14h1v3h-1zM9 17h1v2H9zM11 17h2v1h-2zM12 19h3v2h-3zM16 18h2v2h-2zM19 18h1v1h-1zM20 19h1v2h-1zM9 20h2v1H9z"/></svg>
+        </div>
+        <p><strong>Escaneou, entrou.</strong>Apelido, mesa e música — direto do navegador.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="bullets">
+    <div class="bullet">
+      <h3>Entra com QR, sem app</h3>
+      <p>Apelido e mesa, direto no navegador do celular. Zero fricção pros convidados.</p>
+    </div>
+    <div class="bullet">
+      <h3>Qualquer música do YouTube</h3>
+      <p>Busca dentro do Boraoke ou cola o link. Toca no player oficial, em tela cheia.</p>
+    </div>
+    <div class="bullet">
+      <h3>Rodízio justo, automático</h3>
+      <p>Três modos — completo, duas por mesa, uma por pessoa. Ninguém monopoliza o mic.</p>
+    </div>
+  </div>
+
+  <div class="join-strip">
+    <h2>Já tem um código?</h2>
+    <form>
+      <input aria-label="Código da sala" placeholder="ex.: bar-do-ze">
+      <button type="submit">Entrar</button>
+    </form>
+  </div>
+
+  <footer><strong>Tudo o que existe hoje é grátis — e continua grátis.</strong> · Boraoke early access · pt-BR / EN / ES</footer>
+</div>
+</body>
+</html>
