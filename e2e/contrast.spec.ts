@@ -289,16 +289,15 @@ test.describe("landing page contrast", () => {
     );
   });
 
-  // FINDING (TICKET-60, not fixed here per AC — "do not redesign tokens"):
-  // white (#fff) text on `--accent` (#e63946) at 16px/weight 600 measures
-  // 4.17:1 on current `main`, below the 4.5:1 AA floor for normal text (16px
-  // bold does not clear the 18.66px "large text" bar, so the 3:1 relief does
-  // not apply). This token pair (`.btn-primary`: color #fff on
-  // background var(--accent)) is used on EVERY primary CTA across the app
-  // (landing create-CTA, patron join button, submit-song button, etc.) — see
-  // work/reports/dev/TICKET-60-dev-report.md for the full accounting.
-  test.fixme(
-    "create-room CTA button text meets AA — FAILS on current main: white-on-accent (#e63946) measures 4.17:1, needs 4.5:1 (see dev report)",
+  // FIXED by TICKET-66 (was `test.fixme`). White (#fff) on the old single
+  // `--accent` (#e63946) measured 4.17:1 — under the 4.5:1 normal-text floor,
+  // and 16px/600 does not reach the 18.66px "large text" 3:1 relief. The fix
+  // is a ROLE SPLIT, not a darken: `.btn-primary` now fills with
+  // `--accent-strong` (#d92330), giving #fff-on-#d92330 = 4.96:1, while
+  // `--accent` stays #e63946 for borders/focus/non-text UI. See
+  // work/design/landing-rethink/CONTRAST.md (rows C1 / P1).
+  test(
+    "create-room CTA button text meets AA (--accent-strong #d92330 under #fff = 4.96:1)",
     async ({ page }) => {
       await page.goto("/");
       await assertAA(
@@ -447,23 +446,54 @@ test.describe("admin room contrast", () => {
     void id;
   });
 
-  // FINDING (TICKET-60, not fixed here per AC — "do not redesign tokens"):
-  // the ACTIVE mode-switcher label (`.option.active .name`, ModeSwitcher.module.css)
-  // renders `color: var(--accent)` (#e63946) over `background:
-  // rgba(230, 57, 70, 0.09)` composited onto the page's `var(--bg)`
-  // (#0d0d0d, the nearest opaque ancestor here), resolving to
-  // fg=rgb(230,57,70) on bg=rgb(33,17,18) — 4.37:1 on
-  // current `main`, just under the 4.5:1 AA floor for normal text (16px,
-  // weight 800 — still short of the 18.66px large-text bar). See
-  // work/reports/dev/TICKET-60-dev-report.md.
-  test.fixme(
-    "active mode-switcher label meets AA — FAILS on current main: accent-on-tinted-accent measures 4.37:1, needs 4.5:1 (see dev report)",
+  // FIXED by TICKET-66 (was `test.fixme`). The ACTIVE mode-switcher label
+  // (`.option.active .name`, ModeSwitcher.module.css) painted `--accent`
+  // (#e63946) over `rgba(230,57,70,0.09)` composited onto `--bg` (#0d0d0d) →
+  // fg rgb(230,57,70) on bg rgb(33,17,18) = 4.37:1, under the 4.5:1 floor
+  // (16px/800 does not reach the 18.66px large-text bar). The label now uses
+  // `--accent-text` (#ee5a64) on the SAME untouched tint = 5.45:1. See
+  // work/design/landing-rethink/CONTRAST.md (rows C2 / P5).
+  test(
+    "active mode-switcher label meets AA (--accent-text #ee5a64 on the accent tint = 5.45:1)",
     async ({ page }) => {
       await loginAdmin(page, "Bar Contrast Admin Mode");
       const modeSwitcher = page.getByRole("radiogroup", { name: /modo de rodízio/i });
       await assertAA(modeSwitcher.getByText(/karaokê completo/i), "admin: active mode-switcher label");
     },
   );
+
+  // TICKET-66 — coverage for the LATENT third failure (CONTRAST.md row C3),
+  // which the TICKET-60 suite never exercised and so could regress silently:
+  // `--accent` (#e63946) used as NORMAL-SIZE TEXT on a dark CARD measures
+  // ~4.2:1, under the 4.5:1 floor. Nothing was asserting an accent-coloured
+  // label sitting on a card, so the miss hid. The admin queue row carries
+  // exactly that pairing on its remove button (`.removeBtn`, 0.8rem/700 —
+  // well under the large-text bar), which now paints `--accent-text`
+  // (#ee5a64). Note the FIRST row is `.rowPlaying` (its own amber-tinted
+  // fill), so the assertion resolves against that real paint rather than a
+  // hardcoded `--surface` — which is the point: it measures what the browser
+  // actually renders, and it fails on the pre-fix token (see the negative
+  // control in work/reports/dev/TICKET-66-dev-report.md).
+  test("admin queue row: accent-coloured remove button on a dark card meets AA (latent C3)", async ({ page }) => {
+    const id = await loginAdmin(page, "Bar Contrast Accent Text");
+    await seedSong(page, id, "Musica de Contraste Accent");
+    await page.reload();
+    const removeBtn = page.locator("button[class*='removeBtn']").first();
+    await removeBtn.waitFor({ state: "visible", timeout: 8000 });
+    await assertAA(removeBtn, "admin: queue-row remove button (accent-as-text on --surface)");
+  });
+
+  // TICKET-66 — second latent C3 surface: the ACTIVE mode-switcher's "ativo"
+  // chip (`.chip`, 0.68rem/700 uppercase) is accent-as-text inside the tinted
+  // active option. Distinct element from the label asserted above, and it was
+  // equally uncovered.
+  test("admin mode-switcher active chip: accent-as-text meets AA (latent C3)", async ({ page }) => {
+    await loginAdmin(page, "Bar Contrast Accent Chip");
+    const modeSwitcher = page.getByRole("radiogroup", { name: /modo de rodízio/i });
+    const chip = modeSwitcher.locator("span[class*='chip']").first();
+    await chip.waitFor({ state: "visible", timeout: 8000 });
+    await assertAA(chip, "admin: active mode-switcher 'ativo' chip");
+  });
 
   test("login gate: host-code input text is legible against its own fill", async ({ page }) => {
     const { id } = await createRoom(page, "Bar Contrast Admin Gate");

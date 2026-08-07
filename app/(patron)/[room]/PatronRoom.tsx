@@ -326,7 +326,7 @@ export default function PatronRoom({
           {t.rich("queueForVenue", {
             venue: venueName,
             v: (chunks) => (
-              <span style={{ color: "var(--accent)", fontWeight: 600 }}>{chunks}</span>
+              <span style={{ color: "var(--accent-text)", fontWeight: 600 }}>{chunks}</span>
             ),
           })}
         </p>
@@ -363,7 +363,7 @@ export default function PatronRoom({
           {t("greeting")}{" "}
           <button
             onClick={() => setNicknameSet(false)}
-            style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "0.875rem", padding: 0 }}
+            style={{ background: "none", border: "none", color: "var(--accent-text)", cursor: "pointer", fontSize: "0.875rem", padding: 0 }}
           >
             {nickname}
           </button>
@@ -439,7 +439,7 @@ export default function PatronRoom({
             </div>
           </div>
 
-          {submitError && <p style={{ color: "var(--accent)", fontSize: "0.875rem" }}>{submitError}</p>}
+          {submitError && <p style={{ color: "var(--accent-text)", fontSize: "0.875rem" }}>{submitError}</p>}
           {submitSuccess && <p style={{ color: "#4ade80", fontSize: "0.875rem" }}>{t("songAdded")}</p>}
           {/* TICKET-61: advisory only — the song IS in the queue; this warns the
               patron that the venue screen may refuse to play it. Amber, not red,
@@ -485,7 +485,7 @@ export default function PatronRoom({
                   <p style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {p.entry.title ?? `youtu.be/${p.entry.videoId}`}
                   </p>
-                  <p style={{ fontSize: "0.8rem", color: rejected ? "var(--accent)" : "var(--text-muted)", marginTop: "4px" }}>
+                  <p style={{ fontSize: "0.8rem", color: rejected ? "var(--accent-text)" : "var(--text-muted)", marginTop: "4px" }}>
                     {rejected ? t("pendingRejected") : t("pendingWaiting")}
                   </p>
                 </li>
@@ -523,7 +523,7 @@ export default function PatronRoom({
         <span style={{ fontSize: "0.9rem", lineHeight: 1.4 }}>
           {t.rich("playerHint", {
             b: (chunks) => <strong>{chunks}</strong>,
-            a: (chunks) => <span style={{ color: "var(--accent)" }}>{chunks}</span>,
+            a: (chunks) => <span style={{ color: "var(--accent-text)" }}>{chunks}</span>,
           })}
         </span>
       </a>
