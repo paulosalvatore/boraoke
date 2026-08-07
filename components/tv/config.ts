@@ -4,7 +4,9 @@
  * POWERED_BY_FOOTER — monetization spec AC4: the free tier shows a
  * "powered by Boraoke" + join/QR footer on /tv. Default ON; only an explicit
  * opt-out value disables it. Read server-side at request time (app/tv/page.tsx
- * is force-dynamic) so the future pro plan can flip it WITHOUT a rebuild.
+ * is force-dynamic), so a code deploy is never required to flip it — but on
+ * Vercel, changing the env var's VALUE still requires a redeploy for the new
+ * value to reach the running lambdas; it is not picked up live.
  */
 
 const OFF_VALUES = new Set(["0", "false", "off", "no"]);

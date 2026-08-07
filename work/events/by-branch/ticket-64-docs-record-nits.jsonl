@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-06T22:07:01Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-64", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/64-docs-record-nits", "short_sha": "a60aff0", "message_slug": "TICKET-64: de-stale living docs + POWERED_BY_FOOTER comment accuracy + m"}}

@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-05T21:57:49Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-63", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/63-cjson-shape-invariant", "short_sha": "4cd8f4c", "message_slug": "TICKET-63: pin the cjson string/boolean-only invariant for the Lua pendi"}}

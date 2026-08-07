@@ -1,6 +1,8 @@
 # YouTube Data API — Quota Increase Form (paste-ready answers)
 
-Product: **Boraoke** — https://boraoke.com · API key project: the Google Cloud project holding your "Cantai Karaoke Credentials" key.
+**Status (2026-08-05): drafted, not yet submitted.** The API key itself is provisioned and live in prod (since 2026-07-07); this quota-increase request is a separate, still-open TL action — see `work/status/BOARD.md`'s growth-arc decisions. The ~99-searches/day default ceiling applies until this is filed.
+
+Product: **Boraoke** — https://boraoke.com · API key project: the Google Cloud project holding your "Cantai Karaoke Credentials" key (that is the project's literal name in Google Cloud Console — a pre-rename artifact of the external Google account, not something this repo's docs cleanup can or should rename).
 
 ## Use case description (Seção: caso de uso / descrição do cliente da API)
 
