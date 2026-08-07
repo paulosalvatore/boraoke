@@ -18,21 +18,54 @@
   --c-text: #f7f3fc;
   --c-text-muted: #a79bc0;
   --g-stage: linear-gradient(135deg, #ff3d71, #ffc24b);
+  /* Pill footprint, shared by the fab's own offset and the reserved-space
+     spacer below (TICKET-71) so the two numbers can never drift apart. */
+  --pill-offset: 16px;
+  --pill-size: 48px;
+  --pill-gap: 16px;
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, sans-serif;
 }
 
+/*
+ * ── Reserved space (TICKET-71) ──
+ * The fab is `position: fixed`, so it never occupies room in the document
+ * flow — nothing pushes scrollable content clear of it. This spacer is a
+ * plain, normal-flow block rendered as the LAST element on every page (the
+ * widget mounts once in app/layout.tsx, after `{children}`), so its height
+ * becomes trailing space at the very end of that page's scrollable content —
+ * exactly where a queue row (or any other bottom-of-page control) would
+ * otherwise sit under the pill once scrolled all the way down. Sized to
+ * match the fab's own footprint (offset + size + a clearance gap) plus the
+ * iOS home-indicator safe area, so a notched phone doesn't reintroduce the
+ * overlap. Only reserves space where the fab can plausibly reach page
+ * content — narrow (phone/small-tablet) viewports — so desktop, where the
+ * pill floats clear in the page margin, gets no dead space at the bottom.
+ */
+.spacer {
+  display: none;
+}
+@media (max-width: 700px) {
+  .spacer {
+    display: block;
+    height: calc(
+      var(--pill-offset) + var(--pill-size) + var(--pill-gap) +
+        env(safe-area-inset-bottom, 0px)
+    );
+  }
+}
+
 /* ── Floating action button ── */
 .fab {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  right: var(--pill-offset);
+  bottom: calc(var(--pill-offset) + env(safe-area-inset-bottom, 0px));
   z-index: 1000;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 48px;
+  height: var(--pill-size);
   padding: 0 16px;
   border: none;
   border-radius: 999px;

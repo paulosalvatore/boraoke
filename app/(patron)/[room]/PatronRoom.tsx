@@ -568,6 +568,7 @@ export default function PatronRoom({
             {queue.map((entry, idx) => (
               <li
                 key={entry.id}
+                data-testid="queue-row"
                 style={{
                   background: idx === 0 ? "#1e1e2e" : "var(--surface)",
                   border: `1px solid ${idx === 0 ? "#4f46e5" : "var(--border)"}`,
@@ -588,7 +589,10 @@ export default function PatronRoom({
                   {idx === 0 ? "▶" : idx + 1}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <p
+                    data-testid="queue-row-title"
+                    style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
                     {entry.title ?? `youtu.be/${entry.videoId}`}
                   </p>
                   <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
@@ -596,7 +600,10 @@ export default function PatronRoom({
                     {entry.table ? ` · ${tCommon("table")} ${entry.table}` : ""}
                   </p>
                 </div>
-                <span className={`badge ${entry.mode === "sing" ? "badge-sing" : "badge-listen"}`}>
+                <span
+                  data-testid="queue-row-badge"
+                  className={`badge ${entry.mode === "sing" ? "badge-sing" : "badge-listen"}`}
+                >
                   {entry.mode === "sing" ? t("badgeSing") : t("badgeDance")}
                 </span>
               </li>
