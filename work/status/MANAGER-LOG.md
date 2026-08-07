@@ -2,6 +2,30 @@
 
 _(H1 corrected from "cantai" by heartbeat #30, 2026-07-27 — TICKET-57(b) scope, same precedent as heartbeat #27's BOARD.md H1 fix. No `cantai*` code identifier was touched: those are the deliberate live-localStorage / legacy-redirect / negative-assertion strings flagged as a HAZARD in TICKET-57(c).)_
 
+## 2026-08-07 — TM interactive session, TL PRESENT (D-043 merge authority) — 🟢 PR #48 / TICKET-65 RESOLVED (re-investigated, root-caused, fixed, merged); GitHub Actions anomaly partially resolved; TICKET-68 filed
+
+**This is a durable-record update following up on 2026-08-06's send-back below** — the send-back was correct at the time (round 1's evidence didn't stand up a real full-suite failure), and this entry records how it was closed, not a silent flip to green.
+
+- **PR #48 / TICKET-65 (TV e2e deflake) — the full story, in order.**
+  1. **Round 1 (2026-08-06) was insufficient.** 5 green runs of the TV specs **in isolation** plus an opus Reviewer APPROVE — but no full-suite run stood behind that APPROVE.
+  2. **The TM ran the full suite independently and found a real branch-only failure.** On `ticket/65`: **48 passed / 1 FAILED** — `e2e/host-controls.spec.ts:63`, a spec TICKET-65 never touches. On baseline: **49 passed / 0 failed**. Sent back — correctly, on the evidence available at the time.
+  3. **Re-investigation** on a rebased branch, with a dedicated baseline worktree, foreground runs, one at a time: **5 branch full-suite runs → 1 failed** (`tv-watchdog.spec.ts`, `ECONNRESET` on a plain `GET /api/queue` — a *different* test from the one the TM hit, but the same shape: infra-level failure under full-suite load, never reproducible in isolation). **3 baseline full-suite runs → 0 failed.**
+  4. **Root cause of the interference:** `warmTvRoutes()` fired from `beforeEach` in both TV specs and issued an extra advance against `DEFAULT_ROOM` — the same shared room every other spec touches — adding per-test load and shared mutable state that did not exist before.
+  5. **Fix:** `warmTvRoutes()` now warms via a dedicated synthetic room, `TV_WARMUP_ROOM = "tv-warmup-e2e"` (`e2e/helpers.ts:124`), instead of `DEFAULT_ROOM`. Sound because `next dev` route compilation is process-wide per route file, not tied to which room value triggers it — the round-2 Reviewer verified that empirically on a fresh server.
+  6. **Post-fix evidence:** 5 further full-suite branch runs by the agent, all clean. The round-2 Reviewer — told explicitly that round 1 lacked full-suite evidence — ran the full suite itself, **3 branch + 2 baseline, all clean**. **Verdict: APPROVE.**
+  7. **The TM then independently ran 2 full-suite runs of its own on the final head `935647a`: 61 passed / 0 failed / 2 skipped, both times** (the 2 skips are TICKET-60's documented `test.fixme` contrast findings — expected, not new). `build-and-test` on PR #48 returned **SUCCESS**.
+  8. **Merged as `e5ab830`.** Worktree and branch cleaned up. `curl -sI https://boraoke.com/` → HTTP/2 200 after the merge.
+  9. **No product bug, at any point.** Every full-suite failure observed by anyone (TM's round 1, agent's round-2 investigation) was network/infra-level under load, never reproduced in isolation, and none recurred against the fixed helper.
+
+- **Process lesson, recorded because it generalizes: isolated-spec runs cannot validate a deflake fix — only full-suite runs can.** A gate that only ever runs the changed specs in isolation issued an APPROVE that a single full-suite run overturned. This is now baked into TICKET-68's acceptance criterion below, citing this exact history.
+
+- **GitHub Actions anomaly (from 2026-08-06's entry) — partially resolved, not overstated.** `build-and-test` DID run and returned SUCCESS on PR #48's final head — so the outage was transient, not a permanent misconfiguration. The cause was never identified, and the earlier absence on the `ticket/64`/`ticket/65` head commits was real; it is why the TM ran the CI-equivalent suite locally before merging PR #47 (recorded in the entry below).
+
+- **New ticket filed: TICKET-68.** Same defect class, in the two specs TICKET-65 deliberately did not own: `e2e/host-controls.spec.ts` and `e2e/rotation-modes.spec.ts` each end their own local `warmUp()` with a bare default-timeout (5s) `waitFor()` immediately after a first-ever `/admin` route compile — `host-controls.spec.ts:36`'s `page.getByLabel("Código do host").waitFor()` is literally the line the TM's original full-suite red run failed on (at `:63`, inside this `warmUp()`). Proposes adopting the now-proven pattern: a shared warm-up helper, a dedicated non-`DEFAULT_ROOM` warm-up room, and a bounded explicit timeout on the first post-compile assertion instead of the 5s default. Acceptance criterion: 5 consecutive **full-suite** runs green — isolated-spec runs do not satisfy it, per the lesson above. Priority MED, unscheduled. See `work/tickets/TICKET-68-host-controls-rotation-modes-warmup-pattern.md`.
+
+- **Selection safety / scope.** Status-docs (this entry + BOARD.md) and one new ticket file only — no product code, no branch, no worktree touched by this update itself (the merge and investigation described above were the prior session's work, already landed on `main` at `e5ab830`).
+- **Outcome:** `progressed` — a previously-sent-back PR is now correctly green and merged, the CI anomaly is scoped down from "permanent" to "transient, cause unknown," and the same defect class is captured as a bounded follow-up ticket rather than left implicit.
+
 ## 2026-08-06 — TM interactive session, TL PRESENT (D-043 merge authority) — 🟢 THE PILE DRAINED: 7 PRs merged, 3 TL decisions taken, 1 PR sent back, 2 new tickets filed
 
 **This was an interactive Tech-Manager session with the Tech Lead present in the room — NOT a heartbeat fire.** Recorded explicitly because every prior entry in this log is an unattended heartbeat; the TM held merge authority directly per D-043 rather than delivering-not-merging.
