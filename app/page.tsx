@@ -181,7 +181,11 @@ export default function Landing() {
           {lastRoom && (
             <p className={styles.lastRoom}>
               {t("lastRoom")}{" "}
-              <Link href={`/${lastRoom}`} data-testid="last-room-link">
+              <Link
+                href={`/${lastRoom}`}
+                className={styles.lastRoomLink}
+                data-testid="last-room-link"
+              >
                 {lastRoom}
               </Link>
             </p>

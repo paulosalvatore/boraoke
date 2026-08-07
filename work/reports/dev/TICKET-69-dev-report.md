@@ -85,6 +85,23 @@ $ npx tsc --noEmit 2>&1 | grep -E "e2e/(render-and-links|contrast)"
 ```
 Both skips are the two pre-existing `test.fixme` blocks owned by TICKET-66 (white-on-accent CTA 4.17:1, mode-switcher label 4.37:1). **No new AA failure introduced** — every non-skipped contrast assertion passes on the new page.
 
+## Addendum — `last-room-link` accent-as-text fix (handed over from TICKET-66 / PR #49)
+
+The TICKET-66 agent swept every accent call site and flagged one it could not fix because this ticket owns the file: the `last-room-link` ("Última sala: …"), `#e63946` as normal-size text = **4.18:1**, the last accent-as-text miss in the codebase.
+
+**The link survived the rebuild** (it is still the returning-patron quick entry inside the join strip), so the fix was needed and is applied:
+
+- `app/page.tsx` — the link now carries `className={styles.lastRoomLink}`. (The rebuild had already dropped the old inline `color: var(--accent)`, but it was still inheriting the same failing colour from the global `a { color: var(--accent) }` rule, so the defect genuinely survived.)
+- `app/page.module.css` — new `.lastRoomLink { color: var(--accent-text); text-decoration: underline; }`.
+
+`--accent-text` is **referenced, never redefined** — it belongs to `app/globals.css`, which PR #49 owns and this branch does not touch. Verified: this branch defines **zero** CSS custom properties (`grep -n "^\s*--" app/page.module.css` → no output).
+
+**Ordering is safe in both directions.** PR #49 is still OPEN at time of writing, so on this branch the var is unresolved, the declaration is invalid at computed-value time, and the link inherits `.lastRoom`'s `--text-muted` (#888 = **4.91:1** on `--surface`) — AA-clean. Once #49 merges it renders `#ee5a64` = **5.21:1**. It is never the failing 4.18:1 accent in either state. The added underline means the link is not identified by colour alone in either state.
+
+Re-verified after this change: `npm run build` → `✓ Compiled successfully in 4.5s`; `PORT=3181 npx playwright test e2e/contrast.spec.ts e2e/render-and-links.spec.ts e2e/rooms.spec.ts e2e/saved-rooms.spec.ts` → `2 skipped, 28 passed (1.8m)` (the 2 skips remain the pre-existing TICKET-66 `test.fixme` blocks).
+
+**Related, not done here (cheap follow-up once #49 is on main):** the accent-as-text sites this page introduces all pass AA today against `--bg` but with thin margin — `.nowLabel` 4.58:1 (on the mock's `#140d0e` screen fill), `.rotationTag` / `.chipOn` / `.pill` / `.freePromise` / `h1 em` 4.64:1 (on `--bg`). Moving them to `--accent-text` after #49 lands would take each to ~5.8:1. Deliberately not done on this branch, because pre-#49 they would degrade to an inherited colour and visibly lose the brand red.
+
 ## Out of scope / known, deliberately not fixed here
 
 - The mobile `FeedbackWidget` bubble overlaps the hero's QR phone card at 390px. `components/FeedbackWidget.tsx` belongs to sibling **TICKET-71** (mobile feedback overlap) — untouched by design.

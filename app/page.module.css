@@ -360,6 +360,25 @@ button.joinBtn {
   margin: 0;
 }
 
+/*
+ * The last-room quick-entry link. It must NOT take the global `a` colour
+ * (`--accent` #e63946 = 4.18:1 on --surface, below the 4.5:1 AA floor for
+ * normal text) — this is the codebase's last accent-as-text miss, handed over
+ * by TICKET-66.
+ *
+ * `--accent-text` (#ee5a64 = 5.21:1 on --surface) is defined in
+ * app/globals.css by TICKET-66 / PR #49, which this ticket must not touch, so
+ * the token is REFERENCED here and never redefined. Until #49 merges the var
+ * is unresolved, the declaration is invalid at computed-value time, and the
+ * link simply inherits `.lastRoom`'s `--text-muted` (#888 = 4.91:1 on
+ * --surface) — i.e. AA-clean in BOTH states, never the failing accent. The
+ * underline keeps it identifiable as a link without relying on colour alone.
+ */
+.lastRoomLink {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
 /* ── footer ─────────────────────────────────────────────────────────────── */
 
 .footer {
