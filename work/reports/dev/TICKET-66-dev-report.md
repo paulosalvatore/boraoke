@@ -26,11 +26,11 @@ Every value below was computed from the hexes, not copied from CONTRAST.md. **Al
 | C3 | accent-as-text | `--surface #1a1a1a` | **4.18** (`--accent`) | **5.21** (`--accent-text`) | FAIL → PASS (latent) |
 | C4 | accent-as-text | `--bg #0d0d0d` | 4.66 | **5.81** | pass → pass (margin widened) |
 | — | `#ffffff` | `--accent-hover #c1121f` (hover) | 6.22 | 6.22 | pass |
-| — | accent-as-text | tint `.12` over `--bg` → `rgb(39,18,20)` (patron reorder toast area) | 4.26 | **5.31** | FAIL → PASS |
+| — | accent-as-text | tint `.12` over `--bg` → `rgb(39,18,20)` | 4.26 | **5.31** | (headroom check — no accent-coloured TEXT currently sits on this tint; the patron reorder toast paints `--text` on it) |
 | — | accent-as-text | tint `.10` over `--surface` → `rgb(46,29,30)` (SongSearch selected row) | 3.84 | **4.79** | FAIL → PASS |
 | — | `--accent` as non-text UI (borders/focus) | `--bg` / `--surface` | 4.66 / 4.18 | unchanged | PASS on the 3:1 UI bar |
 
-Two extra genuine failures surfaced beyond CONTRAST.md's named list (the `.12`-over-bg and `.10`-over-surface tints) — both are accent-as-text call sites and both are fixed by the same `--accent-text` swap.
+One extra genuine failure surfaced beyond CONTRAST.md's named list: accent-as-text on the `.10`-over-`--surface` tint (SongSearch selected row) at **3.84** — the worst ratio in the codebase, and fixed by the same `--accent-text` swap. The `.12`-over-`--bg` row is a headroom check only: no accent-coloured text sits on that tint today.
 
 ## Every accent call site found, and how it was classified
 
@@ -41,7 +41,7 @@ Grep: `grep -rn "accent\|e63946\|230, *57, *70" app components`.
 | File:line | Element |
 |---|---|
 | `app/globals.css:31` | global `a { color }` |
-| `app/(patron)/[room]/admin/admin.module.css:174` | `.removeBtn` (0.8rem/700 on `--surface` row) |
+| `app/(patron)/[room]/admin/admin.module.css:174` | `.removeBtn` (0.8rem/700 on the dark queue row) |
 | `app/(patron)/[room]/admin/admin.module.css:265` | `.error` (login-gate error) |
 | `app/(patron)/[room]/admin/admin.module.css:391` | `.rejectBtn` **colour only** (its border stays `--accent`) |
 | `components/host/ModeSwitcher.module.css:32` | `.option.active .name` — the C2 failure |
@@ -83,7 +83,7 @@ Both `test.fixme` blocks are now real `test`s, plus two new tests covering the l
 Running 16 tests using 1 worker
   ✓   5 landing page contrast › create-room CTA button text meets AA (--accent-strong #d92330 under #fff = 4.96:1) (2.5s)
   ✓  11 admin room contrast › active mode-switcher label meets AA (--accent-text #ee5a64 on the accent tint = 5.45:1) (3.7s)
-  ✓  12 admin room contrast › admin queue row: accent-coloured remove button on a --surface card meets AA (latent C3) (3.8s)
+  ✓  12 admin room contrast › admin queue row: accent-coloured remove button on a dark card meets AA (latent C3) (3.8s)
   ✓  13 admin room contrast › admin mode-switcher active chip: accent-as-text meets AA (latent C3) (3.2s)
   16 passed (1.0m)
 ```
@@ -96,7 +96,7 @@ Running 16 tests using 1 worker
   4 failed
     › create-room CTA button text meets AA ...
     › active mode-switcher label meets AA ...
-    › admin queue row: accent-coloured remove button on a --surface card meets AA (latent C3)
+    › admin queue row: accent-coloured remove button on a dark card meets AA (latent C3)
     › admin mode-switcher active chip: accent-as-text meets AA (latent C3)
   Error: Contrast failure for "admin: active mode-switcher 'ativo' chip":
     fg=rgb(230, 57, 70) on bg=rgb(33, 17, 18) → ratio=4.37:1 (needs 4.5:1 ...)
@@ -106,7 +106,13 @@ Other gates:
 
 - `npm test` → `Test Suites: 43 passed, 43 total · Tests: 683 passed, 683 total`
 - `npm run build` → clean, all routes emitted
-- `npx tsc --noEmit` → **zero** errors in `app/**`, `components/**` or `e2e/contrast.spec.ts`. Pre-existing, untouched-by-this-branch noise remains in `__tests__/*.test.ts` (missing jest globals types) and `e2e/advance-auth.spec.ts`.
+- `npx tsc --noEmit` → **zero** errors in `app/**`, `components/**` or `e2e/contrast.spec.ts`. All 61 remaining errors are pre-existing missing-jest-globals noise confined to two `__tests__/*.test.ts` files, neither of which appears in this diff.
+
+## Independent opus review
+
+`work/reports/review/TICKET-66-review.md` — verdict **APPROVE-WITH-FOLLOWUPS**, no blockers. The reviewer reimplemented WCAG 2.x from the spec in a clean context and reproduced every figure in CONTRAST.md and this report to two decimals; found no missed or misclassified accent call site; confirmed the AA thresholds in `e2e/contrast.spec.ts` are byte-identical to `main` (every diff hit on `4.5`/`3`/`18.66` is comment prose); independently reproduced the negative control; and confirmed no sibling-owned file appears in the diff. Its three accuracy nits are fixed above and in the test comment.
+
+**Open follow-up:** `app/page.tsx:93` → `--accent-text`, to be routed once the landing rebuild merges. It is the last accent-as-text call site in the codebase.
 
 ## Visual evidence
 

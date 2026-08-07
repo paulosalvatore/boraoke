@@ -422,13 +422,17 @@ test.describe("admin room contrast", () => {
 
   // TICKET-66 — coverage for the LATENT third failure (CONTRAST.md row C3),
   // which the TICKET-60 suite never exercised and so could regress silently:
-  // `--accent` (#e63946) used as NORMAL-SIZE TEXT on `--surface` (#1a1a1a)
-  // measures 4.18:1, under the 4.5:1 floor. Nothing was asserting an
-  // accent-coloured label sitting on a card, so the miss hid. The admin queue
-  // row (`.row`, background var(--surface)) carries exactly that pairing on
-  // its remove button (`.removeBtn`, 0.8rem/700 — well under the large-text
-  // bar), which now paints `--accent-text` (#ee5a64) = 5.21:1.
-  test("admin queue row: accent-coloured remove button on a --surface card meets AA (latent C3)", async ({ page }) => {
+  // `--accent` (#e63946) used as NORMAL-SIZE TEXT on a dark CARD measures
+  // ~4.2:1, under the 4.5:1 floor. Nothing was asserting an accent-coloured
+  // label sitting on a card, so the miss hid. The admin queue row carries
+  // exactly that pairing on its remove button (`.removeBtn`, 0.8rem/700 —
+  // well under the large-text bar), which now paints `--accent-text`
+  // (#ee5a64). Note the FIRST row is `.rowPlaying` (its own amber-tinted
+  // fill), so the assertion resolves against that real paint rather than a
+  // hardcoded `--surface` — which is the point: it measures what the browser
+  // actually renders, and it fails on the pre-fix token (see the negative
+  // control in work/reports/dev/TICKET-66-dev-report.md).
+  test("admin queue row: accent-coloured remove button on a dark card meets AA (latent C3)", async ({ page }) => {
     const id = await loginAdmin(page, "Bar Contrast Accent Text");
     await seedSong(page, id, "Musica de Contraste Accent");
     await page.reload();
