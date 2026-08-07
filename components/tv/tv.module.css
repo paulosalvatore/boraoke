@@ -194,7 +194,10 @@
   border: 1px solid var(--c-border);
   border-radius: 1vw;
   padding: 1.2vw 1.5vw;
-  min-width: 0;
+  /* TICKET-70: floor so a squeezed row still leaves the name legible instead
+     of collapsing to ~0 — belt-and-suspenders alongside the `.join` cap
+     above, which is the actual fix for the reported truncation. */
+  min-width: 8vw;
 }
 .nextCard .n {
   font-size: 2.2vw;
@@ -229,6 +232,25 @@
 }
 
 /* ---- join / powered-by footer card (POWERED_BY_FOOTER) ---- */
+/*
+ * TICKET-70: `.join` used to be `flex: none` with NO width cap, sized purely by
+ * its content — including the room's join URL (host + `/roomId`). A long venue
+ * slug (e.g. "bar-boraoke-tour-especial") grew this card past the space the
+ * `.rail` row actually has, and because the up-next `.nextCard`s are
+ * `flex: 1 1 0%` competing against a sibling that never yields, the flexbox
+ * shrink algorithm collapsed `.nextCard .info` (which needs `min-width: 0` for
+ * its own ellipsis to work at all) down to a sliver — turning the up-next
+ * NAMES' `text-overflow: ellipsis` into a near-total clip, even though most of
+ * the screen was empty. Confirmed by reproducing at both 1920x1080 and
+ * 1440x900 with a realistic multi-word room slug: the join card grew wide
+ * enough to run text off the right edge of the screen, and up-next names
+ * clipped to a single letter.
+ *
+ * Fix: give `.join` its OWN bounded max-width so it can never crowd out the
+ * rail, and let its own text (which is secondary to the up-next names — the
+ * QR code carries the real payload) degrade with ellipsis instead of
+ * overflowing off-screen when a room slug is unusually long.
+ */
 .join {
   display: flex;
   align-items: center;
@@ -238,6 +260,8 @@
   border-radius: 1vw;
   padding: 1vw 1.5vw;
   flex: none;
+  max-width: 26vw;
+  min-width: 0;
 }
 .qr {
   width: 5.5vw;
@@ -247,15 +271,27 @@
   background: repeating-linear-gradient(0deg, #f7f3fc 0 0.5vw, transparent 0 1vw),
     repeating-linear-gradient(90deg, #f7f3fc 0 0.5vw, #0d0a14 0 1vw);
 }
+/* Text column next to the QR — needs its own min-width:0 so its children's
+   ellipsis can actually engage instead of pushing `.join` wider (TICKET-70). */
+.joinText {
+  min-width: 0;
+  overflow: hidden;
+}
 .join .cta {
   font-size: 1.5vw;
   font-weight: 800;
   line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .join .url {
   font-size: 1.5vw;
   color: var(--c-amber);
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .poweredBy {
   font-size: 1.5vw;

@@ -775,7 +775,7 @@ export default function TvScreen({
                   size={120}
                   title={t("qrTitle")}
                 />
-                <div>
+                <div className={styles.joinText}>
                   <div className={styles.cta}>{t("scanAndSing")}</div>
                   <div className={styles.url}>{joinLabel}</div>
                   <div className={styles.poweredBy}>

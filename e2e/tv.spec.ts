@@ -118,6 +118,111 @@ test.describe("/tv", () => {
     expect(minFont).toBeGreaterThanOrEqual(28);
   });
 
+  test("up-next names stay fully readable on a long room slug, and a pathological nickname degrades gracefully (TICKET-70)", async ({ page }) => {
+    // TICKET-70: the "A SEGUIR" up-next rail truncated nicknames to ~2
+    // characters ("Br…" instead of "Bruno") on the live venue TV. Root cause:
+    // `.join` (the QR "powered by" card) was `flex: none` with NO width cap,
+    // sized purely by its content — including the room's join URL, which
+    // grows with the room slug. A realistic multi-word venue slug pushed
+    // `.join` wide enough to crowd the up-next `.nextCard`s (`flex: 1 1 0%`)
+    // down to a sliver, so `text-overflow: ellipsis` on `.who` fired almost
+    // immediately even though most of the screen sat empty. The default room
+    // used by every other test in this file has a short slug ("default") and
+    // never reproduced it — this test deliberately uses a long, realistic
+    // slug (the shape that broke production) so the regression can't hide
+    // behind a short test-only room id again.
+    const room = "tv-upnext-longslug-e2e-check";
+    const uid = () =>
+      "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g, () =>
+        Math.floor(Math.random() * 16).toString(16)
+      );
+    const seedRoom = async (entry: Record<string, string>) => {
+      const res = await page.request.post("/api/queue", {
+        data: { ...entry, patronUuid: uid(), room },
+      });
+      expect(res.ok()).toBe(true);
+    };
+
+    await drainQueue(page.request, room);
+    await seedRoom({ videoId: "dQw4w9WgXcQ", title: "Garota de Ipanema", nickname: "Ana", table: "1", mode: "sing" });
+    await seedRoom({ videoId: "dQw4w9WgXcQ", title: "Como Nossos Pais", nickname: "Bruno", table: "2", mode: "sing" });
+    await seedRoom({ videoId: "dQw4w9WgXcQ", title: "Evidências", nickname: "João", table: "7", mode: "sing" });
+    // 27 chars — pathologically long but under the 30-char nickname cap; must
+    // degrade via ellipsis, not break the layout (AC: no overflow, no crash).
+    await seedRoom({ videoId: "dQw4w9WgXcQ", title: "Baile", nickname: "ZeMuitoLongoDoBairroInteiro", table: "5", mode: "sing" });
+
+    await page.goto(`/${room}/tv`);
+
+    // Rendered TEXT is present (a getByText match alone is NOT proof the name
+    // isn't clipped: `text-overflow: ellipsis` is purely visual and never
+    // changes `textContent`, so `getByText("Bruno", { exact: true })` would
+    // match even while the box showing it renders only "Br…" — that gap was
+    // caught in review. The real assertion is the scrollWidth/clientWidth
+    // check below, which fails exactly when the box is too narrow to show
+    // its own text, regardless of what the DOM's textContent says.
+    await expect(page.getByText("Bruno", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("João", { exact: true })).toBeVisible();
+
+    // The actual regression check: a short name's own text box must be wide
+    // enough to show ALL of its text with no CSS-ellipsis clipping —
+    // `scrollWidth` (content's natural width) vs `clientWidth` (the box's
+    // rendered width). Before the fix this box collapsed to a few px while
+    // `.who`'s textContent still read "Bruno"/"João" in full — a getByText
+    // assertion alone can't see that, only this can.
+    const assertNameNotClipped = async (name: string) => {
+      const who = page.locator('[class*="who"]', { hasText: name }).first();
+      await expect(who).toBeVisible();
+      const { scrollWidth, clientWidth, text } = await who.evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        text: el.textContent,
+      }));
+      expect(text).toBe(name);
+      // +1px tolerance for sub-pixel layout rounding.
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+    };
+    await assertNameNotClipped("Bruno");
+    await assertNameNotClipped("João");
+
+    // The pathological name MUST clip (there isn't room, and that's fine —
+    // ellipsis is correct here): assert the box IS narrower than its content
+    // the same way, proving this is graceful degradation, not a broken test.
+    const longWho = page.locator('[class*="who"]', { hasText: "ZeMuitoLongoDoBairroInteiro" }).first();
+    await expect(longWho).toBeVisible();
+    const longMetrics = await longWho.evaluate((el) => ({
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    }));
+    expect(longMetrics.scrollWidth).toBeGreaterThan(longMetrics.clientWidth);
+
+    // ...but its CARD must stay fully inside the viewport — clipping the TEXT
+    // is fine, overflowing the LAYOUT is not (the whole point of "degrades
+    // gracefully"). This is a real regression risk independent of the
+    // ellipsis check above: a flex item can still blow out its container.
+    const longNameCard = page
+      .locator('[class*="nextCard"]')
+      .filter({ hasText: /Mesa 5/ });
+    await expect(longNameCard).toBeVisible();
+    const box = await longNameCard.boundingBox();
+    expect(box).not.toBeNull();
+    const viewport = page.viewportSize();
+    expect(viewport).not.toBeNull();
+    if (box && viewport) {
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+    }
+
+    // The join/QR card itself must also stay on-screen — it used to run its
+    // URL text off the right edge together with the rail truncation.
+    const joinCard = page.getByTestId("tv-powered-by");
+    const joinBox = await joinCard.boundingBox();
+    if (joinBox && viewport) {
+      expect(joinBox.x + joinBox.width).toBeLessThanOrEqual(viewport.width + 1);
+    }
+
+    await drainQueue(page.request, room);
+  });
+
   test("fullscreen affordance enters fullscreen and hides after (AC2)", async ({ page }) => {
     // Stub the Fullscreen API: record the call and simulate the state change.
     await page.addInitScript(() => {
