@@ -85,7 +85,48 @@ $ npx tsc --noEmit 2>&1 | grep -E "e2e/(render-and-links|contrast)"
 ```
 Both skips are the two pre-existing `test.fixme` blocks owned by TICKET-66 (white-on-accent CTA 4.17:1, mode-switcher label 4.37:1). **No new AA failure introduced** — every non-skipped contrast assertion passes on the new page.
 
-## Addendum — `last-room-link` accent-as-text fix (handed over from TICKET-66 / PR #49)
+## Addendum 2 — merged onto the post-TICKET-66 base (`main` @ `118ad06`)
+
+PR #49 (TICKET-66) merged, so `origin/main` was **merged into this branch** (not rebased — the branch was already pushed, and no force-push). The merge was **clean, zero conflicts**, including in `e2e/contrast.spec.ts` which both tickets edited: #49 unskipped the two `test.fixme` blocks and this ticket had already repointed the create-CTA locator to `/começar agora/i`, so the now-live test targets the right element.
+
+With `--accent-text` / `--accent-strong` now on main, every accent-as-**text** node this page introduces was moved onto `--accent-text` — its actual role — while borders and rules stay on `--accent`:
+
+| Node | Was | Now | Ratio |
+|---|---|---|---|
+| early-access pill, active venue chip, h1 highlight, mock `nowLabel`, rotation tag, free-promise | `--accent` #e63946 on `--bg` | `--accent-text` #ee5a64 on `--bg` | 4.64 → **5.81:1** |
+| `.lastRoomLink` on the `--surface` join strip | `--accent` (via the global `a`) | `--accent-text` | 4.18 → **5.21:1** |
+| chip / pill / rotation-tag **borders**, bullet rules | `--accent` | `--accent` (unchanged — non-text UI role) | 3:1 bar, passes |
+
+The CTA needs no change: it reuses the global `.btn-primary`, which #49 moved to `--accent-strong` (#fff on #d92330 = 4.96:1), so the fix arrived automatically. This branch still defines **zero** CSS custom properties and still does not touch `app/globals.css` (both re-verified against the new base).
+
+**Noted correction to the earlier hand-over:** the `last-room-link` was relayed to me as a live 4.18:1 failure. On `--bg` it measures 4.66:1 and passes; 4.18:1 is the ratio on `--surface`, which is where this page actually puts it (inside the join strip), so the change was still worth making — but as consistency/margin, not as a defect fix.
+
+### Verification re-run on the new base (pre-merge results discarded)
+
+```
+$ npm test
+Test Suites: 43 passed, 43 total
+Tests:       683 passed, 683 total
+
+$ npm run build
+ ✓ Compiled successfully in 3.7s
+
+$ rm -rf .next && PORT=3181 npx playwright test
+  66 passed (2.9m)
+```
+The **whole** e2e suite, not just the landing specs: 66 passed, **0 failed, 0 skipped** (TICKET-66 removed the two `test.fixme` skips, and the create-CTA contrast test now runs and passes against the new landing).
+
+Guard checks re-run against the new base:
+```
+$ grep -nE "^\s*--[a-z-]+:" app/page.module.css
+none (good)
+$ git diff origin/main -- app/globals.css
+(empty = untouched)
+```
+
+> Process note for the reviewer: two earlier local e2e runs of mine showed spurious mass failures. Cause identified (independently, by the opus reviewer hitting the same thing): `next dev` booting on a production `.next` left behind by `npm run build`. `rm -rf .next` first and it reproduces clean — I have run it clean twice. No branch flakiness.
+
+## Addendum 1 — `last-room-link` accent-as-text fix (handed over from TICKET-66 / PR #49)
 
 The TICKET-66 agent swept every accent call site and flagged one it could not fix because this ticket owns the file: the `last-room-link` ("Última sala: …"), `#e63946` as normal-size text = **4.18:1**, the last accent-as-text miss in the codebase.
 

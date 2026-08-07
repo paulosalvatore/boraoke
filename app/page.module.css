@@ -2,23 +2,28 @@
  * Landing — Direction 2 "Demo vivo" (TICKET-69).
  *
  * Ported from the approved mockup work/design/landing-rethink/mockup-2-demo-vivo.html.
- * Two deliberate deviations from that mockup, both accessibility-driven:
  *
- *  1. The mockup uses `--accent-strong` / `--accent-text`, tokens that do NOT
- *     exist yet (a sibling ticket, TICKET-66, adds them to globals.css — which
- *     this ticket must not touch). Everything here therefore uses the tokens
- *     that ship today, and accent-coloured TEXT only ever sits on `--bg`
- *     (#e63946 on #0d0d0d = 4.64:1, AA-clean) and never on `--surface`
- *     (4.18:1, which would fail). That is why the rotation tag is filled with
- *     `--bg` rather than the mockup's `--surface`.
- *  2. The TV screen uses flat fills instead of the mockup's gradient, so the
+ * Token roles (TICKET-66, now on main) are followed strictly and never
+ * redefined here — this file declares ZERO custom properties:
+ *   `--accent`       → borders, focus rings, non-text UI only (chip/pill
+ *                      borders, the bullet rules)
+ *   `--accent-text`  → every accent-coloured TEXT node (pill label, active
+ *                      chip, the h1 highlight, the mock's now-playing and
+ *                      rotation labels, the free-forever promise, the
+ *                      last-room link)
+ *   `--accent-strong`→ never referenced directly; it reaches the CTA through
+ *                      the GLOBAL `.btn-primary` class, which this module
+ *                      overrides for LAYOUT only (width/display), with an
+ *                      element-qualified selector so the override wins
+ *                      regardless of stylesheet order.
+ *
+ * Two deliberate deviations from the mockup:
+ *  1. The TV screen uses flat fills instead of the mockup's gradient, so the
  *     computed-contrast suite (e2e/contrast.spec.ts) can resolve a real painted
  *     background for every text node inside the mock.
- *
- * The CTA reuses the GLOBAL `.btn-primary` class for colour, so whatever
- * TICKET-66 lands there applies here automatically; the module only overrides
- * layout (width/display), with an element-qualified selector so the override
- * wins regardless of stylesheet order.
+ *  2. The QR phone card sits slightly lower/further left than the mockup, which
+ *     occluded all four up-next titles — this direction's whole premise is that
+ *     the visitor SEES the queue.
  */
 
 .wrap {
@@ -54,7 +59,7 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-text);
   border: 1px solid var(--accent);
   border-radius: 999px;
   padding: 3px 10px;
@@ -83,7 +88,7 @@
 
 .chips li.chipOn {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ── hero ───────────────────────────────────────────────────────────────── */
@@ -105,7 +110,7 @@
 
 .hero h1 em {
   font-style: normal;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .heroSub {
@@ -178,7 +183,7 @@ a.cta {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .nowTitle {
@@ -230,11 +235,12 @@ a.cta {
   position: absolute;
   top: -0.85rem;
   right: 1rem;
-  /* --bg, not the mockup's --surface: accent-as-text needs 4.5:1 and only
-     clears it on --bg until TICKET-66 lands --accent-text. */
+  /* --bg, not the mockup's --surface: it reads as a tag lifted off the TV
+     rather than a chip sunk into it, and gives the label the widest margin
+     (--accent-text on --bg = 5.81:1, vs 5.21:1 on --surface). */
   background: var(--bg);
   border: 1px solid var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0.72rem;
   font-weight: 700;
   border-radius: 999px;
@@ -361,18 +367,16 @@ button.joinBtn {
 }
 
 /*
- * The last-room quick-entry link. It must NOT take the global `a` colour
- * (`--accent` #e63946 = 4.18:1 on --surface, below the 4.5:1 AA floor for
- * normal text) — this is the codebase's last accent-as-text miss, handed over
- * by TICKET-66.
+ * The last-room quick-entry link, on the `--surface` join strip.
  *
- * `--accent-text` (#ee5a64 = 5.21:1 on --surface) is defined in
- * app/globals.css by TICKET-66 / PR #49, which this ticket must not touch, so
- * the token is REFERENCED here and never redefined. Until #49 merges the var
- * is unresolved, the declaration is invalid at computed-value time, and the
- * link simply inherits `.lastRoom`'s `--text-muted` (#888 = 4.91:1 on
- * --surface) — i.e. AA-clean in BOTH states, never the failing accent. The
- * underline keeps it identifiable as a link without relying on colour alone.
+ * TICKET-66 has since made the GLOBAL `a` rule `--accent-text` too, so this
+ * declaration is now belt-and-braces rather than load-bearing — it keeps the
+ * link on the accent-as-TEXT token explicitly, so a future change to the
+ * global link colour cannot quietly drop it back onto `--accent` (#e63946 =
+ * 4.18:1 on --surface, under the AA floor). #ee5a64 on --surface = 5.21:1.
+ *
+ * The underline is the real addition: it stops the link being identified by
+ * colour alone.
  */
 .lastRoomLink {
   color: var(--accent-text);
@@ -389,7 +393,7 @@ button.joinBtn {
 }
 
 .freePromise {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
