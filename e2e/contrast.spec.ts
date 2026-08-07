@@ -368,6 +368,38 @@ test.describe("landing page contrast", () => {
     await assertAA(page.getByText(/Zero fricção pros convidados/), "landing: bullet body");
   });
 
+  /**
+   * The one node on this page where the TICKET-66 token split is actually
+   * LOAD-BEARING, found by an opus reviewer's negative control: forcing
+   * `--accent-text` back to `--accent` leaves every other new assertion above
+   * passing, because every other accent-as-text node sits on `--bg` where BOTH
+   * tokens clear AA (5.81:1 vs 4.66:1). This link is the exception — it sits on
+   * the `--surface` join strip, where `--accent-text` is 5.21:1 but `--accent`
+   * is 4.18:1, a real AA failure. Without this assertion the suite would not
+   * notice the token being reverted here.
+   *
+   * It needs `cantai_last_room` seeded, since the link only renders for a
+   * returning visitor (the key is deliberately the legacy TICKET-33 name — it
+   * is live state on real devices).
+   */
+  test("last-room quick-entry link meets AA on the --surface join strip (TICKET-69)", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => window.localStorage.setItem("cantai_last_room", "bar-do-ze"));
+    await page.reload();
+
+    const link = page.getByTestId("last-room-link");
+    await expect(link).toBeVisible();
+    await assertAA(link, "landing: last-room link (accent-as-text on --surface)");
+
+    // Pin the resolved paint, not the token name: this must be the accent-TEXT
+    // token (#ee5a64), never the border/UI accent (#e63946) that fails here.
+    const color = await link.evaluate((el) => getComputedStyle(el).color);
+    expect(
+      color,
+      `last-room link must paint --accent-text rgb(238, 90, 100); rgb(230, 57, 70) is --accent and measures 4.18:1 on --surface`,
+    ).toBe("rgb(238, 90, 100)");
+  });
+
   test("footer copy meets AA against the page background", async ({ page }) => {
     await page.goto("/");
     // TICKET-69: the first footer span is now the free-forever promise
