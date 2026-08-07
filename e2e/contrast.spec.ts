@@ -278,9 +278,11 @@ test.beforeEach(async ({ page }) => {
 // ─── Landing page + join-code input (the TICKET-20 bug surface) ───────────
 
 test.describe("landing page contrast", () => {
-  test("heading and join-by-code section heading meet AA", async ({ page }) => {
+  test("hero h1 and join-by-code section heading meet AA", async ({ page }) => {
     await page.goto("/");
-    await assertAA(page.getByRole("heading", { level: 1 }), "landing: h1 brand heading");
+    // TICKET-69: the h1 is now the hero hook, not the brand wordmark (the brand
+    // moved into the header as plain text).
+    await assertAA(page.getByRole("heading", { level: 1 }), "landing: hero h1");
     await assertAA(
       page.getByRole("heading", { name: /código da sala|tem um código/i }),
       "landing: join-by-code section heading",
@@ -331,9 +333,48 @@ test.describe("landing page contrast", () => {
     ).not.toBe(cardBg);
   });
 
-  test("footer + tagline (muted text) meet AA against the page background", async ({ page }) => {
+  /**
+   * TICKET-69 closed a coverage gap the opus review flagged: the "Demo vivo"
+   * rebuild added ~20 new text styles (venue chips, early-access pill, the TV
+   * mock's rotation tag / now-playing labels / striped up-next rail, the phone
+   * caption at 0.68rem, the bullet bodies) and NONE of them were pinned here —
+   * the suite only ever asserted the h1, the join heading, the input and the
+   * footer. They all pass today, but nothing would have caught a future token
+   * change silently breaking them. The tightest pair is the muted `.who` text
+   * on the rail's odd-row fill, so it is asserted explicitly rather than left
+   * to a spot check. Suite locale is pinned to pt-BR (see playwright.config).
+   */
+  test("Direction-2 hero, TV mock, chips and bullets all meet AA (TICKET-69)", async ({ page }) => {
     await page.goto("/");
-    await assertAA(page.locator("footer span").first(), "landing: footer copy (text-muted on --bg)");
+
+    await assertAA(page.getByText("Grátis · acesso antecipado"), "landing: early-access pill");
+    await assertAA(page.getByText("No bar", { exact: true }), "landing: active venue chip (accent on --bg)");
+    await assertAA(page.getByText("Na festa", { exact: true }), "landing: inactive venue chip");
+    await assertAA(page.getByRole("heading", { level: 1 }).locator("em"), "landing: hero h1 accent span");
+    await assertAA(page.getByText(/Cada pessoa escaneia o QR/), "landing: hero sub-copy");
+    await assertAA(page.getByText(/Sua sala fica pronta em 30 segundos/), "landing: CTA microcopy");
+
+    // The static TV mock — its own dark fills, distinct from --bg/--surface.
+    await assertAA(page.getByText("rodízio: uma por pessoa"), "landing mock: rotation tag");
+    await assertAA(page.getByText("Tocando agora"), "landing mock: now-playing label");
+    await assertAA(page.getByText(/Evidências/), "landing mock: now-playing title");
+    await assertAA(page.getByText(/Ana · mesa 4/), "landing mock: now-playing meta");
+    await assertAA(page.getByText("Próximas"), "landing mock: up-next label");
+    // Tightest new pair: --text-muted on the odd-row striped fill.
+    await assertAA(page.getByText("Rafa · mesa 7"), "landing mock: up-next 'who' on striped row");
+    await assertAA(page.getByText("Garota de Ipanema"), "landing mock: up-next title on flat row");
+    await assertAA(page.getByText("Escaneou, entrou."), "landing mock: phone caption heading");
+
+    await assertAA(page.getByRole("heading", { name: /entra com qr, sem app/i }), "landing: bullet heading");
+    await assertAA(page.getByText(/Zero fricção pros convidados/), "landing: bullet body");
+  });
+
+  test("footer copy meets AA against the page background", async ({ page }) => {
+    await page.goto("/");
+    // TICKET-69: the first footer span is now the free-forever promise
+    // (accent on --bg); the second is the muted early-access line.
+    await assertAA(page.locator("footer span").first(), "landing: footer free-promise (accent on --bg)");
+    await assertAA(page.locator("footer span").nth(1), "landing: footer copy (text-muted on --bg)");
   });
 });
 
