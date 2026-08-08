@@ -77,8 +77,34 @@ export function hostCookieName(roomId: string): string {
  */
 export const DEV_FALLBACK_TOKEN = "cantai-dev-host";
 
-/** Session cookie lifetime — one long venue shift. */
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
+/**
+ * Session cookie lifetime — 30 days, ROLLING (TICKET-76).
+ *
+ * Why this is long: the host code is shown ONCE and is deliberately never
+ * persisted anywhere (see the SECURITY INVARIANT in lib/room-memory.ts — only
+ * `hostCodeHash` is stored, so the raw code is unrecoverable and NON-ROTATABLE).
+ * That makes the session cookie the ONLY non-punishing way back into a room's
+ * admin. A 12h window meant a host who ran a venue night on Friday had to
+ * retype an unrecoverable code on Saturday. The rejected alternatives (code in
+ * the URL, code in localStorage) would both turn a permanent credential into a
+ * leakable one — see work/tickets/TICKET-76-*.md.
+ *
+ * Why raising it is cheap in security terms: the session value is a
+ * deterministic HMAC of the room secret (`sessionValue`), so it never changes
+ * and cannot be revoked server-side. An attacker who has ALREADY exfiltrated
+ * the cookie value can replay it indefinitely by setting their own expiry —
+ * `maxAge` bounds nothing for them. It bounds only how long the LEGITIMATE
+ * browser keeps the cookie on disk.
+ *
+ * The real, accepted cost is therefore device-sharing, not theft: on a shared
+ * venue tablet the next person to pick it up is host for 30 days. Logout
+ * (`POST /api/host/session`) is the mitigation and must stay reachable.
+ *
+ * ROLLING: a successful `GET /api/host/session` re-issues the cookie with a
+ * fresh 30 days, so an active host effectively never falls out. A FAILED probe
+ * (401) must never mint or extend anything.
+ */
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 /**
  * The effective host SECRET for a room (async — see file header for precedence).

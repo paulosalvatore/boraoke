@@ -9,6 +9,7 @@ import {
   hostCookieName,
   issueSession,
   _clearLoginThrottle,
+  SESSION_MAX_AGE_SECONDS,
 } from "@/lib/host-auth";
 import { createRoom } from "@/lib/rooms";
 import * as telemetry from "@/lib/telemetry";
@@ -18,7 +19,7 @@ import { POST as skip } from "@/app/api/host/skip/route";
 import { POST as remove } from "@/app/api/host/remove/route";
 import { POST as reorder } from "@/app/api/host/reorder/route";
 import { POST as pause } from "@/app/api/host/pause/route";
-import { GET as session } from "@/app/api/host/session/route";
+import { GET as session, POST as logout } from "@/app/api/host/session/route";
 
 const TOKEN = "unit-test-host-token";
 
@@ -317,5 +318,123 @@ describe("per-room scoping (TICKET-9)", () => {
       }),
     );
     expect(crossRes.status).toBe(401);
+  });
+});
+
+/**
+ * TICKET-76 — the host session is a 30-day ROLLING cookie so a saved room opens
+ * straight into admin instead of demanding the shown-once (and unrecoverable)
+ * host code again. The security-load-bearing parts are: the refresh only ever
+ * happens on a probe that ALREADY presented a valid session, the cookie keeps
+ * every hardening attribute, and logout still clears.
+ */
+describe("host session lifetime + rolling refresh (TICKET-76)", () => {
+  const sessionUrl = "http://127.0.0.1:3040/api/host/session";
+
+  /** A probe request carrying an explicit cookie value (or none at all). */
+  function probeReq(cookieValue?: string): NextRequest {
+    return new NextRequest(sessionUrl, {
+      headers: cookieValue
+        ? { cookie: `${hostCookieName(DEFAULT_ROOM)}=${cookieValue}` }
+        : {},
+    });
+  }
+
+  it("issues a 30-day window at login (valid well past the old 12h)", async () => {
+    expect(SESSION_MAX_AGE_SECONDS).toBe(60 * 60 * 24 * 30);
+    const res = await login(req("/api/host/login", { body: { token: TOKEN } }));
+    expect(res.cookies.get(hostCookieName(DEFAULT_ROOM))?.maxAge).toBe(
+      SESSION_MAX_AGE_SECONDS,
+    );
+  });
+
+  it("a session inside the window still authenticates the probe", async () => {
+    const res = await session(probeReq(defaultSession));
+    expect(res.status).toBe(200);
+    expect((await res.json()).authed).toBe(true);
+  });
+
+  it("dates the cookie ~30 days out, i.e. well past the old 12h window", async () => {
+    // Expiry is enforced by the browser dropping the cookie at maxAge, so the
+    // window is only ever as real as the `expires` we actually put on the wire.
+    // Assert the boundary directly: comfortably past 12h, and not past 30 days.
+    const res = await login(req("/api/host/login", { body: { token: TOKEN } }));
+    const expires = res.cookies.get(hostCookieName(DEFAULT_ROOM))?.expires;
+    const aheadMs = new Date(expires!).getTime() - Date.now();
+    expect(aheadMs).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
+    expect(aheadMs).toBeLessThanOrEqual(30 * 24 * 60 * 60 * 1000 + 5_000);
+  });
+
+  it("marks the probe uncacheable so no proxy reuses it and no roll is skipped", async () => {
+    for (const res of [
+      await session(probeReq(defaultSession)), // 200
+      await session(probeReq()), // 401
+    ]) {
+      expect(res.headers.get("cache-control")).toBe("private, no-store");
+    }
+  });
+
+  it("ROLLS the session on a successful probe, re-sending the same value", async () => {
+    const res = await session(probeReq(defaultSession));
+    expect(res.status).toBe(200);
+    const cookie = res.cookies.get(hostCookieName(DEFAULT_ROOM));
+    expect(cookie?.value).toBe(defaultSession);
+    expect(cookie?.maxAge).toBe(SESSION_MAX_AGE_SECONDS);
+  });
+
+  it("keeps every hardening attribute on the rolled cookie", async () => {
+    const cookie = (await session(probeReq(defaultSession))).cookies.get(
+      hostCookieName(DEFAULT_ROOM),
+    );
+    expect(cookie?.httpOnly).toBe(true);
+    expect(cookie?.path).toBe("/api/host");
+    expect(cookie?.sameSite).toBe("lax");
+    // `secure` is prod-only by design; NODE_ENV is "test" under jest.
+    expect(cookie?.secure).toBe(process.env.NODE_ENV === "production");
+  });
+
+  it("does NOT mint a session on a 401 probe (no cookie at all)", async () => {
+    const res = await session(probeReq());
+    expect(res.status).toBe(401);
+    expect(res.cookies.get(hostCookieName(DEFAULT_ROOM))).toBeUndefined();
+  });
+
+  it("does NOT extend anything on a 401 probe with a BOGUS cookie", async () => {
+    const res = await session(probeReq("deadbeef".repeat(8)));
+    expect(res.status).toBe(401);
+    // The forged value must never be echoed back as a Set-Cookie.
+    expect(res.cookies.get(hostCookieName(DEFAULT_ROOM))).toBeUndefined();
+  });
+
+  it("does NOT set a cookie on a 400 (malformed room id)", async () => {
+    const res = await session(
+      new NextRequest(`${sessionUrl}?room=NOT%20A%20ROOM`, {
+        headers: { cookie: `${hostCookieName(DEFAULT_ROOM)}=${defaultSession}` },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.cookies.get(hostCookieName(DEFAULT_ROOM))).toBeUndefined();
+  });
+
+  it("logout clears the cookie with maxAge 0 on the matching path", async () => {
+    const res = await logout(
+      new NextRequest(sessionUrl, {
+        method: "POST",
+        headers: { cookie: `${hostCookieName(DEFAULT_ROOM)}=${defaultSession}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const cookie = res.cookies.get(hostCookieName(DEFAULT_ROOM));
+    expect(cookie?.value).toBe("");
+    expect(cookie?.maxAge).toBe(0);
+    // Must match the set-path or the browser keeps the original cookie.
+    expect(cookie?.path).toBe("/api/host");
+  });
+
+  it("a cleared session no longer authenticates (post-logout probe 401s)", async () => {
+    await logout(new NextRequest(sessionUrl, { method: "POST" }));
+    // The browser having dropped it, the next probe carries nothing.
+    const res = await session(probeReq());
+    expect(res.status).toBe(401);
   });
 });
