@@ -5,7 +5,12 @@
  */
 import { NextRequest } from "next/server";
 import { POST, GET } from "@/app/api/rooms/route";
-import { isValidRoomId } from "@/lib/rooms";
+import {
+  isValidRoomId,
+  getPublicRoom,
+  getRoomLanguage,
+  setRoomLanguage,
+} from "@/lib/rooms";
 import { _clearRoomCreateThrottle } from "@/lib/room-create-throttle";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -56,6 +61,65 @@ describe("POST /api/rooms", () => {
   it("400s on invalid JSON", async () => {
     const res = await POST(postReq("{not json"));
     expect(res.status).toBe(400);
+  });
+});
+
+/**
+ * TICKET-75 — the created room's default language is seeded from the CREATOR's
+ * NEXT_LOCALE cookie, so a host browsing in English gets an English venue TV
+ * (`/[room]/tv` follows the ROOM's language by design, never a patron cookie).
+ * Untrusted cookie values are rejected at the boundary and fall back to pt-BR.
+ */
+describe("POST /api/rooms — creator-locale seeding (TICKET-75)", () => {
+  function postWithLocale(name: string, cookie?: string): NextRequest {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (cookie !== undefined) headers["cookie"] = `NEXT_LOCALE=${cookie}`;
+    return new NextRequest("http://127.0.0.1:3040/api/rooms", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  it.each(["pt-BR", "en", "es"] as const)(
+    "seeds the room language from a NEXT_LOCALE=%s cookie",
+    async (locale) => {
+      const res = await POST(postWithLocale(`Bar Cookie ${locale}`, locale));
+      expect(res.status).toBe(201);
+      const { id } = await res.json();
+      expect(await getRoomLanguage(id)).toBe(locale);
+      expect((await getPublicRoom(id))?.settings.language).toBe(locale);
+    },
+  );
+
+  it("falls back to pt-BR with NO stored language when the cookie is absent", async () => {
+    const res = await POST(postWithLocale("Bar Sem Cookie"));
+    expect(res.status).toBe(201);
+    const { id } = await res.json();
+    expect(await getRoomLanguage(id)).toBe("pt-BR");
+    // Unchanged record shape for a cookie-less visitor — no behaviour change.
+    expect((await getPublicRoom(id))?.settings.language).toBeUndefined();
+  });
+
+  it.each(["de", "en-US", "pt", "xx", "", "%%%"])(
+    "ignores an unsupported/spoofed NEXT_LOCALE=%s and stores nothing",
+    async (bogus) => {
+      const res = await POST(postWithLocale(`Bar Cookie Ruim ${bogus}`, bogus));
+      expect(res.status).toBe(201);
+      const { id } = await res.json();
+      expect(await getRoomLanguage(id)).toBe("pt-BR");
+      expect((await getPublicRoom(id))?.settings.language).toBeUndefined();
+    },
+  );
+
+  it("keeps the host's manual override winning over the seeded language", async () => {
+    const res = await POST(postWithLocale("Bar Cookie Override", "en"));
+    const { id } = await res.json();
+    expect(await getRoomLanguage(id)).toBe("en");
+    await setRoomLanguage(id, "pt-BR");
+    expect(await getRoomLanguage(id)).toBe("pt-BR");
   });
 });
 

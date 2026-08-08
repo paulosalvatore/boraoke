@@ -4,6 +4,7 @@ import { resolvePoweredByFooter } from "@/components/tv/config";
 import { getPublicRoom, getRoomLanguage } from "@/lib/rooms";
 import { mintScreenToken } from "@/lib/screen-token";
 import { loadMessages } from "@/i18n/request";
+import { documentLangScript } from "@/i18n/locales";
 
 /**
  * /[room]/tv — venue screen for a specific room (TICKET-9, moved from /tv).
@@ -45,6 +46,24 @@ export default async function RoomTvPage({
   const screenToken = await mintScreenToken(room, screenTokenMintedAt);
   return (
     <NextIntlClientProvider locale={locale} messages={await loadMessages(locale)}>
+      {/*
+        TICKET-75 — `<html lang>` / content agreement.
+
+        The root layout sets `<html lang>` from the REQUEST locale (the
+        NEXT_LOCALE cookie / Accept-Language), but this subtree deliberately
+        renders ROOM-locale messages. A visitor whose cookie is `es` opening a
+        pt-BR room's TV therefore got `lang="es"` on 100% Portuguese content —
+        wrong for screen readers, browser auto-translate and SEO.
+
+        The root layout is a different, app-wide surface (and is owned elsewhere),
+        so this route corrects the attribute for itself. The script is emitted
+        inline in the SSR body and runs during HTML parse — before first paint
+        and long before any assistive tech or auto-translate heuristic reads the
+        document — so the live DOM the user actually gets always agrees with the
+        rendered copy. `locale` is a value from the fixed LOCALES enum resolved
+        server-side, never user input, and is JSON-encoded on the way out.
+      */}
+      <script dangerouslySetInnerHTML={{ __html: documentLangScript(locale) }} />
       <TvScreen
         poweredByFooter={resolvePoweredByFooter(process.env.POWERED_BY_FOOTER)}
         roomId={room}
