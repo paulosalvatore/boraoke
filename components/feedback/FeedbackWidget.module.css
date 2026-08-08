@@ -151,6 +151,13 @@
     justify-content: center;
     align-self: center;
     flex-shrink: 0;
+    /* Both host headers are `justify-content: space-between` flex rows that
+       are allowed to wrap. On a shared line this simply keeps the trigger
+       flush right (same result space-between already gives); on a WRAPPED
+       line — a very long nickname at 320px pushes it onto its own row — it
+       stops the button landing orphaned at the far left, which reads as
+       broken rather than deliberate. */
+    margin-left: auto;
     width: 40px;
     height: 40px;
     padding: 0;
