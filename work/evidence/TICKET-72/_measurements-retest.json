@@ -1,0 +1,140 @@
+{
+  "patron-390-longnick": {
+    "width": 390,
+    "triggerBox": {
+      "x": 334,
+      "y": 69,
+      "width": 40,
+      "height": 40
+    },
+    "triggerRightEdge": 374,
+    "triggerClippedRight": false,
+    "triggerClippedLeft": false,
+    "position": "static",
+    "headerScrollWidth": 358,
+    "headerClientWidth": 358,
+    "headerOverflow": 0,
+    "nickBox": {
+      "x": 119.265625,
+      "y": 78.09375,
+      "width": 126.609375,
+      "height": 17
+    },
+    "nickIsEllipsizing": false,
+    "nickComputed": {
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "scrollWidth": 127,
+      "clientWidth": 127
+    },
+    "headerDistinctRowTops": 2,
+    "roomId": "bar-retest-390-long",
+    "rowOverlapByScrollFraction": {
+      "frac_0": false,
+      "frac_0.25": false,
+      "frac_0.5": false,
+      "frac_0.75": false,
+      "frac_1": false
+    }
+  },
+  "patron-390-stressnick": {
+    "width": 390,
+    "triggerBox": {
+      "x": 334,
+      "y": 69,
+      "width": 40,
+      "height": 40
+    },
+    "triggerRightEdge": 374,
+    "triggerClippedRight": false,
+    "triggerClippedLeft": false,
+    "position": "static",
+    "headerScrollWidth": 358,
+    "headerClientWidth": 358,
+    "headerOverflow": 0,
+    "nickBox": {
+      "x": 119.265625,
+      "y": 78.09375,
+      "width": 175.90625,
+      "height": 17
+    },
+    "nickIsEllipsizing": false,
+    "nickComputed": {
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "scrollWidth": 176,
+      "clientWidth": 176
+    },
+    "headerDistinctRowTops": 2,
+    "roomId": "bar-retest-390-stress"
+  },
+  "patron-320-longnick": {
+    "width": 320,
+    "triggerBox": {
+      "x": 264,
+      "y": 69,
+      "width": 40,
+      "height": 40
+    },
+    "triggerRightEdge": 304,
+    "triggerClippedRight": false,
+    "triggerClippedLeft": false,
+    "position": "static",
+    "headerScrollWidth": 288,
+    "headerClientWidth": 288,
+    "headerOverflow": 0,
+    "nickBox": {
+      "x": 119.265625,
+      "y": 78.09375,
+      "width": 126.609375,
+      "height": 17
+    },
+    "nickIsEllipsizing": false,
+    "nickComputed": {
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "scrollWidth": 127,
+      "clientWidth": 127
+    },
+    "headerDistinctRowTops": 2,
+    "roomId": "bar-retest-320-long",
+    "rowOverlapByScrollFraction": {
+      "frac_0": false,
+      "frac_0.25": false,
+      "frac_0.5": false,
+      "frac_0.75": false,
+      "frac_1": false
+    }
+  },
+  "patron-320-stressnick": {
+    "width": 320,
+    "triggerBox": {
+      "x": 16,
+      "y": 112.1875,
+      "width": 40,
+      "height": 40
+    },
+    "triggerRightEdge": 56,
+    "triggerClippedRight": false,
+    "triggerClippedLeft": false,
+    "position": "static",
+    "headerScrollWidth": 288,
+    "headerClientWidth": 288,
+    "headerOverflow": 0,
+    "nickBox": {
+      "x": 119.265625,
+      "y": 78.09375,
+      "width": 175.90625,
+      "height": 17
+    },
+    "nickIsEllipsizing": false,
+    "nickComputed": {
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "scrollWidth": 176,
+      "clientWidth": 176
+    },
+    "headerDistinctRowTops": 3,
+    "roomId": "bar-retest-320-stress"
+  }
+}
