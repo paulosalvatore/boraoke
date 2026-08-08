@@ -3,6 +3,7 @@ import {
   requireHost,
   isHostConfigured,
   hostCookieName,
+  hostCookieOptions,
   roomIdFromRequest,
   HOST_COOKIE_PATH,
 } from "@/lib/host-auth";
@@ -13,6 +14,17 @@ import {
  * session cookie is valid, 401 otherwise, 400 on a malformed room id.
  * `configured` tells the client whether host controls exist for the room (so an
  * unconfigured / unknown room can show a helpful message).
+ *
+ * ROLLING REFRESH (TICKET-76): on a SUCCESSFUL probe we re-set the very cookie
+ * we just verified, with a fresh `SESSION_MAX_AGE_SECONDS` and byte-identical
+ * options (httpOnly / path=/api/host / sameSite=lax / prod-secure). Because the
+ * admin dashboard and the landing page's "Suas salas" both hit this endpoint,
+ * a host who keeps using their room never falls out of the window.
+ *
+ * The refresh is deliberately INSIDE the success branch and re-sends the value
+ * taken from the request (never a freshly minted one), so no code path here can
+ * create a session for a caller that did not already present a valid one: the
+ * 400 and 401 branches return before this and set no cookie at all.
  */
 export async function GET(req: NextRequest) {
   const roomId = roomIdFromRequest(req);
@@ -21,9 +33,16 @@ export async function GET(req: NextRequest) {
   }
   const configured = await isHostConfigured(roomId);
   if (!(await requireHost(req, roomId))) {
+    // 401 — no cookie is set, minted or extended on this path.
     return NextResponse.json({ authed: false, configured }, { status: 401 });
   }
-  return NextResponse.json({ authed: true, configured });
+  const res = NextResponse.json({ authed: true, configured });
+  // Verified above by requireHost(), so this value is the room's valid session.
+  const verified = req.cookies.get(hostCookieName(roomId))?.value;
+  if (verified) {
+    res.cookies.set(hostCookieName(roomId), verified, hostCookieOptions());
+  }
+  return res;
 }
 
 /**

@@ -18,11 +18,21 @@ import {
  * Host-session recovery (created rooms): we probe `GET /api/host/session?room=`
  * for the top MAX_HOST_PROBES most-recent created rooms only (BLOCKING-1, PR #22
  * review — an unbounded loop could fan out up to 50 parallel fetches per landing
- * load). If the ~12h host cookie is still valid the admin link goes STRAIGHT
- * into the dashboard; if the probe said expired it routes to the admin login,
- * which shows the honest "sua sessão expirou — entre com o código da sala" copy.
+ * load). If the host cookie is still valid the admin link goes STRAIGHT into
+ * the dashboard; if the probe said expired it routes to the admin login, which
+ * shows the honest "sua sessão expirou — entre com o código da sala" copy.
  * Unprobed / in-flight rooms link to the plain admin page, whose own
  * checkSession() self-routes (NIT-1).
+ *
+ * TICKET-76: that host session is now a 30-day ROLLING cookie, and this probe
+ * is one of the things that rolls it — a successful GET re-issues the cookie
+ * with a fresh window, so a host who lands here keeps their session alive.
+ * The probe bound stays at MAX_HOST_PROBES (3) ON PURPOSE: an UNPROBED room
+ * already lands correctly, because its link is the plain /admin page and
+ * AdminRoom's own checkSession() routes a live session straight to the
+ * dashboard. Probing more rooms would buy only an earlier "expired" hint on
+ * rooms 4..50, at the cost of up to 50 parallel fetches per landing load
+ * (exactly the BLOCKING-1 fan-out that set this bound). Not worth it.
  * We NEVER store or auto-fill the host code — recovery still needs the code (or
  * a live cookie). See lib/room-memory.ts security invariant.
  *
