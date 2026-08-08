@@ -317,6 +317,85 @@ test("/[room]/admin: HOST_TOKEN-authed session (default room) shows the Analytic
   await expect(analyticsLink).toHaveAttribute("href", "/admin/analytics");
 });
 
+test("/[room]/admin: logout control is absent on the login gate (unauthenticated)", async ({ page }) => {
+  // TICKET-77 (host logout): a real dashboard control cannot render before
+  // the dashboard itself does — the gate and the dashboard are mutually
+  // exclusive branches in AdminRoom. Pin that explicitly rather than assume it.
+  await page.context().clearCookies();
+  const { id } = await createRoom(page, "Bar Logout Gate");
+  await page.goto(`/${id}/admin`);
+  await expect(page.getByLabel(/código do host/i)).toBeVisible();
+  await expect(page.getByTestId("admin-logout-button")).toHaveCount(0);
+});
+
+test("/[room]/admin: logout control clears the session on the wire (confirm → 401 on re-probe)", async ({ page }) => {
+  // TICKET-77 (host logout, blocking sibling PR#53/TICKET-76's rolling
+  // 30-day session window): POST /api/host/session had zero callers anywhere
+  // in the UI before this. Verify on the wire — not by trusting the client
+  // state flip — that a session genuinely dies server-side.
+  await page.context().clearCookies();
+  const { id, hostCode } = await createRoom(page, "Bar Logout Wire");
+  await page.goto(`/${id}/admin`);
+  const token = page.getByLabel(/código do host/i);
+  await token.fill(hostCode);
+  await page.getByRole("button", { name: /^entrar$/i }).click();
+  await expect(page.getByRole("button", { name: /pausar|retomar/i })).toBeVisible();
+
+  // Sanity: session is genuinely live before we touch logout.
+  const preRes = await page.request.get(`/api/host/session?room=${id}`);
+  expect(preRes.status()).toBe(200);
+
+  // Meta-action is confirm-gated (shared/venue-tablet safety) — clicking the
+  // primary control must not immediately end the session.
+  const logoutBtn = page.getByTestId("admin-logout-button");
+  await expect(logoutBtn).toBeVisible();
+  await logoutBtn.click();
+  const confirmGroup = page.getByTestId("admin-logout-confirm");
+  await expect(confirmGroup).toBeVisible();
+  // Pre-confirm: session must still be untouched.
+  expect((await page.request.get(`/api/host/session?room=${id}`)).status()).toBe(200);
+
+  await confirmGroup.getByRole("button", { name: /^confirmar$/i }).click();
+
+  // Client flips back to the login gate...
+  await expect(token).toBeVisible();
+  // ...and the session is genuinely dead server-side, not just hidden in the UI.
+  const postRes = await page.request.get(`/api/host/session?room=${id}`);
+  expect(postRes.status()).toBe(401);
+});
+
+test("/[room]/admin: logout negative control — a failed clear leaves the host authed", async ({ page }) => {
+  // TICKET-77: proves the 401-on-wire assertion above actually has teeth. If
+  // POST /api/host/session fails, the UI must NOT falsely claim the host is
+  // logged out, and the session must remain genuinely live — this is the
+  // negative control the ticket asked for (stub the POST, confirm the
+  // clearing assertion would catch a broken implementation).
+  await page.context().clearCookies();
+  const { id, hostCode } = await createRoom(page, "Bar Logout Negative");
+  await page.goto(`/${id}/admin`);
+  const token = page.getByLabel(/código do host/i);
+  await token.fill(hostCode);
+  await page.getByRole("button", { name: /^entrar$/i }).click();
+  await expect(page.getByRole("button", { name: /pausar|retomar/i })).toBeVisible();
+
+  await page.route("**/api/host/session*", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({ status: 500, body: "{}" });
+    }
+    return route.continue();
+  });
+
+  await page.getByTestId("admin-logout-button").click();
+  await page.getByTestId("admin-logout-confirm").getByRole("button", { name: /^confirmar$/i }).click();
+
+  // The stubbed POST failed, so the dashboard must still be showing — no
+  // false "logged out" claim — and, unrouted, the real session is still live.
+  await expect(page.getByRole("button", { name: /pausar|retomar/i })).toBeVisible();
+  await page.unroute("**/api/host/session*");
+  const stillLiveRes = await page.request.get(`/api/host/session?room=${id}`);
+  expect(stillLiveRes.status()).toBe(200);
+});
+
 test("legacy /admin and /tv redirect into the default room (no dead routes)", async ({ page }) => {
   await page.goto("/admin");
   await expect(page).toHaveURL(/\/default\/admin$/);

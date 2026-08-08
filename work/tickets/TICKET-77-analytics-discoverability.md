@@ -1,6 +1,6 @@
 ---
 ticket: TICKET-77
-title: Surface the analytics link in the admin header (authorised hosts only)
+title: Surface the analytics link in the admin header (authorised hosts only) + host logout control
 status: in-review
 ---
 
@@ -40,6 +40,41 @@ that would 401 them.
 - Link is a plain `<a>`, keyboard-reachable, using the same focus/hover
   affordances as the sibling header links.
 
+## Addendum — host logout control (added mid-cycle, blocking sibling PR)
+
+Sibling PR #53 (TICKET-76) raises the host session from 12h to a rolling
+30-day window. Its own security review found `POST /api/host/session` (the
+logout endpoint) had **zero callers anywhere in `app/` or `components/`** —
+no logout UI existed at all — and the roll is partly driven by the public
+landing page, so a shared venue tablet that keeps visiting boraoke.com keeps
+re-arming the window indefinitely. A logout control is the mitigation PR#53
+was waiting on.
+
+Added to the same admin header (`AdminRoom.tsx`):
+
+- A muted, text-only "Sair" button (`.logoutBtn`, new CSS) — deliberately NOT
+  styled like the `.tvLink` pills, so it reads as a secondary meta-action, not
+  something to fat-finger mid-service.
+- Confirm-before-act: clicking "Sair" reveals the same two-step
+  confirm/cancel pattern already used for "Remover" on a queue row
+  (`styles.confirm`/`confirmYes`/`confirmNo`, reusing the existing `t("confirm")`/
+  `t("cancel")` i18n keys — no new translation needed). Justification: ending
+  a session is disruptive on a shared venue tablet (re-entry requires the host
+  code), so a single accidental click should not do it.
+- On confirm, `POST /api/host/session?room=<roomId>` (the room-scoped variant
+  of the existing endpoint) is called; the UI only flips back to the login
+  gate when the response is genuinely `res.ok` — a network failure leaves the
+  host client-side-authed rather than falsely claiming logout succeeded.
+- Label `"Sair"` is hardcoded, not localised — same constraint and rationale
+  as "Analytics" (sibling agent owns `messages/*.json` this cycle).
+- Verified **on the wire**, not just in the client: `GET /api/host/session`
+  returns 200 before confirm and 401 after — see
+  `work/evidence/TICKET-77/after-logout-gate-1440.png` and the e2e test
+  `logout control clears the session on the wire`.
+- Negative control added (`logout negative control`): stubs the POST to fail
+  and asserts the dashboard stays up and the real session probe still 200s —
+  proves the res.ok gating actually matters, not just that happy-path works.
+
 ## Out of scope (flagged, not implemented)
 
 The real product gap: venue hosts have no analytics of their own — the
@@ -66,7 +101,12 @@ separately as a follow-up ticket. Did not touch `app/admin/analytics/**`,
   - `/[room]/admin: HOST_TOKEN-authed session (default room) shows the
     Analytics link` — asserts the link is present with `href="/admin/analytics"`
     once the `default` room's HOST_TOKEN session is live.
-- Evidence: `work/evidence/TICKET-77/{authorised,unauthorised}-{1440,390}.png`,
-  captured with Playwright directly against `npx next dev -p 3189`. The
-  capture script asserted `getByTestId("admin-analytics-link")` count is 0 in
-  the unauthorised state before taking the screenshot.
+- Evidence: `work/evidence/TICKET-77/{authorised,unauthorised}-{1440,390}.png`
+  plus `logout-confirm-1440.png` and `after-logout-gate-1440.png`, captured
+  with Playwright directly against `npx next dev -p 3189`. The capture script
+  asserted `getByTestId("admin-analytics-link")` count is 0 in the
+  unauthorised state, and independently probed `GET /api/host/session` on the
+  wire (200 pre-logout, 401 post-logout) before taking screenshots.
+- Full e2e re-run after the logout addition: 81/81 passed (3.6m), including
+  the 3 new logout tests (absent-on-gate, wire-verified clear, negative
+  control).

@@ -78,6 +78,13 @@ export default function AdminRoom({
   // `checkSession` above, and it only ever flips the link on — never blocks
   // or delays the dashboard, and a failure just leaves the link hidden.
   const [analyticsAllowed, setAnalyticsAllowed] = useState(false);
+  // TICKET-77 (host logout): no logout UI exists anywhere today —
+  // POST /api/host/session (the logout endpoint, see app/api/host/session/route.ts)
+  // has zero callers in app/ or components/. Landing this alongside the
+  // rolling 30-day session window (TICKET-76) so a host on a shared venue
+  // tablet has a way to end a session deliberately.
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const roomQuery = `?room=${encodeURIComponent(roomId)}`;
 
@@ -184,6 +191,26 @@ export default function AdminRoom({
       setLoginError(tCommon("networkError"));
     } finally {
       setLoggingIn(false);
+    }
+  }
+
+  // TICKET-77: end this room's host session on demand (POST /api/host/session
+  // clears the room-scoped cookie server-side, mirroring the existing GET
+  // probe's ?room= scoping). Only flips the UI back to the login gate on a
+  // confirmed 200 — a network hiccup leaves the host authed client-side
+  // rather than falsely claiming they're logged out while the cookie lingers.
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      const res = await fetch(`/api/host/session${roomQuery}`, { method: "POST" });
+      if (res.ok) {
+        setAuth("gate");
+      }
+    } catch {
+      // network hiccup — stay authed; host can retry
+    } finally {
+      setLoggingOut(false);
+      setConfirmingLogout(false);
     }
   }
 
@@ -391,6 +418,44 @@ export default function AdminRoom({
           >
             Analytics
           </a>
+        )}
+        {/* TICKET-77: host logout. Visually secondary (muted text button, not
+            a filled pill like the links above) — this is a meta-action, not
+            something a host should fat-finger mid-service. Confirm-before-act
+            (same two-step pattern as "Remover" on a queue row, styles.confirm)
+            because ending the session is disruptive on a shared venue tablet:
+            the host would need to re-enter their code to get back in. "Sair"
+            is deliberately NOT localised — same constraint as Analytics above
+            (a sibling agent owns messages/*.json this cycle), and "Sair" is
+            the plain pt-BR word regardless of the room-language selector. */}
+        {confirmingLogout ? (
+          <span className={styles.confirm} data-testid="admin-logout-confirm">
+            <button
+              type="button"
+              className={styles.confirmYes}
+              disabled={loggingOut}
+              onClick={handleLogout}
+            >
+              {t("confirm")}
+            </button>
+            <button
+              type="button"
+              className={styles.confirmNo}
+              disabled={loggingOut}
+              onClick={() => setConfirmingLogout(false)}
+            >
+              {t("cancel")}
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={styles.logoutBtn}
+            data-testid="admin-logout-button"
+            onClick={() => setConfirmingLogout(true)}
+          >
+            Sair
+          </button>
         )}
       </header>
 

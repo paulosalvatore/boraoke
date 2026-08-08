@@ -49,6 +49,19 @@
   font-weight: 600;
 }
 .tvLink:hover { border-color: var(--accent); text-decoration: none; }
+/* TICKET-77: host logout — deliberately muted/text-only (not a filled .tvLink
+   pill) so it reads as a secondary meta-action next to the primary header
+   links, not something to fat-finger mid-service. */
+.logoutBtn {
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.logoutBtn:hover { color: var(--text); text-decoration: underline; }
 
 .label {
   display: block;
