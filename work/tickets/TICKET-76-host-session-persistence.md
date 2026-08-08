@@ -38,7 +38,7 @@ The session value is a deterministic HMAC of the room secret (`sessionValue`). I
 
 ### The real cost: shared venue devices
 
-The accepted cost is **device sharing, not theft**. On a bar's shared laptop or tablet, the next person to pick it up is host for up to 30 days. That is a real regression against the 12h window, and it is accepted deliberately: the alternative (retyping an unrecoverable, shown-once code) pushes hosts toward writing the code down or screenshotting it, which is strictly worse. Logout is the mitigation and must stay reachable.
+The accepted cost is **device sharing, not theft**. On a bar's shared laptop or tablet, the next person to pick it up is host — and stating that as "for up to 30 days" understates it. Because the roll is driven partly by the **public landing page**'s saved-rooms probe, any visit to boraoke.com from that device silently re-arms the full 30 days. The honest statement is therefore: **indefinitely, for as long as the device keeps visiting the site.** That is a real regression against the 12h window, and it is accepted deliberately: the alternative (retyping an unrecoverable, shown-once code) pushes hosts toward writing the code down or screenshotting it, which is strictly worse. Logout is the mitigation and must stay reachable.
 
 ### Why the probe bound was NOT raised
 
@@ -46,6 +46,6 @@ The accepted cost is **device sharing, not theft**. On a bar's shared laptop or 
 
 ## Follow-ups (deliberately out of scope)
 
-- **A visible logout control.** With a 30-day window, "sair" matters more on a shared venue device. `POST /api/host/session` works and is verified, but whether it is surfaced belongs to `app/(patron)/[room]/admin/AdminRoom.tsx`, which is owned by another agent this cycle. Filed as a follow-up rather than edited.
+- **A visible logout control — should ship in the same release.** The endpoint `POST /api/host/session` works and is verified, but the security review confirmed it has **zero callers anywhere in `app/` or `components/`**: there is no logout UI at all today. That makes it the only mitigation for the one cost this ticket knowingly accepts, and it is currently unreachable by a real host. Surfacing it belongs to `app/(patron)/[room]/admin/AdminRoom.tsx`, which is owned by another agent this cycle, so it is filed rather than edited here.
 - **Stale comment.** `lib/room-memory.ts` still says "a live ~12h host-session cookie" in its header. Comment-only, in a file outside this ticket's boundary.
 - **Server-side session revocation.** The deterministic, non-rotatable session value means logout is local-only: it clears the cookie in *that* browser but cannot invalidate a value already copied elsewhere. Fixing that needs a per-session nonce stored server-side, which is a real design change, not a lifetime tweak.

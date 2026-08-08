@@ -5,7 +5,7 @@
 | File | Change |
 | --- | --- |
 | `lib/host-auth.ts` | `SESSION_MAX_AGE_SECONDS` 12h → 30d, now exported (tests assert against it). Documented the rejected alternatives and the shared-device tradeoff. |
-| `app/api/host/session/route.ts` | `GET` re-sets the just-verified cookie with a fresh window on success only. 400/401 branches return before it and set no cookie. |
+| `app/api/host/session/route.ts` | `GET` re-sets the just-verified cookie with a fresh window on success only. 400/401 branches return before it and set no cookie. Every response now carries `Cache-Control: private, no-store` (review LOW-1). |
 | `components/SavedRooms.tsx` | Comment only — corrected the stale "~12h", recorded why `MAX_HOST_PROBES` stays at 3. No behavioural or copy change. |
 | `__tests__/host-api.test.ts` | New `describe` covering lifetime, rolling refresh, no-refresh on 401/400, cookie attributes, logout clearing. |
 
@@ -17,15 +17,16 @@ No new user-facing copy. No `messages/*.json` change.
 
 ```
 Test Suites: 43 passed, 43 total
-Tests:       693 passed, 693 total
-Time:        29.411 s
+Tests:       694 passed, 694 total
 ```
 
 ### e2e (full suite, `PORT=3188`)
 
 ```
-77 passed (5.7m)
+77 passed (4.4m)
 ```
+
+Clean first run. (The reviewer's own first e2e run showed 7 failures caused by their manual probing polluting `/tmp/boraoke-ls-3188.json`, which Playwright's `webServer` injects; re-running after removing it was 33/33 on the affected specs. This final run removed that file before starting.)
 
 ### tsc
 
@@ -50,6 +51,13 @@ set-cookie: cantai_host=b011362a…70e2; Path=/api/host; Expires=Mon, 07 Sep 202
 ```
 
 `Max-Age=2592000` = 30 days. `Secure; HttpOnly; SameSite=lax; Path=/api/host` all retained.
+
+The probe is also uncacheable on both branches:
+
+```
+=== 200 probe ===   cache-control: private, no-store
+=== 401 probe ===   cache-control: private, no-store
+```
 
 Rolling refresh on a successful probe (dev run, showing the window genuinely moving — first `Expires` 22:15:24 at login, second 22:15:40 on the probe 16s later, i.e. a fresh 30 days from *now*, not a replayed expiry):
 

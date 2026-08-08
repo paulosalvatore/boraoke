@@ -29,19 +29,30 @@ import {
 export async function GET(req: NextRequest) {
   const roomId = roomIdFromRequest(req);
   if (roomId === null) {
-    return NextResponse.json({ authed: false, configured: false }, { status: 400 });
+    return noStore(NextResponse.json({ authed: false, configured: false }, { status: 400 }));
   }
   const configured = await isHostConfigured(roomId);
   if (!(await requireHost(req, roomId))) {
     // 401 — no cookie is set, minted or extended on this path.
-    return NextResponse.json({ authed: false, configured }, { status: 401 });
+    return noStore(NextResponse.json({ authed: false, configured }, { status: 401 }));
   }
-  const res = NextResponse.json({ authed: true, configured });
+  const res = noStore(NextResponse.json({ authed: true, configured }));
   // Verified above by requireHost(), so this value is the room's valid session.
   const verified = req.cookies.get(hostCookieName(roomId))?.value;
   if (verified) {
     res.cookies.set(hostCookieName(roomId), verified, hostCookieOptions());
   }
+  return res;
+}
+
+/**
+ * This is the app's only cookie-bearing GET, and since TICKET-76 it also
+ * carries the rolling `Set-Cookie`. Mark it uncacheable so no shared proxy can
+ * serve one host's `authed` answer to another caller, and so a client-side
+ * cache hit cannot silently skip the session roll.
+ */
+function noStore(res: NextResponse): NextResponse {
+  res.headers.set("Cache-Control", "private, no-store");
   return res;
 }
 

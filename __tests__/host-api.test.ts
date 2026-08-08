@@ -354,12 +354,24 @@ describe("host session lifetime + rolling refresh (TICKET-76)", () => {
     expect((await res.json()).authed).toBe(true);
   });
 
-  it("a session outside the window is gone → probe 401s (browser drops it)", async () => {
-    // Expiry is enforced by the browser dropping the cookie at maxAge; the
-    // server then simply sees no cookie. That is the expired-host request.
-    const res = await session(probeReq());
-    expect(res.status).toBe(401);
-    expect((await res.json()).authed).toBe(false);
+  it("dates the cookie ~30 days out, i.e. well past the old 12h window", async () => {
+    // Expiry is enforced by the browser dropping the cookie at maxAge, so the
+    // window is only ever as real as the `expires` we actually put on the wire.
+    // Assert the boundary directly: comfortably past 12h, and not past 30 days.
+    const res = await login(req("/api/host/login", { body: { token: TOKEN } }));
+    const expires = res.cookies.get(hostCookieName(DEFAULT_ROOM))?.expires;
+    const aheadMs = new Date(expires!).getTime() - Date.now();
+    expect(aheadMs).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
+    expect(aheadMs).toBeLessThanOrEqual(30 * 24 * 60 * 60 * 1000 + 5_000);
+  });
+
+  it("marks the probe uncacheable so no proxy reuses it and no roll is skipped", async () => {
+    for (const res of [
+      await session(probeReq(defaultSession)), // 200
+      await session(probeReq()), // 401
+    ]) {
+      expect(res.headers.get("cache-control")).toBe("private, no-store");
+    }
   });
 
   it("ROLLS the session on a successful probe, re-sending the same value", async () => {
