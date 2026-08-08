@@ -755,14 +755,21 @@ export default function TvScreen({
                   <div className={styles.nextCard} key={entry.id}>
                     <span className={styles.n}>{idx + 2}</span>
                     <div className={styles.info}>
+                      {/* TICKET-70 follow-up: the name is alone on its own
+                          line so it gets the full column width — the table
+                          badge moved down to share the row with the (already
+                          secondary) song title instead of costing the name
+                          ~98px on every card. */}
                       <div className={styles.who}>{singerLine(entry)}</div>
-                      <div className={styles.what}>
-                        {entry.title ?? `youtu.be/${entry.videoId}`}
+                      <div className={styles.metaRow}>
+                        <div className={styles.what}>
+                          {entry.title ?? `youtu.be/${entry.videoId}`}
+                        </div>
+                        {entry.table ? (
+                          <span className={styles.mesa}>{t("table", { table: entry.table })}</span>
+                        ) : null}
                       </div>
                     </div>
-                    {entry.table ? (
-                      <span className={styles.mesa}>{t("table", { table: entry.table })}</span>
-                    ) : null}
                   </div>
                 ))}
               </>
@@ -775,7 +782,7 @@ export default function TvScreen({
                   size={120}
                   title={t("qrTitle")}
                 />
-                <div>
+                <div className={styles.joinText}>
                   <div className={styles.cta}>{t("scanAndSing")}</div>
                   <div className={styles.url}>{joinLabel}</div>
                   <div className={styles.poweredBy}>
