@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-08T22:26:00Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-76", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/76-host-session-persistence", "short_sha": "1add686", "message_slug": "TICKET-76: rolling 30-day host session so saved rooms open straight into"}}
