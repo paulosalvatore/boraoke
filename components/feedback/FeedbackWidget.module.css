@@ -30,18 +30,28 @@
 
 /*
  * ── Reserved space (TICKET-71) ──
- * The fab is `position: fixed`, so it never occupies room in the document
- * flow — nothing pushes scrollable content clear of it. This spacer is a
- * plain, normal-flow block rendered as the LAST element on every page (the
- * widget mounts once in app/layout.tsx, after `{children}`), so its height
- * becomes trailing space at the very end of that page's scrollable content —
- * exactly where a queue row (or any other bottom-of-page control) would
- * otherwise sit under the pill once scrolled all the way down. Sized to
- * match the fab's own footprint (offset + size + a clearance gap) plus the
- * iOS home-indicator safe area, so a notched phone doesn't reintroduce the
- * overlap. Only reserves space where the fab can plausibly reach page
- * content — narrow (phone/small-tablet) viewports — so desktop, where the
- * pill floats clear in the page margin, gets no dead space at the bottom.
+ * DESKTOP: none, unchanged from before this ticket. Desktop was never
+ * reported broken (the fixed pill floats clear in the page margin, never
+ * over centered content) and stays exactly as it was — `.spacer` is
+ * `display: none` there, so nothing new is added and the "no dead space on
+ * desktop" requirement holds by simply not touching desktop at all.
+ *
+ * MOBILE (<= 700px): a small safe-area-only gap, NOT a pill-footprint
+ * reservation. A first attempt at this ticket kept the mobile fab
+ * `position: fixed` and tried to reserve pill-sized trailing space (plus a
+ * live JS nudge — since removed, see the .tsx doc comment) to keep it clear
+ * of queue rows. An independent verifier swept a 25-song queue across
+ * scroll fractions 0.0–1.0 and found that approach structurally unfixable:
+ * a fixed overlay over an arbitrarily tall list WILL coincide with some row
+ * at some scroll offset, and no amount of reserved space or nudging removes
+ * that — nudging only relocated the same overlap into the screen's vertical
+ * center, where it kept moving as the guest scrolled. So the mobile fab is
+ * no longer fixed at all (see `.fab` below) — it renders in normal document
+ * flow, where it can never spatially coincide with a queue row by
+ * construction, and needs no reserved space to avoid one. What's left here
+ * is only a courtesy: `env(safe-area-inset-bottom)` so the in-flow pill
+ * (now real, normal-flow content) isn't flush against an iPhone's
+ * home-indicator.
  */
 .spacer {
   display: none;
@@ -49,14 +59,14 @@
 @media (max-width: 700px) {
   .spacer {
     display: block;
-    height: calc(
-      var(--pill-offset) + var(--pill-size) + var(--pill-gap) +
-        env(safe-area-inset-bottom, 0px)
-    );
+    height: env(safe-area-inset-bottom, 0px);
   }
 }
 
 /* ── Floating action button ── */
+/* Desktop (and any viewport not matched by the mobile override below):
+   fixed bottom-right pill, unchanged from before this ticket — desktop
+   never showed the overlap bug. */
 .fab {
   position: fixed;
   right: var(--pill-offset);
@@ -82,6 +92,22 @@
 }
 .fab:active {
   transform: translateY(0);
+}
+/*
+ * Mobile (TICKET-71): NOT fixed. Rendered in normal document flow, as the
+ * last thing on the page (after `{children}`, before the safe-area-only
+ * spacer above) — so it can never float over a queue row at any scroll
+ * position. See the long comment on `.spacer` above and the doc comment on
+ * `FeedbackWidget` in the .tsx for the full "why" (a fixed overlay over an
+ * arbitrarily tall list is structurally unfixable by padding or nudging).
+ */
+@media (max-width: 700px) {
+  .fab {
+    position: static;
+    display: flex;
+    width: fit-content;
+    margin: 24px auto 0;
+  }
 }
 .fabIcon {
   font-size: 18px;

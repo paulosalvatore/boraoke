@@ -7,21 +7,32 @@ import { drainQueue, warmModerationRoutes } from "./helpers";
  * it, including on a home-indicator (safe-area-inset) phone.
  *
  * These assertions are on REAL GEOMETRY — bounding-box comparisons between the
- * fixed pill and a queue row's title/badge — not on a CSS class name. A live
+ * pill and a queue row's title/badge — not on a CSS class name. A live
  * regression here was the pill sitting directly on top of a queue row's song
  * title and "CANTAR" badge (see the ticket's evidence screenshots); a
  * class-name assertion would not have caught it.
  *
- * SCROLL-POSITION NOTE: the worst case for this bug is NOT the fully-scrolled-
- * to-bottom rest position — a trailing <footer> after the queue already gives
- * enough clearance there. Reproducing the ticket's own evidence screenshot
- * required the page's DEFAULT, un-scrolled view: on a 390x844 phone the
- * "Adicionar música" form pushes the live queue section far enough down that
- * only the first couple of rows are visible before ever touching the
- * scrollbar, and the fixed pill sits directly over whichever row lands at the
- * bottom of that first viewport. Every test below checks BOTH that natural
- * resting position and the fully-scrolled-to-bottom position, since a real
- * guest passes through both.
+ * HISTORY THIS SPEC ENCODES (why the coverage below looks the way it does):
+ * an earlier version of the fix kept the mobile pill `position: fixed` and
+ * added a live JS "collision avoidance" nudge that measured the pill against
+ * on-screen rows and lifted it clear of whichever one it currently
+ * overlapped. That passed a 5-row smoke test (checking only the LAST visible
+ * row, and only at scroll fraction 0.0 and 1.0) and even passed an opus
+ * review — but an independent verifier swept a 25-song queue across scroll
+ * fractions 0.0–1.0 and found it net-negative: from roughly frac 0.2 to 0.9
+ * the required lift saturated a sane cap and the pill still overlapped 1–2
+ * rows, with the SAME overlap count whether the JS nudge was on or off. It
+ * never removed an overlap at mid-scroll — it only relocated the same
+ * overlap from the bottom-right corner into the screen's vertical center,
+ * where it kept moving as the guest scrolled. The gap that let that ship was
+ * exactly this file only ever seeding 5 rows and only ever checking the two
+ * scroll extremes. The fix that replaced the nudge (see FeedbackWidget.tsx
+ * and its CSS module) drops `position: fixed` on mobile entirely — the pill
+ * renders in normal document flow there, so it cannot spatially coincide
+ * with a queue row at ANY scroll position, by construction, regardless of
+ * queue length. The "25-row sweep across mid-scroll fractions" test below is
+ * the one that would have caught the original defect, and is the one a
+ * regression here would have to pass.
  */
 
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
@@ -35,45 +46,25 @@ function rectsIntersect(
 
 /**
  * Assert the pill's bounding box does not intersect ANY of the given rows'
- * title/badge. Polled (not a single instant read): the fix's collision
- * avoidance recomputes on a requestAnimationFrame + ResizeObserver, which can
- * lag the very first paint by a frame or two — real, but not a false pass,
- * since a genuinely-broken build never converges and the poll times out.
- *
- * Checks EVERY row passed in, not just one: an earlier version of this test
- * checked only the single "last visible row" and missed a real regression —
- * a single-pass collision-avoidance algorithm that lifted the pill clear of
- * the row it started on, but landed it squarely on the row stacked above
- * (found by the App Tester gate on this ticket, reproduced with a 5-row
- * queue at natural page load). Checking the full set of currently-visible
- * rows is what actually catches that class of bug.
+ * title/badge, right now (no polling — the mobile pill is a plain in-flow
+ * element with no animation/measurement lag to wait out; if it's wrong, it's
+ * wrong immediately).
  */
 async function expectRowsClearOfPill(page: Page, rows: ReturnType<Page["getByTestId"]>[]) {
   const fab = page.getByRole("button", { name: /enviar feedback/i });
-  await expect(fab).toBeVisible();
+  const pillBox = await fab.boundingBox();
+  // The fab is only ever intersecting-relevant while it's actually
+  // rendered on screen; if it isn't currently visible at all (scrolled well
+  // past it, or well before it), there's nothing to check.
+  if (!pillBox) return;
 
-  await expect
-    .poll(
-      async () => {
-        const pillBox = await fab.boundingBox();
-        if (!pillBox) return "missing-geometry";
-        for (let i = 0; i < rows.length; i++) {
-          const titleBox = await rows[i].getByTestId("queue-row-title").boundingBox();
-          const badgeBox = await rows[i].getByTestId("queue-row-badge").boundingBox();
-          if (!titleBox || !badgeBox) return `missing-geometry-row-${i}`;
-          if (rectsIntersect(pillBox, titleBox)) return `title-overlap-row-${i}`;
-          if (rectsIntersect(pillBox, badgeBox)) return `badge-overlap-row-${i}`;
-        }
-        return "clear";
-      },
-      { timeout: 3000, message: "pill must end up clear of every visible row's title/badge" },
-    )
-    .toBe("clear");
-}
-
-/** Convenience wrapper for the common single-row case. */
-async function expectRowClearOfPill(page: Page, row: ReturnType<Page["getByTestId"]>) {
-  await expectRowsClearOfPill(page, [row]);
+  for (let i = 0; i < rows.length; i++) {
+    const titleBox = await rows[i].getByTestId("queue-row-title").boundingBox();
+    const badgeBox = await rows[i].getByTestId("queue-row-badge").boundingBox();
+    if (!titleBox || !badgeBox) continue; // row not currently rendered on screen either
+    expect(rectsIntersect(pillBox, titleBox), `row ${i} title overlaps the pill`).toBe(false);
+    expect(rectsIntersect(pillBox, badgeBox), `row ${i} badge overlaps the pill`).toBe(false);
+  }
 }
 
 async function seedQueue(page: Page, roomId: string, count: number, prefix = "Musica de teste") {
@@ -98,10 +89,6 @@ async function warmUp(page: Page) {
   await page.request.get("/api/queue?room=default");
   await warmModerationRoutes(page.request);
   await page.request.post("/api/rooms", { data: { name: "warmup-71" } });
-  // Compile the host login/session routes BEFORE any real room is created —
-  // their first compile mid-test resets the in-memory rooms singleton and
-  // wipes a just-created room (the documented memory-driver caveat mirrored
-  // from moderation.spec.ts's warmUp).
   await page.request.post("/api/host/login", { data: { token: "cantai-dev-host" } });
   await page.request.get("/api/host/session?room=default");
   await page.goto("/default");
@@ -112,15 +99,60 @@ async function warmUp(page: Page) {
 test.describe("feedback pill never covers queue content (TICKET-71)", () => {
   test.beforeEach(async ({ page }) => {
     await warmUp(page);
-    // Start from an empty default-room queue so each test owns its own state
-    // (drain, not a single advance — a prior test in this file may have
-    // seeded several entries).
     await drainQueue(page.request).catch(() => {});
   });
 
-  test("populated queue: pill does not cover the last visible row's title/badge, unscrolled AND scrolled to bottom", async ({
+  test("25-row queue: no overlap swept across scroll fractions 0.0 / 0.2 / 0.5 / 0.8 / 1.0", async ({
     page,
   }) => {
+    // This is the decisive test: it reproduces exactly the sweep an
+    // independent verifier used to refute the earlier fixed-pill + JS-nudge
+    // approach (see the file-level doc comment). A 5-row queue is too short
+    // to ever put a row at mid-scroll fractions in the first place — 25
+    // rows comfortably overflows a 844px viewport many times over.
+    //
+    // Uses its OWN room rather than "default": the per-room advance
+    // rate-limit (12/60s, the deliberate anti-grief singer-skip throttle —
+    // see lib/advance-rate-limit.ts) means `drainQueue` cannot fully clear
+    // 25 seeded entries from "default" before the next test's beforeEach
+    // runs, leaking rows into later tests. A dedicated, never-drained room
+    // sidesteps that entirely — nothing else in this file touches it.
+    await page.setViewportSize(MOBILE_VIEWPORT);
+    await page.goto("/new");
+    await page.getByLabel("Nome do bar").fill("Bar TICKET-71 Sweep");
+    await page.getByRole("button", { name: /^criar sala$/i }).click();
+    await page.getByTestId("join-url").waitFor();
+    const joinUrl = (await page.getByTestId("join-url").textContent())!.trim();
+    const roomId = joinUrl.split("/").pop()!;
+    await seedQueue(page, roomId, 25);
+
+    await page.goto(`/${roomId}`);
+    await page.getByLabel("Seu apelido").fill("Verificador25");
+    await page.getByRole("button", { name: /entrar na fila/i }).click();
+    await page.getByRole("heading", { name: /adicionar música/i }).waitFor();
+
+    const rows = page.getByTestId("queue-row");
+    await expect(rows).toHaveCount(25, { timeout: 8000 });
+    const allRows = await rows.all();
+
+    const scrollHeight = await page.evaluate(() => document.body.scrollHeight);
+    const viewportHeight = MOBILE_VIEWPORT.height;
+    const maxScroll = Math.max(0, scrollHeight - viewportHeight);
+
+    for (const frac of [0, 0.2, 0.5, 0.8, 1]) {
+      await page.evaluate((y) => window.scrollTo(0, y), Math.round(maxScroll * frac));
+      await page.waitForTimeout(50);
+      await expectRowsClearOfPill(page, allRows);
+    }
+  });
+
+  test("populated queue (short, 5 rows): pill does not cover the queue, unscrolled AND scrolled to bottom", async ({
+    page,
+  }) => {
+    // Smaller companion smoke test — kept for fast, cheap coverage of the
+    // ticket's own original evidence scenario (a short queue on first
+    // paint), now trivially satisfied since the mobile pill is no longer
+    // fixed. The 25-row sweep above is what actually proves the fix.
     await page.setViewportSize(MOBILE_VIEWPORT);
     await seedQueue(page, "default", 5);
 
@@ -131,21 +163,13 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
 
     const rows = page.getByTestId("queue-row");
     await expect(rows).toHaveCount(5, { timeout: 6000 });
+    const allRows = await rows.all();
 
-    // 1) The page's default, un-scrolled view — the exact state the ticket's
-    // evidence screenshot shows: the search form pushes the queue far enough
-    // down that only its first rows fit above the fold, right where the
-    // fixed pill sits. Check EVERY row currently on screen, not just the
-    // last one — a stacked pair can both be near the pill simultaneously.
-    const visibleRows = await findRowsAboveFold(page, rows);
-    if (visibleRows.length > 0) await expectRowsClearOfPill(page, visibleRows);
+    await expectRowsClearOfPill(page, allRows);
 
-    // 2) Scrolled fully to the bottom (the acceptance criterion's literal
-    // wording) — the true last row must also be clear here.
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.waitForTimeout(150);
-    const visibleAtBottom = await findRowsAboveFold(page, rows);
-    await expectRowsClearOfPill(page, visibleAtBottom.length > 0 ? visibleAtBottom : [rows.last()]);
+    await page.waitForTimeout(100);
+    await expectRowsClearOfPill(page, allRows);
   });
 
   test("pending-approval state: pill does not cover the queue below it, unscrolled AND scrolled to bottom", async ({
@@ -193,24 +217,18 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
 
     const rows = patron.getByTestId("queue-row");
     await expect(rows).toHaveCount(5, { timeout: 6000 });
+    const allRows = await rows.all();
 
-    // 1) Default, un-scrolled view (matches patron-pending-approval-mobile.png).
-    // Check every row on screen, not just the last — see expectRowsClearOfPill.
-    const visibleRows = await findRowsAboveFold(patron, rows);
-    if (visibleRows.length > 0) await expectRowsClearOfPill(patron, visibleRows);
+    await expectRowsClearOfPill(patron, allRows);
 
-    // 2) Scrolled fully to the bottom.
     await patron.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await patron.waitForTimeout(150);
-    const visibleAtBottom = await findRowsAboveFold(patron, rows);
-    await expectRowsClearOfPill(patron, visibleAtBottom.length > 0 ? visibleAtBottom : [rows.last()]);
+    await patron.waitForTimeout(100);
+    await expectRowsClearOfPill(patron, allRows);
 
     await patron.close();
   });
 
-  test("home-indicator safe-area inset: reserved space grows so the overlap does not reappear", async ({
-    page,
-  }) => {
+  test("home-indicator safe-area inset: mobile spacer grows by the inset amount", async ({ page }) => {
     await page.setViewportSize(MOBILE_VIEWPORT);
 
     // Emulate an iPhone-style home-indicator inset via CDP — the same signal
@@ -228,30 +246,26 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
     const rows = page.getByTestId("queue-row");
     await expect(rows).toHaveCount(5, { timeout: 6000 });
 
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.waitForTimeout(200);
-
-    // The reserved space itself must have grown by the inset amount — proves
-    // env(safe-area-inset-bottom) is actually wired into the calc(), not just
+    // The mobile spacer is safe-area-only now (no pill-footprint reservation
+    // needed — the mobile pill isn't fixed any more) — proves
+    // env(safe-area-inset-bottom) is actually wired into the CSS, not just
     // present as dead text in the stylesheet.
     const spacerHeight = await page.evaluate(() => {
       const spacer = document.querySelector('[data-testid="feedback-pill-spacer"]');
       return spacer ? spacer.getBoundingClientRect().height : 0;
     });
-    expect(spacerHeight).toBeGreaterThanOrEqual(80 + 34 - 1);
+    expect(spacerHeight).toBeGreaterThanOrEqual(34 - 1);
+    expect(spacerHeight).toBeLessThan(60); // not the old ~114px pill-footprint reservation
 
-    await expectRowClearOfPill(page, rows.last());
-
-    // The pill itself should also float clear of the inset (not flush against
-    // the very bottom edge, which is where the home-indicator gesture bar
-    // lives on a real device).
-    const fab = page.getByRole("button", { name: /enviar feedback/i });
-    const pillBox = await fab.boundingBox();
-    expect(pillBox).not.toBeNull();
-    expect(pillBox!.y + pillBox!.height).toBeLessThanOrEqual(MOBILE_VIEWPORT.height - 34 + 1);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(100);
+    const allRows = await rows.all();
+    await expectRowsClearOfPill(page, allRows);
   });
 
-  test("desktop: no dead space is introduced at the bottom of the page", async ({ page }) => {
+  test("desktop: no dead space is introduced at the bottom of the page, pill stays fixed", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await seedQueue(page, "default", 3);
     await page.goto("/default");
@@ -265,29 +279,11 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
       return spacer ? spacer.getBoundingClientRect().height : 0;
     });
     expect(spacerHeight).toBe(0);
+
+    // Desktop never had the bug and is unaffected by this ticket: the pill
+    // stays position: fixed there.
+    const fab = page.getByRole("button", { name: /enviar feedback/i });
+    const position = await fab.evaluate((el) => getComputedStyle(el).position);
+    expect(position).toBe("fixed");
   });
 });
-
-/**
- * Find every queue row that is at least partially above the bottom of the
- * current viewport — i.e. everything a guest actually sees without scrolling
- * any further. Returns an empty array if every row is already fully below
- * the fold. Deliberately returns ALL such rows, not just the last one: a
- * stacked pair can both sit near the pill's footprint at once, and checking
- * only the last row missed exactly that case (see {@link expectRowsClearOfPill}).
- */
-async function findRowsAboveFold(
-  page: Page,
-  rows: ReturnType<Page["getByTestId"]>,
-): Promise<ReturnType<Page["getByTestId"]>[]> {
-  const count = await rows.count();
-  const viewportHeight = page.viewportSize()!.height;
-  const visible: ReturnType<Page["getByTestId"]>[] = [];
-  for (let i = 0; i < count; i++) {
-    const box = await rows.nth(i).boundingBox();
-    if (box && box.y < viewportHeight) {
-      visible.push(rows.nth(i));
-    }
-  }
-  return visible;
-}
