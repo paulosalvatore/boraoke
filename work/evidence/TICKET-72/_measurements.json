@@ -1,0 +1,77 @@
+{
+  "patron-390": {
+    "roomId": "bar-evidencia-390",
+    "triggerBox": {
+      "x": 365.125,
+      "y": 39,
+      "width": 40,
+      "height": 40
+    },
+    "position": "static",
+    "intersectsAnyQueueRow": false,
+    "intersectsH1": false,
+    "intersectsGreetingSpan": false,
+    "h1Box": {
+      "x": 16,
+      "y": 24,
+      "width": 107.765625,
+      "height": 70
+    },
+    "greetingSpanBox": {
+      "x": 123.765625,
+      "y": 28.40625,
+      "width": 241.359375,
+      "height": 35.1875
+    }
+  },
+  "patron-320": {
+    "roomId": "bar-evidencia-320",
+    "triggerBox": {
+      "x": 364.671875,
+      "y": 39,
+      "width": 40,
+      "height": 40
+    },
+    "position": "static",
+    "intersectsAnyQueueRow": false,
+    "intersectsH1": false,
+    "intersectsGreetingSpan": false,
+    "h1Box": {
+      "x": 16,
+      "y": 24,
+      "width": 107.765625,
+      "height": 70
+    },
+    "greetingSpanBox": {
+      "x": 123.765625,
+      "y": 28.40625,
+      "width": 240.90625,
+      "height": 35.1875
+    },
+    "headerBox": {
+      "x": 16,
+      "y": 24,
+      "width": 288,
+      "height": 70
+    },
+    "headerScrollWidth": 389,
+    "headerClientWidth": 288,
+    "headerOverflows": true,
+    "triggerClippedRight": true,
+    "triggerClippedLeft": false
+  },
+  "landing-390": {
+    "triggerVisible": true
+  },
+  "landing-320": {
+    "triggerVisible": true
+  },
+  "desktop-1280": {
+    "roomId": "bar-evidencia-desktop",
+    "landingTriggerVisible": false,
+    "landingTriggerDisplay": "none",
+    "patronTriggerVisible": false,
+    "patronTriggerDisplay": "none",
+    "fabPosition": "fixed"
+  }
+}
