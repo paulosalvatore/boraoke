@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-08T23:11:06Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-74", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/74-metadata-seo-refresh", "short_sha": "1fd2c0f", "message_slug": "TICKET-74: align site metadata + SEO with the shipped venue-agnostic pos"}}
