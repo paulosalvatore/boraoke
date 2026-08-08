@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { FeedbackSheet } from "./feedback/FeedbackSheet";
@@ -47,11 +48,69 @@ import styles from "./feedback/FeedbackWidget.module.css";
  * to overlap, by construction. Desktop is unaffected (unaffected page
  * widths never showed this bug) and keeps the original fixed bottom-right
  * pill.
+ *
+ * TICKET-72 mobile DISCOVERABILITY (the cost TICKET-71 knowingly paid):
+ * an in-flow pill at the true end of the page means a guest on a long queue
+ * has to scroll ~2400px to reach it. The feedback loop is a founding product
+ * pillar, so "reachable only at the page's end" is not good enough.
+ *
+ * Every viewport-anchored (`position: fixed`) affordance was REJECTED ON
+ * MEASUREMENT, not on principle. A probe swept 21 scroll positions on a
+ * 35-row room and on the landing page at 390px/320px and counted how often
+ * each candidate footprint would intersect interactive content:
+ *
+ *   footprint (bottom-right, fixed)   room(35 rows)   landing 390   landing 320
+ *   178x48 pill                            39              12             9
+ *   48px circle                            19               8             5
+ *   40px circle                            16               7             5
+ *
+ * "Just make it smaller" does not work: queue rows and the landing page's
+ * CTAs both span the full content column (a row measures x=16..374 in a
+ * 390px viewport), so there is no horizontal gutter for a fixed target to
+ * live in. Auto-hide-on-scroll fails for the same reason — the at-rest
+ * positions ARE among those sampled offsets — and it would reintroduce the
+ * per-frame scroll math that got v1 refuted.
+ *
+ * So the second entry point is also in normal document flow, just at the
+ * OTHER end of the page: a compact icon-only trigger rendered into the
+ * page's own `<header>` via a portal. In-flow means the same geometric
+ * guarantee as the pill (nothing to overlap, by construction); the header
+ * means it is on screen at first paint with zero scrolling, on every page
+ * that has a header — the patron room and the landing page included —
+ * without editing those pages. The portal target is resolved by a plain
+ * `document.querySelector("header")`, re-armed on route change and via a
+ * cheap presence-guarded MutationObserver (the patron room only renders its
+ * header AFTER the nickname gate). That is DOM-presence detection, not
+ * geometry: nothing here reads a scroll offset or a bounding box.
+ *
+ * Desktop is untouched again — the header trigger is `display: none` above
+ * 700px, where the fixed pill has always floated clear in the page margin.
  */
 export function FeedbackWidget() {
   const pathname = usePathname();
   const t = useTranslations("Feedback");
   const [open, setOpen] = useState(false);
+  const [headerEl, setHeaderEl] = useState<HTMLElement | null>(null);
+
+  // TICKET-72: resolve the portal target for the header entry point. Runs
+  // client-side only (so SSR output is unchanged), re-arms whenever the route
+  // changes, and keeps a MutationObserver alive because the patron room only
+  // renders its <header> AFTER the nickname gate is satisfied — and tears it
+  // down again if the guest re-opens that gate. The observer callback is a
+  // `document.contains` guard plus one querySelector; it reads no geometry
+  // and no scroll offset.
+  useEffect(() => {
+    let current: HTMLElement | null = null;
+    const sync = () => {
+      if (current && document.contains(current)) return;
+      current = document.querySelector("header");
+      setHeaderEl(current);
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [pathname]);
 
   // Close on Escape for keyboard/desktop users.
   useEffect(() => {
@@ -71,6 +130,33 @@ export function FeedbackWidget() {
 
   return (
     <div className={styles.root}>
+      {/*
+       * TICKET-72: the header entry point. Portalled into the page's own
+       * <header> so it renders in NORMAL DOCUMENT FLOW at the top of the
+       * page — same geometric no-overlap guarantee as the in-flow pill
+       * below, but reachable at first paint without any scrolling. Mobile
+       * only (`display: none` above 700px — desktop keeps the fixed pill it
+       * always had). Its accessible name is deliberately DIFFERENT from the
+       * pill's ("Enviar feedback") so that a locator for one never
+       * ambiguously resolves to both; the regression sweep in
+       * e2e/feedback-widget-safe-area.spec.ts depends on that.
+       */}
+      {!open &&
+        headerEl &&
+        createPortal(
+          <button
+            type="button"
+            className={styles.headerTrigger}
+            data-testid="feedback-header-trigger"
+            aria-label={t("title")}
+            title={t("title")}
+            onClick={() => setOpen(true)}
+          >
+            <span aria-hidden>💬</span>
+          </button>,
+          headerEl,
+        )}
+
       {!open && (
         <button
           type="button"

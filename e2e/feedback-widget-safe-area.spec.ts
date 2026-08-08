@@ -276,6 +276,134 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
     await expectRowsClearOfPill(page, allRows);
   });
 
+  /**
+   * TICKET-72 coverage. The in-flow pill above fixed the overlap but left the
+   * only mobile entry point at the true END of the page (~2400px down a busy
+   * room). The fix adds a SECOND in-flow entry point, portalled into the
+   * page's own <header>, so feedback is reachable at first paint.
+   *
+   * These tests assert both halves of that claim, because either alone is
+   * satisfiable by a bad implementation:
+   *   (a) the header trigger is ON SCREEN with NO scrolling (discoverability),
+   *   (b) it is `position: static` and never overlaps a queue row at ANY
+   *       scroll position (the TICKET-71 guarantee is not traded back).
+   * A `position: fixed` version of this affordance would pass (a) and fail
+   * (b); the pre-TICKET-72 code passes (b) and fails (a).
+   */
+  test("TICKET-72 — header trigger is visible without scrolling AND never overlaps a 25-row queue", async ({
+    page,
+  }) => {
+    await page.setViewportSize(MOBILE_VIEWPORT);
+    await page.goto("/new");
+    await page.getByLabel("Nome do bar").fill("Bar TICKET-72 Header");
+    await page.getByRole("button", { name: /^criar sala$/i }).click();
+    await page.getByTestId("join-url").waitFor();
+    const joinUrl = (await page.getByTestId("join-url").textContent())!.trim();
+    const roomId = joinUrl.split("/").pop()!;
+    await seedQueue(page, roomId, 25);
+
+    await page.goto(`/${roomId}`);
+    await page.getByLabel("Seu apelido").fill("Verificador72");
+    await page.getByRole("button", { name: /entrar na fila/i }).click();
+    await page.getByRole("heading", { name: /adicionar música/i }).waitFor();
+
+    const rows = page.getByTestId("queue-row");
+    await expect(rows).toHaveCount(25, { timeout: 8000 });
+    const allRows = await rows.all();
+
+    // (a) DISCOVERABILITY — at scroll 0, with a queue long enough that the
+    // in-flow pill is thousands of px away, the header trigger is already
+    // inside the viewport and tappable.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const trigger = page.getByTestId("feedback-header-trigger");
+    await expect(trigger).toBeVisible();
+    const triggerBox = (await trigger.boundingBox())!;
+    expect(triggerBox).not.toBeNull();
+    expect(triggerBox.y).toBeGreaterThanOrEqual(0);
+    expect(triggerBox.y + triggerBox.height).toBeLessThanOrEqual(MOBILE_VIEWPORT.height);
+    // It really is a meaningful tap target (>= 40px, comfortably above the
+    // 24px WCAG 2.2 minimum) and not a 0px "technically present" element.
+    expect(triggerBox.width).toBeGreaterThanOrEqual(40);
+    expect(triggerBox.height).toBeGreaterThanOrEqual(40);
+    // ...and the pill it supplements is genuinely far away, so this test is
+    // not passing because the page happens to be short.
+    const pillY = (await page.getByRole("button", { name: /enviar feedback/i }).boundingBox())?.y;
+    if (pillY !== undefined) expect(pillY).toBeGreaterThan(MOBILE_VIEWPORT.height);
+
+    // (b) STRUCTURE — in normal flow, exactly like the pill. Asserted at the
+    // CSS level, not merely inferred from an absence of overlaps.
+    const position = await trigger.evaluate((el) => getComputedStyle(el).position);
+    expect(position).toBe("static");
+
+    // (b) GEOMETRY — the same sweep the pill is held to, applied to the new
+    // affordance. This is the assertion that a fixed re-implementation fails.
+    const scrollHeight = await page.evaluate(() => document.body.scrollHeight);
+    const maxScroll = Math.max(0, scrollHeight - MOBILE_VIEWPORT.height);
+    for (const frac of [0, 0.2, 0.5, 0.8, 1]) {
+      await page.evaluate((y) => window.scrollTo(0, y), Math.round(maxScroll * frac));
+      await page.waitForTimeout(50);
+      const box = await trigger.boundingBox();
+      if (!box) continue; // scrolled past the header — nothing to intersect
+      for (let i = 0; i < allRows.length; i++) {
+        const titleBox = await allRows[i].getByTestId("queue-row-title").boundingBox();
+        const badgeBox = await allRows[i].getByTestId("queue-row-badge").boundingBox();
+        if (!titleBox || !badgeBox) continue;
+        expect(rectsIntersect(box, titleBox), `row ${i} title overlaps the header trigger`).toBe(
+          false,
+        );
+        expect(rectsIntersect(box, badgeBox), `row ${i} badge overlaps the header trigger`).toBe(
+          false,
+        );
+      }
+    }
+
+    // And it actually opens the sheet — a decorative button would be worse
+    // than no button.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await trigger.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+  });
+
+  test("TICKET-72 — landing page: header trigger is on screen at 390px and 320px without scrolling", async ({
+    page,
+  }) => {
+    // The landing page mounts the same widget and had the same problem: the
+    // in-flow pill sits below the footer. It is also the page this ticket
+    // could NOT solve with a fixed pill — a probe measured 12 (178x48 pill),
+    // 8 (48px circle) and 7 (40px circle) intersections with interactive
+    // landing content across 21 scroll positions at 390px.
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto("/");
+      const trigger = page.getByTestId("feedback-header-trigger");
+      await expect(trigger).toBeVisible();
+      const box = (await trigger.boundingBox())!;
+      expect(box.y, `w=${width}: trigger above the fold`).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height, `w=${width}: trigger above the fold`).toBeLessThanOrEqual(844);
+      // Fully inside the viewport horizontally — no 320px overflow.
+      expect(box.x, `w=${width}: trigger not clipped left`).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, `w=${width}: trigger not clipped right`).toBeLessThanOrEqual(width);
+      expect(await trigger.evaluate((el) => getComputedStyle(el).position)).toBe("static");
+    }
+  });
+
+  test("TICKET-72 — desktop keeps only the fixed pill: no header trigger is rendered", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    // The landing page always renders a <header>, so the portal target
+    // genuinely exists here — this asserts the CSS hides the trigger, not
+    // that the element happens to be absent.
+    await page.goto("/");
+    const trigger = page.getByTestId("feedback-header-trigger");
+    await expect(trigger).toHaveCount(1);
+    await expect(trigger).toBeHidden();
+    expect(await trigger.evaluate((el) => getComputedStyle(el).display)).toBe("none");
+    // The desktop pill is still there and still fixed.
+    const fab = page.getByRole("button", { name: /enviar feedback/i });
+    expect(await fab.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
+  });
+
   test("desktop: no dead space is introduced at the bottom of the page, pill stays fixed", async ({
     page,
   }) => {
