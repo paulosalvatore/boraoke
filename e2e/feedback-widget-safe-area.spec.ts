@@ -303,7 +303,14 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
     await seedQueue(page, roomId, 25);
 
     await page.goto(`/${roomId}`);
-    await page.getByLabel("Seu apelido").fill("Verificador72");
+    // A deliberately LONG nickname (18 chars, well inside the 30-char limit).
+    // The patron header is a flex row carrying the language switcher, the
+    // greeting and the nickname alongside the portalled trigger; with a short
+    // nickname the row fits at any width and the test proves nothing about
+    // the narrow-phone case. The App Tester found exactly this defect with a
+    // realistic nickname: at 320px the trigger was pushed fully off-canvas
+    // (header scrollWidth 389 vs clientWidth 288) and ~15px clipped at 390px.
+    await page.getByLabel("Seu apelido").fill("MariaFernandaSilva");
     await page.getByRole("button", { name: /entrar na fila/i }).click();
     await page.getByRole("heading", { name: /adicionar música/i }).waitFor();
 
@@ -311,20 +318,54 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
     await expect(rows).toHaveCount(25, { timeout: 8000 });
     const allRows = await rows.all();
 
+    const trigger = page.getByTestId("feedback-header-trigger");
+
     // (a) DISCOVERABILITY — at scroll 0, with a queue long enough that the
     // in-flow pill is thousands of px away, the header trigger is already
-    // inside the viewport and tappable.
+    // fully inside the viewport and tappable. Checked at BOTH phone widths
+    // and in BOTH axes: an earlier build passed the vertical half of this
+    // while being horizontally clipped off the right edge, which is precisely
+    // the "the test avoided its own failure mode" trap this ticket's history
+    // is about.
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: MOBILE_VIEWPORT.height });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(50);
+      await expect(trigger).toBeVisible();
+      const box = (await trigger.boundingBox())!;
+      expect(box).not.toBeNull();
+      expect(box.y, `w=${width}: trigger top inside the viewport`).toBeGreaterThanOrEqual(0);
+      expect(
+        box.y + box.height,
+        `w=${width}: trigger bottom inside the viewport`,
+      ).toBeLessThanOrEqual(MOBILE_VIEWPORT.height);
+      expect(box.x, `w=${width}: trigger not clipped off the LEFT edge`).toBeGreaterThanOrEqual(0);
+      expect(
+        box.x + box.width,
+        `w=${width}: trigger not clipped off the RIGHT edge`,
+      ).toBeLessThanOrEqual(width);
+      // It really is a meaningful tap target (>= 40px, comfortably above the
+      // 24px WCAG 2.2 minimum) and not a 0px "technically present" element.
+      expect(box.width, `w=${width}: tap target width`).toBeGreaterThanOrEqual(40);
+      expect(box.height, `w=${width}: tap target height`).toBeGreaterThanOrEqual(40);
+      // The header itself must not overflow either — the mechanism behind the
+      // clipping was the header's content exceeding its own box.
+      const overflow = await page.evaluate(() => {
+        const h = document.querySelector("header")!;
+        return h.scrollWidth - h.clientWidth;
+      });
+      expect(overflow, `w=${width}: header horizontal overflow`).toBeLessThanOrEqual(1);
+      // The long nickname degrades by ellipsizing rather than by shoving the
+      // control off screen.
+      const nick = page.getByTestId("patron-nickname-button");
+      const nickBox = (await nick.boundingBox())!;
+      expect(nickBox.x + nickBox.width, `w=${width}: nickname stays in viewport`).toBeLessThanOrEqual(
+        width + 1,
+      );
+    }
+
+    await page.setViewportSize(MOBILE_VIEWPORT);
     await page.evaluate(() => window.scrollTo(0, 0));
-    const trigger = page.getByTestId("feedback-header-trigger");
-    await expect(trigger).toBeVisible();
-    const triggerBox = (await trigger.boundingBox())!;
-    expect(triggerBox).not.toBeNull();
-    expect(triggerBox.y).toBeGreaterThanOrEqual(0);
-    expect(triggerBox.y + triggerBox.height).toBeLessThanOrEqual(MOBILE_VIEWPORT.height);
-    // It really is a meaningful tap target (>= 40px, comfortably above the
-    // 24px WCAG 2.2 minimum) and not a 0px "technically present" element.
-    expect(triggerBox.width).toBeGreaterThanOrEqual(40);
-    expect(triggerBox.height).toBeGreaterThanOrEqual(40);
     // ...and the pill it supplements is genuinely far away, so this test is
     // not passing because the page happens to be short.
     const pillY = (await page.getByRole("button", { name: /enviar feedback/i }).boundingBox())?.y;

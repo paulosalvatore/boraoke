@@ -41,13 +41,34 @@ Accessible name is deliberately different from the pill's (`Feedback.title` — 
 - **Bounding the queue's scroll region (an app-shell layout with an inner scroller and a fixed bottom bar).** This would genuinely work geometrically, but it restructures the patron room's scrolling wholesale, cannot help the landing page (out of file scope), and would silently make the committed 5-fraction sweep vacuous by reducing `maxScroll` to 0 — a bad trade for a discoverability fix.
 - **Accept as-is.** Fails the acceptance criteria.
 
+## App Tester gate found a real defect — fixed, with the test gap closed
+
+The first pass of this fix shipped a clipped control and a test that could not see it. The App Tester (`work/reports/testing/TICKET-72-apptest.md`) measured, on the **patron room only**:
+
+- **320px:** trigger **fully off-canvas**, not visible at all. Header `scrollWidth 389` vs `clientWidth 288` — a 101px overflow.
+- **390px:** trigger right edge at `x=405.125` against a 390px viewport — ~15px clipped, a half-cut circle.
+- The **landing page** header handled the same trigger correctly at both widths.
+
+**Root cause (measured, not guessed).** The patron header was a rigid `justify-content: space-between` flex row with no `flex-wrap`, whose greeting group (`LanguageSwitcher` + "Oi," + nickname button) had no `min-width: 0` and no text truncation. With a short nickname it fits (a probe with "Carla" measured `scrollWidth == clientWidth == 288` at 320px — no overflow); with a realistic-length nickname the un-shrinkable greeting grows and pushes the **last** item — the trigger — past the viewport edge. So the trigger was the victim, not the cause: the header could already not absorb its own content.
+
+**Fix (`app/(patron)/[room]/PatronRoom.tsx`, in this ticket's file scope).** The greeting now degrades gracefully instead of shoving the trailing control off screen: `min-width: 0` + `flex-shrink: 1` + `overflow: hidden` on the greeting group, `text-overflow: ellipsis` on the nickname button, `flex-shrink: 0` on the language switcher and the "Oi," label so they never collapse, and `flex-wrap: wrap` + a `gap` on the header as a fallback for extreme text-zoom.
+
+**Test gap closed — this is the more important half.** The App Tester correctly identified that the suite asserted horizontal containment (`x + width <= viewportWidth`) **only on the landing page**, never on the patron room, which checked vertical bounds alone — the same "the test avoided its own failure mode" pattern that refuted TICKET-71 v1, reappearing inside the ticket created to fix it. The patron-room test now:
+
+- runs its discoverability assertions at **both 390px and 320px**;
+- asserts containment in **both axes** (left edge, right edge, top, bottom);
+- asserts the header itself does not overflow (`scrollWidth - clientWidth <= 1`) — the actual mechanism;
+- asserts the nickname stays inside the viewport (proving it ellipsizes rather than overflowing);
+- uses a deliberately **long nickname** ("MariaFernandaSilva", 18 chars) so the assertions have something to bite on. With a short nickname the row fits at any width and the test proves nothing.
+
+**Negative control for this specific fix:** `git stash` of `PatronRoom.tsx` alone (spec kept) → **RED**, on exactly the new assertion: `Error: w=390: trigger not clipped off the RIGHT edge / expect(received).toBeLessThanOrEqual(390)`. Green after restoring the fix.
+
 ## What changed
 
 - `components/FeedbackWidget.tsx` — portalled header trigger + the `useEffect` that resolves the portal target. No change to the pill, the spacer, the sheet, or the `/tv` exclusion.
 - `components/feedback/FeedbackWidget.module.css` — `.headerTrigger`, `display: none` by default and `inline-flex` only under `max-width: 700px`. Uses a literal gradient rather than `var(--g-stage)` because the portalled node is not a DOM descendant of `.root` and would not inherit tokens scoped there.
+- `app/(patron)/[room]/PatronRoom.tsx` — header made able to absorb its own content (see above). No behavioural change beyond layout; one `data-testid` added to the nickname button so the test can assert its containment.
 - `e2e/feedback-widget-safe-area.spec.ts` — three tests **added**. The five pre-existing tests are byte-for-byte unchanged.
-
-`app/(patron)/[room]/PatronRoom.tsx` was in scope but proved unnecessary — the portal covers both pages with one mechanism and a smaller diff.
 
 ## New regression coverage (and its teeth)
 
@@ -64,8 +85,10 @@ Accessible name is deliberately different from the pill's (`Feedback.title` — 
 - `npm test` → `Test Suites: 43 passed, 43 total` · `Tests: 683 passed, 683 total`
 - `npm run build` → clean production build
 - `npx tsc --noEmit` → 2230 lines of pre-existing baseline noise (jest/playwright globals undeclared for `__tests__/**` and `e2e/**`; no `typecheck` npm script exists, so tsc-clean is not a project gate). **Zero** lines mention `FeedbackWidget.tsx`, `FeedbackWidget.module.css` or `feedback-widget-safe-area.spec.ts`. Identical to the baseline recorded in TICKET-71's review.
-- `PORT=3184 npx playwright test e2e/feedback-widget-safe-area.spec.ts` → **8 passed**
-- Full Playwright suite → see the PR body.
+- `PORT=3184 npx playwright test e2e/feedback-widget-safe-area.spec.ts` → **8 passed (35.0s)**
+- `PORT=3184 npx playwright test` (full suite, foreground) → **80 passed (3.7m)**, exit 0, zero flakes
+
+**A note on a misleading intermediate run.** An earlier full-suite run reported `22 failed / 58 passed (18.1m)`, spread across `tv.spec`, `telemetry.spec`, `search.spec` and others with no connection to this change. Cause: `npm run build` had been run while a reused `next dev` server was still serving from the same `.next` directory, corrupting it mid-flight. After killing the port and clearing `.next`, the same commit ran **80 passed (8.8m)**, and again **80 passed (3.7m)** after the header fix. Recorded here so nobody re-derives it: never run `npm run build` against this worktree while a dev server is live on the same port.
 
 ## Not in scope
 
