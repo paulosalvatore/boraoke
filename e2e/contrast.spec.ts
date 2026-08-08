@@ -278,9 +278,11 @@ test.beforeEach(async ({ page }) => {
 // ─── Landing page + join-code input (the TICKET-20 bug surface) ───────────
 
 test.describe("landing page contrast", () => {
-  test("heading and join-by-code section heading meet AA", async ({ page }) => {
+  test("hero h1 and join-by-code section heading meet AA", async ({ page }) => {
     await page.goto("/");
-    await assertAA(page.getByRole("heading", { level: 1 }), "landing: h1 brand heading");
+    // TICKET-69: the h1 is now the hero hook, not the brand wordmark (the brand
+    // moved into the header as plain text).
+    await assertAA(page.getByRole("heading", { level: 1 }), "landing: hero h1");
     await assertAA(
       page.getByRole("heading", { name: /código da sala|tem um código/i }),
       "landing: join-by-code section heading",
@@ -299,7 +301,8 @@ test.describe("landing page contrast", () => {
     async ({ page }) => {
       await page.goto("/");
       await assertAA(
-        page.getByRole("link", { name: /criar a sala do seu bar/i }),
+        // TICKET-69 renamed this CTA to "Começar agora — é grátis" (Direction 2).
+        page.getByRole("link", { name: /começar agora/i }),
         "landing: create-room CTA button text",
       );
     },
@@ -329,9 +332,84 @@ test.describe("landing page contrast", () => {
     ).not.toBe(cardBg);
   });
 
-  test("footer + tagline (muted text) meet AA against the page background", async ({ page }) => {
+  /**
+   * TICKET-69 closed a coverage gap the opus review flagged: the "Demo vivo"
+   * rebuild added ~20 new text styles (venue chips, early-access pill, the TV
+   * mock's rotation tag / now-playing labels / striped up-next rail, the phone
+   * caption at 0.68rem, the bullet bodies) and NONE of them were pinned here —
+   * the suite only ever asserted the h1, the join heading, the input and the
+   * footer. They all pass today, but nothing would have caught a future token
+   * change silently breaking them. The tightest pair is the muted `.who` text
+   * on the rail's odd-row fill, so it is asserted explicitly rather than left
+   * to a spot check. Suite locale is pinned to pt-BR (see playwright.config).
+   */
+  test("Direction-2 hero, TV mock, chips and bullets all meet AA (TICKET-69)", async ({ page }) => {
     await page.goto("/");
-    await assertAA(page.locator("footer span").first(), "landing: footer copy (text-muted on --bg)");
+
+    await assertAA(page.getByText("Grátis · acesso antecipado"), "landing: early-access pill");
+    // Venue LABELS, not chips: the selected/unselected filter styling was
+    // removed (it promised TICKET-32 venue presets, which do not ship), so all
+    // four are now equally weighted --text on --bg.
+    await assertAA(page.getByText("No bar", { exact: true }), "landing: venue label (first)");
+    await assertAA(page.getByText("Na festa", { exact: true }), "landing: venue label (second)");
+    await assertAA(page.getByText(/^Onde dá pra usar$/), "landing: venue lead-in");
+    await assertAA(page.getByRole("heading", { level: 1 }).locator("em"), "landing: hero h1 accent span");
+    await assertAA(page.getByText(/Cada pessoa escaneia o QR/), "landing: hero sub-copy");
+    await assertAA(page.getByText(/Sua sala fica pronta em 30 segundos/), "landing: CTA microcopy");
+
+    // The static TV mock — its own dark fills, distinct from --bg/--surface.
+    await assertAA(page.getByText("rodízio: uma por pessoa"), "landing mock: rotation tag");
+    await assertAA(page.getByText("Tocando agora"), "landing mock: now-playing label");
+    await assertAA(page.getByText(/Evidências/), "landing mock: now-playing title");
+    await assertAA(page.getByText(/Ana · mesa 4/), "landing mock: now-playing meta");
+    await assertAA(page.getByText("Próximas"), "landing mock: up-next label");
+    // Tightest new pair: --text-muted on the odd-row striped fill.
+    await assertAA(page.getByText("Rafa · mesa 7"), "landing mock: up-next 'who' on striped row");
+    await assertAA(page.getByText("Garota de Ipanema"), "landing mock: up-next title on flat row");
+    await assertAA(page.getByText("Escaneou, entrou."), "landing mock: phone caption heading");
+
+    await assertAA(page.getByRole("heading", { name: /entra com qr, sem app/i }), "landing: bullet heading");
+    await assertAA(page.getByText(/Zero fricção pros convidados/), "landing: bullet body");
+  });
+
+  /**
+   * The one node on this page where the TICKET-66 token split is actually
+   * LOAD-BEARING, found by an opus reviewer's negative control: forcing
+   * `--accent-text` back to `--accent` leaves every other new assertion above
+   * passing, because every other accent-as-text node sits on `--bg` where BOTH
+   * tokens clear AA (5.81:1 vs 4.66:1). This link is the exception — it sits on
+   * the `--surface` join strip, where `--accent-text` is 5.21:1 but `--accent`
+   * is 4.18:1, a real AA failure. Without this assertion the suite would not
+   * notice the token being reverted here.
+   *
+   * It needs `cantai_last_room` seeded, since the link only renders for a
+   * returning visitor (the key is deliberately the legacy TICKET-33 name — it
+   * is live state on real devices).
+   */
+  test("last-room quick-entry link meets AA on the --surface join strip (TICKET-69)", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => window.localStorage.setItem("cantai_last_room", "bar-do-ze"));
+    await page.reload();
+
+    const link = page.getByTestId("last-room-link");
+    await expect(link).toBeVisible();
+    await assertAA(link, "landing: last-room link (accent-as-text on --surface)");
+
+    // Pin the resolved paint, not the token name: this must be the accent-TEXT
+    // token (#ee5a64), never the border/UI accent (#e63946) that fails here.
+    const color = await link.evaluate((el) => getComputedStyle(el).color);
+    expect(
+      color,
+      `last-room link must paint --accent-text rgb(238, 90, 100); rgb(230, 57, 70) is --accent and measures 4.18:1 on --surface`,
+    ).toBe("rgb(238, 90, 100)");
+  });
+
+  test("footer copy meets AA against the page background", async ({ page }) => {
+    await page.goto("/");
+    // TICKET-69: the first footer span is now the free-forever promise
+    // (accent on --bg); the second is the muted early-access line.
+    await assertAA(page.locator("footer span").first(), "landing: footer free-promise (accent on --bg)");
+    await assertAA(page.locator("footer span").nth(1), "landing: footer copy (text-muted on --bg)");
   });
 });
 

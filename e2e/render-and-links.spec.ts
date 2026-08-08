@@ -78,12 +78,134 @@ test.beforeEach(async ({ page }) => {
 test("landing renders create CTA + a working join-code input", async ({ page }) => {
   await page.goto("/");
   // create-your-room CTA
-  await expect(page.getByRole("link", { name: /criar a sala do seu bar/i })).toBeVisible();
+  // TICKET-69: the landing is now Direction 2 ("Demo vivo") — the create CTA
+  // reads "Começar agora — é grátis" and still points at /new in one click.
+  const createCta = page.getByRole("link", { name: /começar agora/i });
+  await expect(createCta).toBeVisible();
+  await expect(createCta).toHaveAttribute("href", "/new");
   // join-by-code input (TICKET-20 bug #2: must be present + usable)
   const codeInput = page.getByLabel(/código da sala/i);
   await expect(codeInput).toBeVisible();
   await codeInput.fill("bar-teste");
   await expect(page.getByRole("button", { name: /^entrar$/i })).toBeEnabled();
+});
+
+/**
+ * TICKET-69 / TL decision: the four venue names are a MESSAGE ("boraoke is not
+ * bar-only"), not a control. They shipped briefly as filter chips with one
+ * "selected", which promised per-venue switching that does not exist — venue
+ * presets are TICKET-32, Phase 3, not started. This pins the honest version so
+ * a future restyle cannot quietly re-add the affordance: the names must be
+ * visible, and none of them may be activatable or announced as selectable.
+ */
+test("landing venue labels are visible but NOT interactive (no promised filter)", async ({ page }) => {
+  await page.goto("/");
+
+  const names = ["No bar", "Na festa", "No condomínio", "Na empresa"];
+  for (const name of names) {
+    await expect(page.getByText(name, { exact: true })).toBeVisible();
+  }
+
+  // Nothing activatable carrying a venue name: no button/link/tab/option role,
+  // no aria-selected, no tabindex, no click handler affordance.
+  for (const name of names) {
+    for (const role of ["button", "link", "tab", "option", "radio", "checkbox"] as const) {
+      await expect(
+        page.getByRole(role, { name, exact: true }),
+        `venue name "${name}" must not be exposed as a ${role} — venue presets (TICKET-32) do not ship`,
+      ).toHaveCount(0);
+    }
+  }
+
+  const interactive = await page.evaluate((venueNames) => {
+    const hits: string[] = [];
+    for (const el of Array.from(document.querySelectorAll("*"))) {
+      const text = (el.textContent ?? "").trim();
+      if (!venueNames.includes(text)) continue;
+      if (el.children.length > 0) continue; // leaf node carrying the name only
+      const tag = el.tagName.toLowerCase();
+      if (["button", "a", "input", "select", "summary"].includes(tag)) hits.push(`${text}:<${tag}>`);
+      if (el.hasAttribute("tabindex")) hits.push(`${text}:tabindex`);
+      if (el.hasAttribute("aria-selected")) hits.push(`${text}:aria-selected`);
+      if (el.hasAttribute("role")) hits.push(`${text}:role=${el.getAttribute("role")}`);
+      if (getComputedStyle(el).cursor === "pointer") hits.push(`${text}:cursor-pointer`);
+    }
+    return hits;
+  }, names);
+
+  expect(
+    interactive,
+    "venue labels must carry no interactive tag/role/tabindex/aria-selected/pointer-cursor",
+  ).toEqual([]);
+});
+
+/**
+ * Accessible-NAME assertions for the same block, kept separate because they
+ * exist for a specific reason: the first version of this markup shipped with
+ * two code comments that described intent rather than observed behaviour, and
+ * both were false. Chromium folded the decorative "·" (then a CSS `::after`)
+ * into each listitem's accessible name, and an `aria-labelledby` on the list
+ * made the lead-in announce twice. Reading the CSS could never have caught
+ * either — only the a11y tree shows it — so it is pinned here.
+ */
+test("landing venue labels expose clean accessible names (no separator, no double-announce)", async ({ page }) => {
+  await page.goto("/");
+
+  const venues = ["No bar", "Na festa", "No condomínio", "Na empresa"];
+  const lead = "Onde dá pra usar";
+
+  // Read the REAL accessibility tree out of Chromium (CDP), rather than
+  // inferring it from the DOM or the CSS — inference is precisely what produced
+  // the two false claims this test exists to prevent. Chromium is the only
+  // browser this suite runs (see playwright.config.ts projects).
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Accessibility.enable");
+  const { nodes } = (await cdp.send("Accessibility.getFullAXTree")) as {
+    nodes: { ignored?: boolean; role?: { value?: string }; name?: { value?: string } }[];
+  };
+  const axNames = nodes
+    .filter((n) => !n.ignored && n.name?.value)
+    .map((n) => n.name!.value as string);
+
+  // Each venue name must reach the a11y tree as its own exact node. If the
+  // decorative "·" were folded in (it was, as a CSS ::after) the node would
+  // read "No bar·" and this fails.
+  for (const venue of venues) {
+    expect(
+      axNames,
+      `"${venue}" must reach the accessibility tree as an exact name — a decorative separator must not be folded in`,
+    ).toContain(venue);
+    expect(
+      axNames.filter((n) => n.startsWith(venue) && n.includes("·")),
+      `no a11y node may announce "${venue}" with the decorative separator attached`,
+    ).toEqual([]);
+  }
+
+  // The lead-in must not ALSO become the list's accessible name — that
+  // aria-labelledby was what made it announce twice.
+  const listNaming = await page
+    .locator("ul")
+    .filter({ hasText: venues[0] })
+    .evaluate((el) => ({
+      ariaLabel: el.getAttribute("aria-label"),
+      ariaLabelledby: el.getAttribute("aria-labelledby"),
+    }));
+  expect(
+    listNaming,
+    `the venue list must carry no accessible name — the visible "${lead}" lead-in already supplies the framing`,
+  ).toEqual({ ariaLabel: null, ariaLabelledby: null });
+
+  // The separators must be explicitly hidden from assistive tech.
+  const seps = await page
+    .locator("ul")
+    .filter({ hasText: venues[0] })
+    .evaluate((el) =>
+      Array.from(el.querySelectorAll("li > span"))
+        .filter((s) => (s.textContent ?? "").trim() === "·")
+        .map((s) => s.getAttribute("aria-hidden")),
+    );
+  expect(seps.length, "expected one separator between each pair of venue names").toBe(venues.length - 1);
+  expect(seps.every((v) => v === "true"), "every decorative separator must be aria-hidden").toBe(true);
 });
 
 test("/new renders the create form", async ({ page }) => {
