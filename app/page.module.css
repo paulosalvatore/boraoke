@@ -110,10 +110,18 @@
   color: var(--text);
 }
 
-/* Decorative separator so the four names read as one line of prose. A
-   pseudo-element keeps it out of the accessible name and out of textContent. */
-.venueList li:not(:last-child)::after {
-  content: "·";
+/*
+ * Decorative separator so the four names read as one line of prose.
+ *
+ * This was a `::after` pseudo-element, on the assumption that generated content
+ * stays out of the accessible name. That assumption was WRONG and an
+ * independent verifier caught it: Chromium folds generated content into the
+ * name, so each listitem announced as "No bar·". It is now a real
+ * `aria-hidden` <span> in the markup, which genuinely is excluded from name
+ * computation — asserted in e2e/render-and-links.spec.ts against the actual
+ * accessibility tree, not against this comment.
+ */
+.venueSep {
   color: var(--text-muted);
   font-weight: 400;
   margin-left: 0.55rem;

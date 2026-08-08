@@ -189,3 +189,55 @@ Evidence re-captured on this exact code (`landing-desktop-1440x900.png`, `landin
 | iframes / off-origin requests / console errors | 0 / none / none |
 
 **Untouched, per instruction:** the QR card's occlusion of some up-next titles (needs a design call) and the mobile FeedbackWidget overlap (TICKET-71).
+
+## Addendum 4 — two false code comments, corrected against the real a11y tree
+
+An independent verifier returned CONFIRMED-WITH-CORRECTIONS on the chip restyle and caught two comments in my own code that asserted behaviour I had never observed. Both were wrong, and both were invisible to anyone reading the CSS — only the accessibility tree shows them.
+
+1. **`app/page.module.css`** claimed the `::after` separator "keeps it out of the accessible name". False — Chromium folds generated content into the name, so each listitem announced as `No bar·`.
+2. **`app/page.tsx`** claimed `aria-labelledby` framed the list "without duplicating the text". False — "Onde dá pra usar" was announced twice, once as the visible text node and once as the list's accessible name.
+
+**Fixes.** The separator is now a real `<span aria-hidden="true">·</span>` per item instead of a pseudo-element, and each venue name sits in its own span. The `aria-labelledby` is gone — the visible lead-in already supplies the framing in DOM order. Both comments were rewritten to describe what was measured.
+
+**Verified by reading Chromium's accessibility tree over CDP** (`Accessibility.getFullAXTree`), not by reading the CSS — the whole failure mode here was writing from intent:
+
+```
+--- nodes named exactly "Onde dá pra usar" ---
+  role=StaticText       name="Onde dá pra usar"
+  role=InlineTextBox    name="Onde dá pra usar"
+  COUNT = 2   (one logical occurrence: InlineTextBox is StaticText's own layout child)
+--- venue <ul> naming attributes ---
+  {"ariaLabel":null,"ariaLabelledby":null}
+--- any a11y node whose name contains "·" ---
+  "GRÁTIS · ACESSO ANTECIPADO", "Boraoke early access · pt-BR / EN / ES",
+  "Ana · mesa 4 · vai cantar 🎤", "Rafa · mesa 7", "Bia · mesa 2",
+  "Dudu · mesa 4", "Carla · mesa 1 · só ouvir 🎧"
+```
+Every remaining interpunct belongs to unrelated copy (the pill, the footer, the TV mock's own meta lines). **No venue node carries one**, and the list is no longer named after the lead-in.
+
+**A third false claim — mine, caught by the same probe.** My first version of the new test asserted `getByRole("listitem", { name, exact: true })`. The AX dump shows listitems take **no** name from content, so that assertion would have failed. It was rewritten to assert against the CDP tree directly. Worth recording: writing the test from intent nearly reproduced the exact bug the test was for.
+
+**Pinned by `e2e/render-and-links.spec.ts`** — "landing venue labels expose clean accessible names (no separator, no double-announce)": each venue name must reach the AX tree as an exact node, no node may announce a venue name with the separator attached, the list must carry no `aria-label`/`aria-labelledby`, and every separator span must be `aria-hidden="true"`.
+
+Negative control (the test is a real guard, not a tautology) — dropping `aria-hidden` from the separator:
+```
+✘ landing venue labels expose clean accessible names (no separator, no double-announce)
+  Error: every decorative separator must be aria-hidden
+1 failed
+```
+then passing again on restore.
+
+### Verification after this fix
+
+```
+$ npm test
+Test Suites: 43 passed, 43 total
+Tests:       683 passed, 683 total
+
+$ npm run build
+ ✓ Compiled successfully in 5.6s
+
+$ rm -rf .next && PORT=3181 npx playwright test
+  72 passed (3.3m)
+```
+Whole suite: **72 passed, 0 failed, 0 skipped**. The contrast suite is **18** tests on this branch (16 on `main` + the two this ticket added). Evidence re-captured on this exact code; the visual is unchanged by the fix (separators still render), and the venue row still reads as plain labels.

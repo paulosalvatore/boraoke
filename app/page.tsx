@@ -89,19 +89,39 @@ export default function Landing() {
               filter chips with one "selected", which promised per-venue
               switching that does not exist (venue presets are TICKET-32, Phase
               3). Now they are plain labels: no roles, no aria-selected, no
-              tabindex, nothing to activate — the lead-in is visible so the row
-              reads as a statement, and `aria-labelledby` gives the list the
-              same framing without duplicating the text for screen readers.
+              tabindex, nothing to activate.
+
+              Two a11y details, both VERIFIED against Chromium's accessibility
+              tree rather than assumed (an earlier version of this comment
+              claimed things that turned out to be false — see
+              e2e/render-and-links.spec.ts, which now asserts the accessible
+              names so the claim cannot rot again):
+
+              - The "·" separators are real `aria-hidden` spans, NOT a CSS
+                `::after`. Chromium folds generated content INTO the accessible
+                name, so the pseudo-element version made each listitem announce
+                as "No bar·". Each name therefore sits in its own span, keeping
+                the listitem's accessible name exactly the venue name.
+              - The lead-in carries NO `aria-labelledby` link to the list. It
+                had one, which made "Onde dá pra usar" announce twice — once as
+                the visible text node, once as the list's accessible name. The
+                visible span already supplies the framing in DOM order.
             */}
             <div className={styles.venues}>
-              <span className={styles.venuesLead} id="landing-venues-lead">
-                {t("venuesLabel")}
-              </span>
-              <ul className={styles.venueList} aria-labelledby="landing-venues-lead">
-                <li>{t("chipBar")}</li>
-                <li>{t("chipParty")}</li>
-                <li>{t("chipCondo")}</li>
-                <li>{t("chipCompany")}</li>
+              <span className={styles.venuesLead}>{t("venuesLabel")}</span>
+              <ul className={styles.venueList}>
+                {[t("chipBar"), t("chipParty"), t("chipCondo"), t("chipCompany")].map(
+                  (venue, i, all) => (
+                    <li key={venue}>
+                      <span>{venue}</span>
+                      {i < all.length - 1 && (
+                        <span className={styles.venueSep} aria-hidden="true">
+                          ·
+                        </span>
+                      )}
+                    </li>
+                  ),
+                )}
               </ul>
             </div>
 
