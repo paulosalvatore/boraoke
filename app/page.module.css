@@ -1,0 +1,480 @@
+/*
+ * Landing — Direction 2 "Demo vivo" (TICKET-69).
+ *
+ * Ported from the approved mockup work/design/landing-rethink/mockup-2-demo-vivo.html.
+ *
+ * Token roles (TICKET-66, now on main) are followed strictly and never
+ * redefined here — this file declares ZERO custom properties:
+ *   `--accent`       → borders, focus rings, non-text UI only (chip/pill
+ *                      borders, the bullet rules)
+ *   `--accent-text`  → every accent-coloured TEXT node (pill label, active
+ *                      chip, the h1 highlight, the mock's now-playing and
+ *                      rotation labels, the free-forever promise, the
+ *                      last-room link)
+ *   `--accent-strong`→ never referenced directly; it reaches the CTA through
+ *                      the GLOBAL `.btn-primary` class, which this module
+ *                      overrides for LAYOUT only (width/display), with an
+ *                      element-qualified selector so the override wins
+ *                      regardless of stylesheet order.
+ *
+ * Two deliberate deviations from the mockup:
+ *  1. The TV screen uses flat fills instead of the mockup's gradient, so the
+ *     computed-contrast suite (e2e/contrast.spec.ts) can resolve a real painted
+ *     background for every text node inside the mock.
+ *  2. The QR phone card sits slightly lower/further left than the mockup, which
+ *     occluded all four up-next titles — this direction's whole premise is that
+ *     the visitor SEES the queue.
+ */
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.pill {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+/*
+ * ── venue labels ────────────────────────────────────────────────────────
+ *
+ * These were pill "chips" with a selected/unselected split (one accent-
+ * outlined, three muted) — the universal grammar of a filter control. They are
+ * inert `<li>`s and venue presets are TICKET-32 / Phase 3, NOT STARTED, so that
+ * styling promised a control that does not exist. The Tech Lead's call was to
+ * make them honest now: plain labels.
+ *
+ * So: no pill outline, no radius, no selected state, no hover, no cursor
+ * change — nothing that reads as activatable. What survives is the message
+ * itself (boraoke is not bar-only), which is the main reason this direction was
+ * chosen, carried by a visible lead-in and four equally-weighted names read as
+ * a sentence. When TICKET-32 lands they can become real filter chips, and the
+ * affordance will then be telling the truth.
+ */
+
+.venues {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.82rem;
+}
+
+.venuesLead {
+  color: var(--text-muted);
+}
+
+.venueList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.venueList li {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/*
+ * Decorative separator so the four names read as one line of prose.
+ *
+ * This was a `::after` pseudo-element, on the assumption that generated content
+ * stays out of the accessible name. That assumption was WRONG and an
+ * independent verifier caught it: Chromium folds generated content into the
+ * name, so each listitem announced as "No bar·". It is now a real
+ * `aria-hidden` <span> in the markup, which genuinely is excluded from name
+ * computation — asserted in e2e/render-and-links.spec.ts against the actual
+ * accessibility tree, not against this comment.
+ */
+.venueSep {
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 0.55rem;
+}
+
+/* ── hero ───────────────────────────────────────────────────────────────── */
+
+.hero {
+  display: grid;
+  grid-template-columns: 5fr 6fr;
+  gap: 2.5rem;
+  align-items: center;
+  padding: 1.5rem 0 3rem;
+}
+
+.hero h1 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin-bottom: 1rem;
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: var(--accent-text);
+}
+
+.heroSub {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  margin-bottom: 1.75rem;
+  max-width: 46ch;
+}
+
+/* Layout-only override of the global .btn-primary (which is width: 100%). */
+a.cta {
+  display: inline-block;
+  width: auto;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.9rem 2rem;
+}
+
+.fine {
+  margin-top: 0.8rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ── TV + phone mock (purely presentational: no iframe, no fetch) ───────── */
+
+.stage {
+  position: relative;
+  /* Room for the phone card that overhangs the TV's bottom-left corner. */
+  margin-bottom: 5.5rem;
+}
+
+.tv {
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.1rem;
+  box-shadow: 0 20px 60px rgba(230, 57, 70, 0.12);
+}
+
+.screen {
+  background: #140d0e;
+  border-radius: 8px;
+  padding: 1.1rem;
+}
+
+.now {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.thumb {
+  width: 92px;
+  height: 56px;
+  border-radius: 6px;
+  background: #5c1f25;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+}
+
+.nowLabel {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.nowTitle {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.nowMeta {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.railLabel {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.rail ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.rail li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  padding: 0.42rem 0.5rem;
+  border-radius: 6px;
+}
+
+.rail li:nth-child(odd) {
+  background: #211a1b;
+}
+
+.rail .who {
+  color: var(--text-muted);
+  flex: none;
+}
+
+.rotationTag {
+  position: absolute;
+  top: -0.85rem;
+  right: 1rem;
+  /* --bg, not the mockup's --surface: it reads as a tag lifted off the TV
+     rather than a chip sunk into it, and gives the label the widest margin
+     (--accent-text on --bg = 5.81:1, vs 5.21:1 on --surface). */
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--accent-text);
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 11px;
+}
+
+.phone {
+  position: absolute;
+  /* Nudged down/left vs the mockup so the up-next rail stays readable — the
+     whole point of this direction is that the visitor SEES the queue. */
+  bottom: -4.75rem;
+  left: -3rem;
+  width: 138px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0.7rem;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+}
+
+.qr {
+  background: #fff;
+  border-radius: 8px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.qr svg {
+  width: 74%;
+  height: 74%;
+}
+
+.phone p {
+  font-size: 0.68rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.phone p strong {
+  color: var(--text);
+  display: block;
+  font-size: 0.75rem;
+}
+
+/* ── feature bullets ────────────────────────────────────────────────────── */
+
+.bullets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  padding: 1rem 0 2.5rem;
+}
+
+.bullet {
+  border-top: 2px solid var(--accent);
+  padding-top: 0.8rem;
+}
+
+.bullet h2 {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.bullet p {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+/* ── join-by-code strip ─────────────────────────────────────────────────── */
+
+.joinStrip {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  flex-wrap: wrap;
+}
+
+.joinStrip h2 {
+  font-size: 1rem;
+  flex: none;
+}
+
+.joinForm {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 230px;
+}
+
+.joinInput {
+  flex: 1;
+  min-width: 0;
+  /* Must NOT be --surface: that is the strip's own fill (the TICKET-20
+     camouflage bug, now guarded by e2e/contrast.spec.ts). */
+  background: var(--bg);
+  border-color: var(--text-muted);
+}
+
+button.joinBtn {
+  width: auto;
+  min-width: 90px;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.95rem;
+}
+
+.joinHint {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.lastRoom {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/*
+ * The last-room quick-entry link, on the `--surface` join strip.
+ *
+ * TICKET-66 has since made the GLOBAL `a` rule `--accent-text` too, so this
+ * declaration is now belt-and-braces rather than load-bearing — it keeps the
+ * link on the accent-as-TEXT token explicitly, so a future change to the
+ * global link colour cannot quietly drop it back onto `--accent` (#e63946 =
+ * 4.18:1 on --surface, under the AA floor). #ee5a64 on --surface = 5.21:1.
+ *
+ * The underline is the real addition: it stops the link being identified by
+ * colour alone.
+ */
+.lastRoomLink {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
+/* ── footer ─────────────────────────────────────────────────────────────── */
+
+.footer {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 2.5rem 0;
+}
+
+.freePromise {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* ── responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+    padding-top: 0.5rem;
+  }
+
+  .bullets {
+    grid-template-columns: 1fr;
+  }
+
+  a.cta {
+    display: block;
+    width: 100%;
+  }
+
+  /* Keep the overhanging phone card inside the viewport at every width. */
+  .phone {
+    left: auto;
+    right: 0;
+    bottom: -3rem;
+    width: 124px;
+  }
+
+  .stage {
+    margin-bottom: 3rem;
+  }
+
+  .thumb {
+    width: 72px;
+    height: 44px;
+  }
+
+  .rail li {
+    /* Long song titles must wrap rather than push the page sideways. */
+    flex-wrap: wrap;
+    gap: 0 0.5rem;
+  }
+
+  .rail .who {
+    flex: none;
+  }
+}
