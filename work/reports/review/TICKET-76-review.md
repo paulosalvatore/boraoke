@@ -248,3 +248,40 @@ res.headers.set("Cache-Control", "private, no-store");
 
   Every previously-failing test passes on clean state. Combined with the 70 that passed in the first run, **the whole suite is green on this branch**. This also matches the dev report's `77 passed (5.7m)`, and incidentally explains the 15.4m vs 5.7m runtime gap (retries against poisoned state).
 - All HTTP evidence above captured against servers I started myself on **port 3188 only**; the shared checkout and sibling worktrees were never touched.
+
+---
+
+## Delta review (`3075510..1dee3e9`)
+
+**Verdict unchanged: APPROVE.** The delta addresses LOW-1/LOW-2 in code and MEDIUM-1/MEDIUM-2/NIT-2 in the docs and tests. Nothing regressed; no new findings.
+
+**Code — `app/api/host/session/route.ts` only.** A `noStore()` helper sets `Cache-Control: private, no-store` and is applied to all three GET returns (400 / 401 / 200). It sets a header on an already-constructed `NextResponse` and is invoked *before* `res.cookies.set(...)` on the 200 path, so it cannot interfere with the cookie. Confirmed on the wire against a fresh production build (`next start -p 3188`, `HOST_TOKEN` set):
+
+```
+=== 200 probe ===
+HTTP/1.1 200 OK
+cache-control: private, no-store
+set-cookie: cantai_host=d2059aba…20cc; Path=/api/host; Expires=Mon, 07 Sep 2026 23:03:15 GMT; Max-Age=2592000; Secure; HttpOnly; SameSite=lax
+
+=== 401 no cookie ===    HTTP/1.1 401  cache-control: private, no-store   (no set-cookie)
+=== 401 forged cookie === HTTP/1.1 401  cache-control: private, no-store   (no set-cookie)
+=== 400 malformed room === HTTP/1.1 400 cache-control: private, no-store   (no set-cookie)
+=== POST logout ===      HTTP/1.1 200  set-cookie: cantai_host=; Path=/api/host; Max-Age=0
+```
+
+Every attribute I verified in the original review is intact — `Max-Age=2592000`, `Secure` under the prod build, `HttpOnly`, `SameSite=lax`, `Path=/api/host` — and no failing path emits a `Set-Cookie`. `POST` carries no `no-store`, which is correct: POST responses are not cacheable without explicit opt-in.
+
+**Docs.** MEDIUM-2 is now stated accurately, naming the public-landing-page probe as the mechanism and the exposure as *"indefinitely, for as long as the device keeps visiting the site"*. MEDIUM-1 is now recorded as a same-release follow-up stating plainly that `POST /api/host/session` has zero callers and no logout UI exists today. Both match my findings; the remaining out-of-boundary items (`AdminRoom.tsx` logout control, the stale `room-memory.ts` comment) stay correctly filed rather than smuggled in.
+
+**Tests.** The tautological test (NIT-2) is replaced by one asserting the cookie's actual `expires` lands between 29 and 30 days out — a genuine wire-shaped assertion — plus a new test asserting `private, no-store` on both the 200 and 401 branches. Re-verified myself:
+
+```
+$ npm test
+Test Suites: 43 passed, 43 total
+Tests:       694 passed, 694 total
+
+$ npm run build
+✓ Compiled successfully   ·   ƒ /api/host/session
+```
+
+e2e not re-run for the delta (the change is a response header plus doc/test edits, with no route, redirect, or UI surface touched); the dev's clean 77/77 run is consistent with my own combined-green result above.
