@@ -71,16 +71,6 @@ export function FeedbackWidget() {
 
   return (
     <div className={styles.root}>
-      {/*
-       * TICKET-71: reserved-space spacer. Meaningful on DESKTOP, where the
-       * fab stays `position: fixed` (see the CSS module) and this guarantees
-       * clearance after the true last row once fully scrolled. On mobile the
-       * fab itself is now in normal flow (no longer fixed), so this collapses
-       * to a small safe-area-only gap — see `.spacer` in the CSS module for
-       * the exact per-breakpoint sizing. Kept unconditional (not tied to
-       * `open`) so opening the sheet never shifts page layout.
-       */}
-      <div className={styles.spacer} data-testid="feedback-pill-spacer" aria-hidden="true" />
       {!open && (
         <button
           type="button"
@@ -94,6 +84,20 @@ export function FeedbackWidget() {
           {t("trigger")}
         </button>
       )}
+
+      {/*
+       * TICKET-71: reserved-space spacer. Meaningful on DESKTOP, where the
+       * fab stays `position: fixed` (see the CSS module) and this guarantees
+       * clearance after the true last row once fully scrolled. On mobile the
+       * fab itself is now in normal flow (no longer fixed), so this collapses
+       * to a small safe-area-only gap AFTER the pill — rendered here, right
+       * after the fab in the DOM (not before it), specifically so that gap
+       * lands BELOW the in-flow pill, clearing the iPhone home-indicator the
+       * way it's meant to, rather than as dead space above it. Kept
+       * unconditional (not tied to `open`) so opening the sheet never shifts
+       * page layout.
+       */}
+      <div className={styles.spacer} data-testid="feedback-pill-spacer" aria-hidden="true" />
 
       {open && (
         <div

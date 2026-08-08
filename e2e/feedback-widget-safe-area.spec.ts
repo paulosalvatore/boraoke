@@ -257,6 +257,19 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
     expect(spacerHeight).toBeGreaterThanOrEqual(34 - 1);
     expect(spacerHeight).toBeLessThan(60); // not the old ~114px pill-footprint reservation
 
+    // The gap must land BELOW the pill (clearing the home-indicator), not
+    // above it — a real defect the App Tester/Reviewer gate caught: an
+    // earlier commit rendered the spacer div BEFORE the fab in the DOM, so
+    // the safe-area gap appeared above the pill instead, achieving nothing
+    // for its stated purpose. Assert the actual relative position, not just
+    // the spacer's own height.
+    const fab = page.getByRole("button", { name: /enviar feedback/i });
+    const fabBox = await fab.boundingBox();
+    const spacerBox = await page.locator('[data-testid="feedback-pill-spacer"]').boundingBox();
+    expect(fabBox).not.toBeNull();
+    expect(spacerBox).not.toBeNull();
+    expect(spacerBox!.y).toBeGreaterThanOrEqual(fabBox!.y + fabBox!.height - 1);
+
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(100);
     const allRows = await rows.all();
