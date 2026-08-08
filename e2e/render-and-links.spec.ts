@@ -268,6 +268,14 @@ test("/[room]/tv renders a sane idle state with an empty queue", async ({ page }
 });
 
 test("/[room]/admin: login → controls + mode switcher + customer-screen links", async ({ page }) => {
+  // TICKET-77: `warmUp` (beforeEach, above) logs the shared browser context
+  // into the `default` room via DEV_TOKEN so every route pre-compiles — that
+  // ALSO leaves a valid default-room session cookie sitting in this context,
+  // which would silently satisfy the analytics probe below regardless of this
+  // test's own room login and defeat the "must not render" assertion. A real
+  // venue host never has that cookie, so strip it here to test the honest
+  // scenario: a session minted from nothing but this room's own hostCode.
+  await page.context().clearCookies();
   const { id, hostCode } = await createRoom(page, "Bar Render Admin");
   await page.goto(`/${id}/admin`);
 
@@ -287,6 +295,26 @@ test("/[room]/admin: login → controls + mode switcher + customer-screen links"
   // TICKET-20 #5: links to both customer-facing screens of this room
   await expect(page.getByTestId("admin-patron-link")).toHaveAttribute("href", `/${id}`);
   await expect(page.getByTestId("admin-tv-link")).toHaveAttribute("href", `/${id}/tv`);
+  // TICKET-77: this room's host session was minted from its OWN hostCode, not
+  // the site-wide HOST_TOKEN, so /api/host/session?room=default 401s for it —
+  // the Analytics link must not render at all (not just be visually hidden).
+  await expect(page.getByTestId("admin-analytics-link")).toHaveCount(0);
+});
+
+test("/[room]/admin: HOST_TOKEN-authed session (default room) shows the Analytics link", async ({ page }) => {
+  // TICKET-77: analytics auth is global, keyed to the `default` room's
+  // HOST_TOKEN session (app/api/host/analytics/route.ts). `warmUp` already
+  // logged the shared `page` context into the `default` room via DEV_TOKEN
+  // (no `?room=` on that login → resolves to `default`), so simply loading
+  // /default/admin lands straight on the authed dashboard — that IS the
+  // analytics session, so the link must appear here, unlike a per-room
+  // hostCode session (asserted absent in the test above).
+  await page.goto("/default/admin");
+  await expect(page.getByRole("button", { name: /pausar|retomar/i })).toBeVisible();
+
+  const analyticsLink = page.getByTestId("admin-analytics-link");
+  await expect(analyticsLink).toBeVisible();
+  await expect(analyticsLink).toHaveAttribute("href", "/admin/analytics");
 });
 
 test("legacy /admin and /tv redirect into the default room (no dead routes)", async ({ page }) => {
