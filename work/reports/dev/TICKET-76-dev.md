@@ -23,10 +23,10 @@ Tests:       694 passed, 694 total
 ### e2e (full suite, `PORT=3188`)
 
 ```
-77 passed (4.4m)
+81 passed (3.4m)
 ```
 
-Clean first run. (The reviewer's own first e2e run showed 7 failures caused by their manual probing polluting `/tmp/boraoke-ls-3188.json`, which Playwright's `webServer` injects; re-running after removing it was 33/33 on the affected specs. This final run removed that file before starting.)
+Clean first run, **post-merge with `main`** (81 rather than the earlier 77 — `main` brought 4 new specs). Ports and the injected `localStorage` file are cleared before each run: Playwright's `webServer` injects `/tmp/boraoke-ls-3188.json`, and leaving manual-probing state in it is what produced a contaminated run earlier in this ticket.
 
 ### tsc
 
@@ -82,6 +82,40 @@ set-cookie: cantai_host=; Path=/api/host; Max-Age=0
 curl cookie jar after logout: 0 cantai_host entries left
 GET /api/host/session -b <post-logout jar>  →  HTTP/1.1 401 Unauthorized
 ```
+
+## Composed behaviour: the 30-day rolling session vs. the NEW logout control
+
+`origin/main` (which now carries the TICKET-77 "Sair" control) was merged into this branch — **clean, no conflicts**; the two changesets are file-disjoint (#77 touched `AdminRoom.tsx`, `admin.module.css`, `e2e/render-and-links.spec.ts`; none are mine).
+
+The logout control was verified against a 12-hour session, so the composition with a rolling 30-day one was re-proven end to end in a **real Chromium browser** — real `localStorage`, a room created through the actual `/new` UI, the real "Sair" button, and the browser's own cookie jar. Every host-session request/response was recorded off the wire.
+
+| Step | Result |
+| --- | --- |
+| Login at `/<room>/admin` | cookie `Max-Age=2592000`, `expiresInDays=30.0000` — **PASS** |
+| Rolling refresh (reload = successful GET probe) | expiry moved **+6s** forward, **same** session value (rolled, not re-minted) — **PASS** |
+| Host code in `localStorage` | `[{"id":…,"name":…,"role":"created","lastTouched":…,"claimable":true}]` — no code — **PASS** |
+| New "Sair" control (confirm-gated) | `POST /api/host/session` → `200`, `set-cookie: cantai_host_<room>=; Path=/api/host; Max-Age=0` — **PASS** |
+| Cookie after logout | `ABSENT` from the browser jar — **PASS** |
+| **Post-logout visit to the public landing page** | probe fired and returned `401`, `set-cookie: NONE`; cookie still `ABSENT` — **PASS, session NOT re-armed** |
+| Re-open admin after logout | login gate, not the dashboard — **PASS** |
+| SavedRooms admin link after logout | `/<room>/admin?expired=1` — correct hint — **PASS** |
+
+The rolling probe on the wire:
+
+```
+GET /api/host/session?room=bar-teste-msl1082j -> 200
+set-cookie: cantai_host_bar-teste-msl1082j=f4c86c25…33aa; Path=/api/host; Expires=…23:50:07 GMT; Max-Age=2592000; HttpOnly; SameSite=lax
+cache-control: private, no-store
+```
+
+Logout, then the landing page failing to re-arm:
+
+```
+POST /api/host/session?room=… -> 200   set-cookie: cantai_host_…=; Path=/api/host; Max-Age=0
+GET  /api/host/session?room=… -> 401   set-cookie: NONE   cache-control: private, no-store
+```
+
+**Why it cannot re-arm** (the mechanism, not just the observation): the roll re-sends the cookie value taken *from the request* and only after `requireHost()` has verified it. Logout removes that cookie from the browser, so the landing-page probe arrives with **nothing to verify**, 401s, and returns before the refresh line. A session can only be extended by a caller that already holds a valid one — so the mitigation is real, not illusory.
 
 ## Host code still never persisted
 
