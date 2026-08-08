@@ -64,4 +64,15 @@ $ diff <(sort tsc-main.txt) <(sort tsc-75.txt) | grep '^>' | grep -E "^> (app|li
 
 First full run: **76 passed, 1 failed** in 9.7m — the failure was `render-and-links.spec.ts:261` aborting inside `warmUp` (`page.goto: net::ERR_ABORTED; maybe frame was detached?`), a Next-dev compile-time navigation abort. Re-running that file made a *different* pair of tests fail at the same `warmUp` helper, and each of those passed when run in isolation — a load-dependent dev-server flake (five sibling ticket worktrees were compiling on the same machine), not a behavioural failure. None of the affected assertions touch room language or the TV locale.
 
-Final clean run on a freshly restarted dev server (`rm -rf .next`) is recorded below.
+Final clean run on a freshly restarted dev server (`rm -rf .next`), full suite, foreground:
+
+```
+77 passed (5.2m)
+```
+
+Zero failures — confirming the earlier two failures were environmental.
+
+## Gates
+
+- **App Tester:** PASS on all five cases (`work/evidence/TICKET-75/README.md` + five screenshots). pt-BR/en/es each render in their own language with a matching `<html lang>`; a no-cookie room stores no `language` key and renders pt-BR. The decisive case E — a room created in `en` viewed by a browser carrying `NEXT_LOCALE=es` — still rendered **English** with `lang="en"`, proving the TV follows the ROOM and not the viewer.
+- **Reviewer (opus, clean context):** `VERDICT: APPROVE`, no blocking findings — `work/reports/review/TICKET-75-review.md`. It re-derived the root cause independently, re-ran the suite itself (712 tests), and verified `app/layout.tsx` and every other sibling-owned file are untouched.

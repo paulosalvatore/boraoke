@@ -29,6 +29,14 @@ Fixed **inside the TV route**, without touching `app/layout.tsx` (a shared app-w
 
 The script is inline in the SSR body and runs during HTML parse, before first paint and long before assistive tech or an auto-translate heuristic reads the document. The value is passed through `normalizeLocale` and JSON-encoded, so only a member of the fixed `LOCALES` set can ever reach the document (injection test included).
 
+## Side effect worth knowing about (intended, by design)
+
+`app/(patron)/[room]/page.tsx` already honored `settings.language` as the middle tier of the design §3 resolution order (explicit cookie → **room default** → Accept-Language → pt-BR). That tier was **dead code** in practice, because nothing ever wrote the field. Seeding it wakes it up: a patron with **no** locale cookie who joins a room created by an English-speaking host now sees the room in English instead of falling through to Accept-Language. That is exactly what the design specified, and an explicit user cookie still wins — so "the patron route follows the user's selection" is preserved.
+
+## Adjacent issue NOT fixed here (out of scope, needs its own ticket)
+
+The same `<html lang>` mismatch class exists on `app/(patron)/[room]/page.tsx`: when a cookie-less visitor is scoped to the room locale, the root layout still reports the Accept-Language locale. That file is outside this ticket's boundary (owned by another agent's scope), so it is flagged rather than touched. The fix is one line — reuse `documentLangScript(locale)` in the same branch that mounts the scoped provider.
+
 ## Tests
 
 - `__tests__/room-language.test.ts` — seeding for each of pt-BR/en/es; omitted arg preserves the legacy record shape (no `language` key); unsupported values rejected at the storage boundary; mode untouched; **manual override wins** over the seed.

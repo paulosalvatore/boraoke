@@ -1,0 +1,99 @@
+{
+  "caseA_create": {
+    "status": 201,
+    "json": {
+      "id": "t75-case-a-ptbr-1786230142010",
+      "name": "T75 Case A ptBR 1786230142010",
+      "hostCode": "ex2jxvtk",
+      "joinPath": "/t75-case-a-ptbr-1786230142010",
+      "ephemeral": false
+    }
+  },
+  "caseA_tv": {
+    "lang": "pt-BR",
+    "bodyText": "Boraoke\nT75 Case A ptBR 1786230142010\nBoraoke\nEscaneia e canta! 🎤\n127.0.0.1:3187/t75-case-a-ptbr-1786230142010\npowered by Boraoke\nTela cheia (F)"
+  },
+  "caseB_create": {
+    "status": 201,
+    "json": {
+      "id": "t75-case-b-en-1786230142010",
+      "name": "T75 Case B en 1786230142010",
+      "hostCode": "p633azm9",
+      "joinPath": "/t75-case-b-en-1786230142010",
+      "ephemeral": false
+    }
+  },
+  "caseB_tv": {
+    "lang": "en",
+    "bodyText": "Boraoke\nT75 Case B en 1786230142010\nBoraoke\nScan and sing! 🎤\n127.0.0.1:3187/t75-case-b-en-1786230142010\npowered by Boraoke\nFullscreen (F)"
+  },
+  "caseC_create": {
+    "status": 201,
+    "json": {
+      "id": "t75-case-c-es-1786230142010",
+      "name": "T75 Case C es 1786230142010",
+      "hostCode": "97mzt1da",
+      "joinPath": "/t75-case-c-es-1786230142010",
+      "ephemeral": false
+    }
+  },
+  "caseC_tv": {
+    "lang": "es",
+    "bodyText": "Boraoke\nT75 Case C es 1786230142010\nBoraoke\n¡Escanea y canta! 🎤\n127.0.0.1:3187/t75-case-c-es-1786230142010\ncon tecnología de Boraoke\nPantalla completa (F)"
+  },
+  "caseD_create": {
+    "status": 201,
+    "json": {
+      "id": "t75-case-d-nocookie-1786230142010",
+      "name": "T75 Case D nocookie 1786230142010",
+      "hostCode": "dtv8dhkv",
+      "joinPath": "/t75-case-d-nocookie-1786230142010",
+      "ephemeral": false
+    }
+  },
+  "caseD_tv": {
+    "lang": "pt-BR",
+    "bodyText": "Boraoke\nT75 Case D nocookie 1786230142010\nBoraoke\nEscaneia e canta! 🎤\n127.0.0.1:3187/t75-case-d-nocookie-1786230142010\npowered by Boraoke\nTela cheia (F)"
+  },
+  "caseE_create": {
+    "status": 201,
+    "json": {
+      "id": "t75-case-e-roomen-vieweres-1786230142010",
+      "name": "T75 Case E roomEn viewerEs 1786230142010",
+      "hostCode": "g2a5124g",
+      "joinPath": "/t75-case-e-roomen-vieweres-1786230142010",
+      "ephemeral": false
+    }
+  },
+  "caseE_tv": {
+    "lang": "en",
+    "bodyText": "Boraoke\nT75 Case E roomEn viewerEs 1786230142010\nBoraoke\nScan and sing! 🎤\n127.0.0.1:3187/t75-case-e-roomen-vieweres-1786230142010\npowered by Boraoke\nFullscreen (F)"
+  },
+  "getA": {
+    "status": 200,
+    "json": {
+      "room": {
+        "id": "t75-case-a-ptbr-1786230142010",
+        "name": "T75 Case A ptBR 1786230142010",
+        "createdAt": "2026-08-08T23:02:22.227Z",
+        "settings": {
+          "mode": "full-karaoke",
+          "language": "pt-BR"
+        }
+      }
+    }
+  },
+  "getD": {
+    "status": 200,
+    "json": {
+      "room": {
+        "id": "t75-case-d-nocookie-1786230142010",
+        "name": "T75 Case D nocookie 1786230142010",
+        "createdAt": "2026-08-08T23:02:31.933Z",
+        "settings": {
+          "mode": "full-karaoke"
+        }
+      }
+    }
+  }
+}
