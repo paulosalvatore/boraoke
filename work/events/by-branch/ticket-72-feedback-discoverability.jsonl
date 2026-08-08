@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-08T22:35:23Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-72", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/72-feedback-discoverability", "short_sha": "011d133", "message_slug": "TICKET-72: make feedback discoverable on mobile without reintroducing th"}}
