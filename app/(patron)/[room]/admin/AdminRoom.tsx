@@ -71,6 +71,20 @@ export default function AdminRoom({
   const [modBusy, setModBusy] = useState(false);
   const [pending, setPending] = useState<PendingEntry[]>([]);
   const [approveMsg, setApproveMsg] = useState("");
+  // TICKET-77: site-wide analytics is gated on the `default`-room HOST_TOKEN
+  // session (app/api/host/analytics/route.ts), not on this room's own host
+  // session — a venue host's per-room code can never authenticate `default`
+  // (lib/host-auth.ts resolveRoomToken). So this is a SEPARATE probe from
+  // `checkSession` above, and it only ever flips the link on — never blocks
+  // or delays the dashboard, and a failure just leaves the link hidden.
+  const [analyticsAllowed, setAnalyticsAllowed] = useState(false);
+  // TICKET-77 (host logout): no logout UI exists anywhere today —
+  // POST /api/host/session (the logout endpoint, see app/api/host/session/route.ts)
+  // has zero callers in app/ or components/. Landing this alongside the
+  // rolling 30-day session window (TICKET-76) so a host on a shared venue
+  // tablet has a way to end a session deliberately.
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const roomQuery = `?room=${encodeURIComponent(roomId)}`;
 
@@ -95,6 +109,25 @@ export default function AdminRoom({
       } catch { /* no-op */ }
     }
   }, [checkSession, roomId]);
+
+  // TICKET-77: fire-and-forget analytics probe, independent of the room's own
+  // auth flow so it never delays or blocks the dashboard render. Runs once on
+  // mount; no retry loop. Any non-200 (401, network error, etc.) silently
+  // leaves analyticsAllowed at its default `false` — no error surfaced.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/host/session?room=default")
+      .then((res) => {
+        if (!cancelled) setAnalyticsAllowed(res.ok);
+      })
+      .catch(() => {
+        // silent — a venue host without HOST_TOKEN access simply never sees
+        // the link; no console noise, no UI error.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Poll queue + paused while authed (reuses the public queue endpoint)
   const fetchQueue = useCallback(async () => {
@@ -158,6 +191,26 @@ export default function AdminRoom({
       setLoginError(tCommon("networkError"));
     } finally {
       setLoggingIn(false);
+    }
+  }
+
+  // TICKET-77: end this room's host session on demand (POST /api/host/session
+  // clears the room-scoped cookie server-side, mirroring the existing GET
+  // probe's ?room= scoping). Only flips the UI back to the login gate on a
+  // confirmed 200 — a network hiccup leaves the host authed client-side
+  // rather than falsely claiming they're logged out while the cookie lingers.
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      const res = await fetch(`/api/host/session${roomQuery}`, { method: "POST" });
+      if (res.ok) {
+        setAuth("gate");
+      }
+    } catch {
+      // network hiccup — stay authed; host can retry
+    } finally {
+      setLoggingOut(false);
+      setConfirmingLogout(false);
     }
   }
 
@@ -351,6 +404,59 @@ export default function AdminRoom({
         >
           {t("tvLink")}
         </a>
+        {analyticsAllowed && (
+          // TICKET-77: deliberately NOT localised — "Analytics" is identical
+          // in pt-BR/en/es, and the destination page is English by documented
+          // decision, so adding an i18n key here isn't warranted. Also a
+          // sibling agent currently owns all messages/*.json files.
+          <a
+            className={styles.tvLink}
+            data-testid="admin-analytics-link"
+            href="/admin/analytics"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Analytics
+          </a>
+        )}
+        {/* TICKET-77: host logout. Visually secondary (muted text button, not
+            a filled pill like the links above) — this is a meta-action, not
+            something a host should fat-finger mid-service. Confirm-before-act
+            (same two-step pattern as "Remover" on a queue row, styles.confirm)
+            because ending the session is disruptive on a shared venue tablet:
+            the host would need to re-enter their code to get back in. "Sair"
+            is deliberately NOT localised — same constraint as Analytics above
+            (a sibling agent owns messages/*.json this cycle), and "Sair" is
+            the plain pt-BR word regardless of the room-language selector. */}
+        {confirmingLogout ? (
+          <span className={styles.confirm} data-testid="admin-logout-confirm">
+            <button
+              type="button"
+              className={styles.confirmYes}
+              disabled={loggingOut}
+              onClick={handleLogout}
+            >
+              {t("confirm")}
+            </button>
+            <button
+              type="button"
+              className={styles.confirmNo}
+              disabled={loggingOut}
+              onClick={() => setConfirmingLogout(false)}
+            >
+              {t("cancel")}
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={styles.logoutBtn}
+            data-testid="admin-logout-button"
+            onClick={() => setConfirmingLogout(true)}
+          >
+            Sair
+          </button>
+        )}
       </header>
 
       {/* Mode switcher — live (TICKET-10) */}

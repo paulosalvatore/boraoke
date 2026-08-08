@@ -45,7 +45,7 @@
     "feature2Body": "Search inside Boraoke or paste the link. Plays in the official player, full screen.",
     "feature3Title": "Fair rotation, automatic",
     "feature3Body": "Three modes — full karaoke, 2 per table, 1 per person. Nobody hogs the mic.",
-    "freePromise": "Everything that exists today is free — and stays free.",
+    "freePromise": "Everything that exists today is free, in early access.",
     "haveCode": "Already have a code?",
     "haveCodeHint": "Enter the room code (or paste the link you were given).",
     "codeLabel": "Room code",
@@ -247,8 +247,8 @@
     "submitNotEmbeddable": "this video doesn't allow playback on external screens — it may not play"
   },
   "Meta": {
-    "title": "Boraoke — your bar's karaoke queue",
-    "description": "Your bar's karaoke queue, on every customer's phone. Spin up the room, show the QR, and everyone joins the line with their table tagged. Free to start.",
-    "ogDescription": "Your bar's karaoke queue, on every customer's phone. Free to start."
+    "title": "Boraoke — the karaoke queue on the TV, on everyone’s phone",
+    "description": "Bar, party, building or office: everyone scans the QR and picks a song on their phone. The TV plays the queue by itself, on a fair rotation. No app, free.",
+    "ogDescription": "Everyone scans the QR and picks a song. The TV plays the queue by itself, on a fair rotation. Free."
   }
 }
