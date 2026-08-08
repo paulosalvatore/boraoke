@@ -45,7 +45,7 @@
     "feature2Body": "Busca dentro de Boraoke o pega el link. Suena en el player oficial, en pantalla completa.",
     "feature3Title": "Rotación justa, automática",
     "feature3Body": "Tres modos — karaoke completo, 2 por mesa, 1 por persona. Nadie acapara el micrófono.",
-    "freePromise": "Todo lo que existe hoy es gratis — y sigue gratis.",
+    "freePromise": "Todo lo que existe hoy es gratis, en el acceso anticipado.",
     "haveCode": "¿Ya tienes un código?",
     "haveCodeHint": "Escribe el código de la sala (o pega el link que te pasaron).",
     "codeLabel": "Código de la sala",
@@ -247,8 +247,8 @@
     "submitNotEmbeddable": "este video no permite la reproducción en pantallas — puede que no suene"
   },
   "Meta": {
-    "title": "Boraoke — la fila de karaoke de tu bar",
-    "description": "La fila de karaoke de tu bar, en el celular de cada cliente. Crea la sala, muestra el QR y todos entran a la fila con su mesa marcada. Gratis para empezar.",
-    "ogDescription": "La fila de karaoke de tu bar, en el celular de cada cliente. Gratis para empezar."
+    "title": "Boraoke — la fila del karaoke en la TV, en cada celular",
+    "description": "Bar, fiesta, edificio u oficina: cada persona escanea el QR y elige su canción en el celular. La TV toca la fila sola, en rotación justa. Sin app, gratis.",
+    "ogDescription": "Cada persona escanea el QR y elige su canción. La TV toca la fila sola, en rotación justa. Gratis."
   }
 }

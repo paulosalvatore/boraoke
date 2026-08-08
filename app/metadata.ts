@@ -11,23 +11,31 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   // Per-page titles slot into the template; the root default is the home title.
   title: {
-    default: "Boraoke — a fila de karaokê do seu bar",
+    default: "Boraoke — a fila do karaokê na TV, no celular de todos",
     template: "%s · Boraoke",
   },
   description:
-    "A fila de karaokê do seu bar, no celular de cada cliente. Crie a sala, mostre o QR, e todo mundo entra na fila com a mesa marcada. Grátis para começar.",
+    "Bar, festa, condomínio ou empresa: cada pessoa escaneia o QR e escolhe a música no celular. A TV toca a fila sozinha, em rodízio justo. Sem app, grátis.",
   applicationName: "Boraoke",
-  // Per-locale OG scheme: /brand/og-image-<locale>.png (PR #19). en/es variants
-  // + hreflang/locale-aware selection come with the i18n wave (wave-30). For
-  // now the default is pt-BR pointed at the pt-BR image.
+  // Per-locale OG scheme: /brand/og-image-<locale>.png (PR #19). en/es card
+  // variants are still in flight (design); the lookup below falls back to the
+  // pt-BR image so a social card is never a 404.
+  //
+  // NO `alternates.languages` hreflang here, deliberately (TICKET-74). hreflang
+  // annotates DISTINCT URLs per language version; this app serves all three
+  // locales from the SAME URL, resolved from the NEXT_LOCALE cookie /
+  // Accept-Language (i18n/locales.ts — rooms must stay `/<room>`, so there is
+  // no `[locale]` segment). Emitting three hreflang entries that all point at
+  // one URL is invalid and is ignored by search engines. Real hreflang requires
+  // per-locale URLs, i.e. a routing change, not a metadata change.
   openGraph: {
     type: "website",
     siteName: "Boraoke",
     locale: "pt_BR",
     url: SITE_URL,
-    title: "Boraoke — a fila de karaokê do seu bar",
+    title: "Boraoke — a fila do karaokê na TV, no celular de todos",
     description:
-      "A fila de karaokê do seu bar, no celular de cada cliente. Grátis para começar.",
+      "Cada pessoa escaneia o QR e escolhe a música. A TV toca a fila sozinha, em rodízio justo. Grátis.",
     images: [
       {
         url: "/brand/og-image-pt-BR.png",
@@ -39,9 +47,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Boraoke — a fila de karaokê do seu bar",
+    title: "Boraoke — a fila do karaokê na TV, no celular de todos",
     description:
-      "A fila de karaokê do seu bar, no celular de cada cliente. Grátis para começar.",
+      "Cada pessoa escaneia o QR e escolhe a música. A TV toca a fila sozinha, em rodízio justo. Grátis.",
     images: ["/brand/og-image-pt-BR.png"],
   },
   // Favicons come from the App-Router file convention (app/icon.png +
@@ -52,6 +60,13 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0D0A14",
+  // TICKET-73: opt the page into the full device viewport so `env(safe-area-inset-*)`
+  // resolves to REAL values on notched / home-indicator devices instead of 0. Without
+  // this, the safe-area spacer TICKET-71 shipped on the feedback pill is present in the
+  // CSS but permanently inert in production. `cover` lets content extend under the
+  // notch/indicator, so any element that must stay clear of them has to consume the
+  // insets itself — today that is the feedback pill's spacer, which already does.
+  viewportFit: "cover",
 };
 
 // ─── Per-locale OG image lookup (TICKET-30 i18n wave) ────────────────────────
