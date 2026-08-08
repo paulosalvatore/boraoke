@@ -45,7 +45,7 @@
     "feature2Body": "Busca dentro do Boraoke ou cola o link. Toca no player oficial, em tela cheia.",
     "feature3Title": "Rodízio justo, automático",
     "feature3Body": "Três modos — karaokê completo, 2 por mesa, 1 por pessoa. Ninguém monopoliza o microfone.",
-    "freePromise": "Tudo o que existe hoje é grátis — e continua grátis.",
+    "freePromise": "Tudo o que existe hoje é grátis, no acesso antecipado.",
     "haveCode": "Já tem um código?",
     "haveCodeHint": "Digite o código da sala (ou cole o link que você recebeu).",
     "codeLabel": "Código da sala",
@@ -247,8 +247,8 @@
     "submitNotEmbeddable": "esse vídeo não permite reprodução em telões — pode não tocar"
   },
   "Meta": {
-    "title": "Boraoke — a fila de karaokê do seu bar",
-    "description": "A fila de karaokê do seu bar, no celular de cada cliente. Crie a sala, mostre o QR, e todo mundo entra na fila com a mesa marcada. Grátis para começar.",
-    "ogDescription": "A fila de karaokê do seu bar, no celular de cada cliente. Grátis para começar."
+    "title": "Boraoke — a fila do karaokê na TV, no celular de todos",
+    "description": "Bar, festa, condomínio ou empresa: cada pessoa escaneia o QR e escolhe a música no celular. A TV toca a fila sozinha, em rodízio justo. Sem app, grátis.",
+    "ogDescription": "Cada pessoa escaneia o QR e escolhe a música. A TV toca a fila sozinha, em rodízio justo. Grátis."
   }
 }

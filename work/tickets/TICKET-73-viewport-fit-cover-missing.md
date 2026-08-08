@@ -1,6 +1,10 @@
 # TICKET-73 — `viewportFit: "cover"` missing from `app/metadata.ts` (from TICKET-71 F2)
 
-**Status:** OPEN — filed, not yet scheduled
+**Status:** IN REVIEW — shipped inside TICKET-74's PR (same one-property change to the same `app/metadata.ts` viewport export). See `work/reports/dev/TICKET-74-dev-report.md`.
+
+> **Acceptance caveat — the third criterion below is NOT met by that PR, deliberately.** `viewportFit: "cover"` is added and verified present in the rendered `<meta name="viewport">` in all three locales, and the TICKET-71 safe-area regression test still passes. But the real-device confirmation could not be obtained, and the method this ticket suggests does not work: Chromium's `Emulation.setSafeAreaInsetsOverride` forces `env(safe-area-inset-*)` to resolve to non-zero **with or without** `viewport-fit=cover` (measured on live production, which lacks the property, and on the branch — both 47px/34px). CDP cannot discriminate "wired but inert" from "wired and active", which is precisely the gap this ticket named. A real notched iPhone is required.
+>
+> **Also found:** under `cover`, the language-switcher pill on patron room pages (`/[room]`) sits at y 32→67, so ~15px of its top edge falls inside a 47px notch band. Fixing it needs `padding-top: env(safe-area-inset-top)` in `app/(patron)/[room]/**` or `app/globals.css` — outside TICKET-74's file boundary, filed as a follow-up.
 **Filed:** 2026-08-08, interactive TM session (TL present)
 **Priority:** LOW-MED
 **Size:** S
