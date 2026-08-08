@@ -28,7 +28,7 @@ import {
   normalizeRoomMode,
   type RoomMode,
 } from "./rotation-modes";
-import { normalizeLocale, type Locale } from "@/i18n/locales";
+import { isLocale, normalizeLocale, type Locale } from "@/i18n/locales";
 
 export interface RoomSettings {
   /**
@@ -336,10 +336,21 @@ export interface CreatedRoom {
  * rare suffix collision) and a one-time host code, storing only the code's
  * hash (MEDIUM-2). Returns `null` when the global ROOM_MAX ceiling is reached
  * (HIGH-1) — callers reply 503 "estamos lotados".
+ *
+ * TICKET-75 — `language` seeds `settings.language` from the CREATOR's locale.
+ * The venue TV (`/[room]/tv`) deliberately follows the ROOM's language, never a
+ * patron cookie (one screen cannot arbitrate 40 phones), but until now nothing
+ * ever wrote that field: every room was born pt-BR and an English-speaking host
+ * got a Portuguese TV. The parameter is OPTIONAL and only written when a valid
+ * {@link Locale} is passed — omitting it reproduces the previous record shape
+ * byte-for-byte (no `language` key), so the "additive, no-migration" contract of
+ * {@link getRoomLanguage} is unchanged and the host's admin override
+ * ({@link setRoomLanguage}) still wins, since it writes after creation.
  */
 export async function createRoom(
   name: string,
   creatorUuid?: string,
+  language?: Locale,
 ): Promise<CreatedRoom | null> {
   if ((await roomBackend.count()) >= roomMax()) return null;
   const trimmed = name.trim().slice(0, 60);
@@ -363,7 +374,15 @@ export async function createRoom(
     name: trimmed || "sala",
     hostCodeHash: hashHostCode(hostCode),
     createdAt: new Date().toISOString(),
-    settings: { mode: DEFAULT_ROOM_MODE },
+    settings: {
+      mode: DEFAULT_ROOM_MODE,
+      // TICKET-75: seed only when the caller supplied a SUPPORTED locale.
+      // `isLocale` re-validates at the storage boundary so an untrusted value
+      // (a spoofed NEXT_LOCALE cookie, an untyped JS caller) can never land in
+      // stored room state; anything else omits the key entirely and falls
+      // through to DEFAULT_LOCALE via `getRoomLanguage`, exactly as before.
+      ...(isLocale(language) ? { language } : {}),
+    },
     ...(creatorUuid ? { creatorUuid } : {}),
   };
   await roomBackend.create(room);

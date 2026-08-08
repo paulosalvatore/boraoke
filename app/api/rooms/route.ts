@@ -13,6 +13,7 @@ import {
 import { track } from "@/lib/telemetry";
 import { getTranslations } from "next-intl/server";
 import { applyIdentityCookie, resolveIdentity } from "@/lib/identity";
+import { isLocale, LOCALE_COOKIE } from "@/i18n/locales";
 import { identityStore } from "@/lib/identity-store";
 
 const MAX_BODY_BYTES = 1024;
@@ -114,7 +115,21 @@ export async function POST(req: NextRequest) {
   // (identity.ok === false) never blocks room creation — see `lib/identity.ts`.
   const identity = await resolveIdentity(req, patronUuid);
 
-  const created = await createRoom(name, identity.ok ? identity.uuid : undefined);
+  // TICKET-75: seed the room's default language from the CREATOR's locale
+  // cookie. The venue TV always follows the room (never a patron cookie), so a
+  // host who builds the room while browsing in English should get an English
+  // screen instead of the hardcoded pt-BR fallback. `isLocale` rejects anything
+  // unsupported/absent, in which case we pass `undefined` and the record is
+  // written exactly as before (no `language` key → DEFAULT_LOCALE at read time).
+  // The host's admin override still wins: it writes after creation.
+  const cookieLocale = req.cookies.get(LOCALE_COOKIE)?.value;
+  const creatorLocale = isLocale(cookieLocale) ? cookieLocale : undefined;
+
+  const created = await createRoom(
+    name,
+    identity.ok ? identity.uuid : undefined,
+    creatorLocale,
+  );
   if (!created) {
     // Global ROOM_MAX ceiling reached (HIGH-1) — polite, non-technical copy.
     const te = await getTranslations("Errors");
