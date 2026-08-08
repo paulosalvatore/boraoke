@@ -148,3 +148,44 @@ Re-verified after this change: `npm run build` → `✓ Compiled successfully in
 - The mobile `FeedbackWidget` bubble overlaps the hero's QR phone card at 390px. `components/FeedbackWidget.tsx` belongs to sibling **TICKET-71** (mobile feedback overlap) — untouched by design.
 - White-on-accent CTA contrast (4.17:1) is **TICKET-66**'s token fix; this page uses the global `.btn-primary` so it inherits that fix on merge, in either merge order.
 - A 401 from `SavedRooms`' host-session probe once a saved room exists is pre-existing behaviour of that component (expired-cookie routing), not introduced here.
+
+## Addendum 3 — venue chips restyled as plain labels (Tech Lead decision)
+
+The opus review raised MEDIUM-1: the four venue names rendered as filter chips with one "selected" (accent outline + accent text) on inert `<li>`s, while venue presets (TICKET-32) are Phase 3 and NOT STARTED. I surfaced it rather than shipping it; **the Tech Lead ruled: make them plain labels now.**
+
+**What changed** (`app/page.tsx`, `app/page.module.css`):
+
+- Removed the entire chip affordance — pill border, 999px radius, padding, and the selected/unselected split. No hover state, no active state, no `cursor` change ever existed and none was added.
+- All four names now carry equal weight: `--text` on `--bg` (**17.21:1**, measured `rgb(241, 241, 241)`), up from the old muted/accent split. The message got *more* legible, not less, which matters — the not-bar-only signal is the main reason this direction was chosen.
+- The `venuesLabel` string ("Onde dá pra usar" / "Where it works" / "Dónde funciona") was an `aria-label` only; it is now **visible**, so the row reads as a statement rather than a control, and the `<ul>` points at it with `aria-labelledby` so screen readers get the same framing without hearing the text twice.
+- Non-interactive semantics: no `role`, no `aria-selected`, no `tabindex`, no interactive element. Separators are a CSS `::after` pseudo-element, so they stay out of both the accessible name and `textContent`.
+
+**Locked in by a new test** so a future restyle cannot quietly re-add the promise — `e2e/render-and-links.spec.ts`, "landing venue labels are visible but NOT interactive (no promised filter)". It asserts all four names are visible, that none resolves under the `button`/`link`/`tab`/`option`/`radio`/`checkbox` roles, and then walks the DOM asserting no leaf carrying a venue name has an interactive tag, `role`, `tabindex`, `aria-selected`, or a `pointer` cursor. The contrast suite's two chip assertions were relabelled to match reality and a third added for the lead-in.
+
+### Verification (new base `be59814`, TICKET-70 merged in cleanly)
+
+```
+$ npm test
+Test Suites: 43 passed, 43 total
+Tests:       683 passed, 683 total
+
+$ npm run build
+ ✓ Compiled successfully in 3.8s
+
+$ rm -rf .next && PORT=3181 npx playwright test
+  ✓  38 › render-and-links.spec.ts:101 › landing venue labels are visible but NOT interactive (no promised filter) (2.6s)
+  71 passed (3.0m)
+```
+Whole suite: **71 passed, 0 failed, 0 skipped.**
+
+Evidence re-captured on this exact code (`landing-desktop-1440x900.png`, `landing-mobile-390x844.png`, plus the CTA-fold, focus and locale shots). Measured live afterwards:
+
+| Check | Observed |
+|---|---|
+| Venue label colour | `rgb(241, 241, 241)` — `--text`, no accent, no selected state |
+| CTA above the fold | `bottom` 430.67px @1440x900 · **426.89px** @390x844 (improved from 455.67px — the labels now take one line) |
+| Horizontal overflow @1440 / @390 / @320 | none (scrollWidth == innerWidth at all three) |
+| CTA background | `rgb(217, 35, 48)` — `--accent-strong`, unchanged |
+| iframes / off-origin requests / console errors | 0 / none / none |
+
+**Untouched, per instruction:** the QR card's occlusion of some up-next titles (needs a design call) and the mobile FeedbackWidget overlap (TICKET-71).

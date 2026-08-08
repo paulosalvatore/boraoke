@@ -84,12 +84,26 @@ export default function Landing() {
       <main>
         <section className={styles.hero} aria-labelledby="landing-hero-title">
           <div>
-            <ul className={styles.chips} aria-label={t("venuesLabel")}>
-              <li className={styles.chipOn}>{t("chipBar")}</li>
-              <li>{t("chipParty")}</li>
-              <li>{t("chipCondo")}</li>
-              <li>{t("chipCompany")}</li>
-            </ul>
+            {/*
+              Venue labels — deliberately NON-interactive. These were styled as
+              filter chips with one "selected", which promised per-venue
+              switching that does not exist (venue presets are TICKET-32, Phase
+              3). Now they are plain labels: no roles, no aria-selected, no
+              tabindex, nothing to activate — the lead-in is visible so the row
+              reads as a statement, and `aria-labelledby` gives the list the
+              same framing without duplicating the text for screen readers.
+            */}
+            <div className={styles.venues}>
+              <span className={styles.venuesLead} id="landing-venues-lead">
+                {t("venuesLabel")}
+              </span>
+              <ul className={styles.venueList} aria-labelledby="landing-venues-lead">
+                <li>{t("chipBar")}</li>
+                <li>{t("chipParty")}</li>
+                <li>{t("chipCondo")}</li>
+                <li>{t("chipCompany")}</li>
+              </ul>
+            </div>
 
             <h1 id="landing-hero-title">
               {t.rich("heroTitle", { em: (chunks) => <em>{chunks}</em> })}

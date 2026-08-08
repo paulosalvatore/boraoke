@@ -90,6 +90,55 @@ test("landing renders create CTA + a working join-code input", async ({ page }) 
   await expect(page.getByRole("button", { name: /^entrar$/i })).toBeEnabled();
 });
 
+/**
+ * TICKET-69 / TL decision: the four venue names are a MESSAGE ("boraoke is not
+ * bar-only"), not a control. They shipped briefly as filter chips with one
+ * "selected", which promised per-venue switching that does not exist — venue
+ * presets are TICKET-32, Phase 3, not started. This pins the honest version so
+ * a future restyle cannot quietly re-add the affordance: the names must be
+ * visible, and none of them may be activatable or announced as selectable.
+ */
+test("landing venue labels are visible but NOT interactive (no promised filter)", async ({ page }) => {
+  await page.goto("/");
+
+  const names = ["No bar", "Na festa", "No condomínio", "Na empresa"];
+  for (const name of names) {
+    await expect(page.getByText(name, { exact: true })).toBeVisible();
+  }
+
+  // Nothing activatable carrying a venue name: no button/link/tab/option role,
+  // no aria-selected, no tabindex, no click handler affordance.
+  for (const name of names) {
+    for (const role of ["button", "link", "tab", "option", "radio", "checkbox"] as const) {
+      await expect(
+        page.getByRole(role, { name, exact: true }),
+        `venue name "${name}" must not be exposed as a ${role} — venue presets (TICKET-32) do not ship`,
+      ).toHaveCount(0);
+    }
+  }
+
+  const interactive = await page.evaluate((venueNames) => {
+    const hits: string[] = [];
+    for (const el of Array.from(document.querySelectorAll("*"))) {
+      const text = (el.textContent ?? "").trim();
+      if (!venueNames.includes(text)) continue;
+      if (el.children.length > 0) continue; // leaf node carrying the name only
+      const tag = el.tagName.toLowerCase();
+      if (["button", "a", "input", "select", "summary"].includes(tag)) hits.push(`${text}:<${tag}>`);
+      if (el.hasAttribute("tabindex")) hits.push(`${text}:tabindex`);
+      if (el.hasAttribute("aria-selected")) hits.push(`${text}:aria-selected`);
+      if (el.hasAttribute("role")) hits.push(`${text}:role=${el.getAttribute("role")}`);
+      if (getComputedStyle(el).cursor === "pointer") hits.push(`${text}:cursor-pointer`);
+    }
+    return hits;
+  }, names);
+
+  expect(
+    interactive,
+    "venue labels must carry no interactive tag/role/tabindex/aria-selected/pointer-cursor",
+  ).toEqual([]);
+});
+
 test("/new renders the create form", async ({ page }) => {
   await page.goto("/new");
   await expect(page.getByLabel(/nome do bar/i)).toBeVisible();

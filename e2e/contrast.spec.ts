@@ -347,8 +347,12 @@ test.describe("landing page contrast", () => {
     await page.goto("/");
 
     await assertAA(page.getByText("Grátis · acesso antecipado"), "landing: early-access pill");
-    await assertAA(page.getByText("No bar", { exact: true }), "landing: active venue chip (accent on --bg)");
-    await assertAA(page.getByText("Na festa", { exact: true }), "landing: inactive venue chip");
+    // Venue LABELS, not chips: the selected/unselected filter styling was
+    // removed (it promised TICKET-32 venue presets, which do not ship), so all
+    // four are now equally weighted --text on --bg.
+    await assertAA(page.getByText("No bar", { exact: true }), "landing: venue label (first)");
+    await assertAA(page.getByText("Na festa", { exact: true }), "landing: venue label (second)");
+    await assertAA(page.getByText(/^Onde dá pra usar$/), "landing: venue lead-in");
     await assertAA(page.getByRole("heading", { level: 1 }).locator("em"), "landing: hero h1 accent span");
     await assertAA(page.getByText(/Cada pessoa escaneia o QR/), "landing: hero sub-copy");
     await assertAA(page.getByText(/Sua sala fica pronta em 30 segundos/), "landing: CTA microcopy");

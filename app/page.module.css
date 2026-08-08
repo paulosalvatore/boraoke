@@ -66,29 +66,57 @@
   white-space: nowrap;
 }
 
-/* ── venue chips ────────────────────────────────────────────────────────── */
+/*
+ * ── venue labels ────────────────────────────────────────────────────────
+ *
+ * These were pill "chips" with a selected/unselected split (one accent-
+ * outlined, three muted) — the universal grammar of a filter control. They are
+ * inert `<li>`s and venue presets are TICKET-32 / Phase 3, NOT STARTED, so that
+ * styling promised a control that does not exist. The Tech Lead's call was to
+ * make them honest now: plain labels.
+ *
+ * So: no pill outline, no radius, no selected state, no hover, no cursor
+ * change — nothing that reads as activatable. What survives is the message
+ * itself (boraoke is not bar-only), which is the main reason this direction was
+ * chosen, carried by a visible lead-in and four equally-weighted names read as
+ * a sentence. When TICKET-32 lands they can become real filter chips, and the
+ * affordance will then be telling the truth.
+ */
 
-.chips {
+.venues {
   display: flex;
-  gap: 0.5rem;
+  align-items: baseline;
   flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
   margin-bottom: 1.25rem;
-  list-style: none;
-  padding: 0;
+  font-size: 0.82rem;
 }
 
-.chips li {
-  font-size: 0.82rem;
-  font-weight: 600;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.35rem 0.85rem;
+.venuesLead {
   color: var(--text-muted);
 }
 
-.chips li.chipOn {
-  border-color: var(--accent);
-  color: var(--accent-text);
+.venueList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.venueList li {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Decorative separator so the four names read as one line of prose. A
+   pseudo-element keeps it out of the accessible name and out of textContent. */
+.venueList li:not(:last-child)::after {
+  content: "·";
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 0.55rem;
 }
 
 /* ── hero ───────────────────────────────────────────────────────────────── */
