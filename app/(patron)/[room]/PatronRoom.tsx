@@ -356,14 +356,29 @@ export default function PatronRoom({
 
   return (
     <main style={{ maxWidth: 540, margin: "0 auto", padding: "1.5rem 1rem" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "1rem" }}>
+      {/*
+       * TICKET-72: this header is also the mount point for the global feedback
+       * widget's compact entry point (portalled in — see components/FeedbackWidget.tsx).
+       * It used to be a rigid `space-between` row whose greeting could not shrink,
+       * so a long nickname pushed the last item past the viewport edge: at 320px
+       * the App Tester measured the feedback trigger fully off-canvas (header
+       * scrollWidth 389 vs clientWidth 288) and ~15px clipped at 390px. The
+       * greeting now degrades gracefully instead — it is allowed to shrink, and
+       * the nickname ellipsizes — so the trailing control stays on screen at
+       * every phone width. `flex-wrap` is the belt-and-braces fallback for
+       * extreme cases (very large text-zoom).
+       */}
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
         <h1 style={{ fontSize: "1.75rem" }}>🎤 {tCommon("brand")}</h1>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.6rem", color: "var(--text-muted)", fontSize: "0.875rem" }}>
-          <LanguageSwitcher />
-          {t("greeting")}{" "}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.6rem", color: "var(--text-muted)", fontSize: "0.875rem", minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
+          <span style={{ flexShrink: 0, display: "inline-flex" }}>
+            <LanguageSwitcher />
+          </span>
+          <span style={{ whiteSpace: "nowrap", flexShrink: 0 }}>{t("greeting")}</span>
           <button
+            data-testid="patron-nickname-button"
             onClick={() => setNicknameSet(false)}
-            style={{ background: "none", border: "none", color: "var(--accent-text)", cursor: "pointer", fontSize: "0.875rem", padding: 0 }}
+            style={{ background: "none", border: "none", color: "var(--accent-text)", cursor: "pointer", fontSize: "0.875rem", padding: 0, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           >
             {nickname}
           </button>

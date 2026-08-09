@@ -118,6 +118,66 @@
   line-height: 1;
 }
 
+/*
+ * ── Header entry point (TICKET-72) ──
+ * A compact icon-only trigger portalled into the page's own <header> (see the
+ * .tsx). It is NORMAL-FLOW content inside that header — never fixed, never
+ * absolutely positioned — so it carries the same geometric guarantee as the
+ * in-flow pill: it occupies its own box in the layout and therefore cannot
+ * spatially coincide with a queue row at any scroll position. It exists
+ * because the pill alone sits at the true END of the page, ~2400px down a
+ * busy room; this one is on screen at first paint.
+ *
+ * Every `position: fixed` alternative was rejected on measurement — see the
+ * footprint/overlap table in the .tsx doc comment. There is no horizontal
+ * gutter at 390px (a queue row spans x=16..374), so no fixed target, however
+ * small, clears the content column.
+ *
+ * DESKTOP: display:none. Desktop never had the overlap bug and keeps its
+ * original fixed bottom-right pill, unchanged by both TICKET-71 and this
+ * ticket — so nothing new appears in the desktop header.
+ *
+ * `flex-shrink: 0` + `align-self: center` because both host headers are flex
+ * rows (the patron room's is `align-items: baseline`, which would otherwise
+ * hang a round button off the text baseline).
+ */
+.headerTrigger {
+  display: none;
+}
+@media (max-width: 700px) {
+  .headerTrigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    flex-shrink: 0;
+    /* Both host headers are `justify-content: space-between` flex rows that
+       are allowed to wrap. On a shared line this simply keeps the trigger
+       flush right (same result space-between already gives); on a WRAPPED
+       line — a very long nickname at 320px pushes it onto its own row — it
+       stops the button landing orphaned at the far left, which reads as
+       broken rather than deliberate. */
+    margin-left: auto;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    /* Literal gradient, NOT var(--g-stage): this button is portalled into the
+       page's <header>, so it is not a DOM descendant of `.root` and would not
+       inherit the tokens scoped there. */
+    background: linear-gradient(135deg, #ff3d71, #ffc24b);
+    color: #1a1424;
+    font-size: 19px;
+    line-height: 1;
+    box-shadow: 0 2px 8px rgba(255, 61, 113, 0.3);
+    cursor: pointer;
+  }
+  .headerTrigger:active {
+    transform: scale(0.94);
+  }
+}
+
 /* ── Overlay + sheet ── */
 .overlay {
   position: fixed;
