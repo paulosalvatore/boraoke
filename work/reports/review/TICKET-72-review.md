@@ -1,11 +1,17 @@
 # TICKET-72 — Reviewer gate (independent, clean context)
 
-- **Verdict: REQUEST-CHANGES**
+- **Verdict: APPROVE** (final, at `8382b88`)
 - **Branch:** `ticket/72-feedback-discoverability` · base `a2c47bc` (= origin/main) · worktree `.worktrees/ticket-72` · port 3184
 - **Date:** 2026-08-08
 - **Reviewer stance:** I inherited no prior verdict. I read TICKET-71's ticket and its review (including the refutation of the first `position: fixed` + per-frame-JS attempt), read this ticket's own first-pass clipping defect, then re-verified every load-bearing claim with my own probes. I did not trust the ticket doc, the code comments, or the App Tester report. Where the App Tester's methodology and mine diverge, I say so.
 
-**Headline:** the *design* is correct and holds up under adversarial probing — 8,820 geometric checks, zero overlaps, structurally confirmed at the CSS level, no per-frame measurement anywhere. But the branch **fails the e2e gate deterministically** where base passes, for a reason nobody caught because both the Dev and the App Tester only ever ran the spec file in isolation. That is a blocker, and it is a small fix.
+**Document structure:** the first pass of this review (below, unedited) returned **REQUEST-CHANGES** on a blocking full-suite failure. The Dev fixed F1 and F3 in `8382b88`. **The re-verification and the final verdict are at the very bottom, under "Round 2".** The round-1 body is kept verbatim so the evidence trail and the failure it caught stay on the record.
+
+**Headline (round 1):** the *design* is correct and holds up under adversarial probing — 8,820 geometric checks, zero overlaps, structurally confirmed at the CSS level, no per-frame measurement anywhere. But the branch **fails the e2e gate deterministically** where base passes, for a reason nobody caught because both the Dev and the App Tester only ever ran the spec file in isolation. That is a blocker, and it is a small fix.
+
+---
+
+# ROUND 1 (verdict: REQUEST-CHANGES) — kept verbatim
 
 ---
 
@@ -216,3 +222,86 @@ What blocks it is not the design. It is that **the branch's full e2e suite is re
 Fix F1, re-run the **full** suite, and this is an approve. F3/F4/F5/F6 are cheap follow-ups, none blocking.
 
 **REQUEST-CHANGES.**
+
+---
+
+# ROUND 2 — re-verification of the F1/F3 fix (`8382b88`)
+
+**Verdict: APPROVE.**
+
+## What actually changed since round 1
+
+`git diff ac1912b..HEAD -- . ':!work'` → **one file, `e2e/feedback-widget-safe-area.spec.ts`, 68 insertions / 1 deletion.** No product code changed at all: `FeedbackWidget.tsx`, `FeedbackWidget.module.css` and `PatronRoom.tsx` are byte-identical to what I approved on the merits in round 1, and `lib/` is untouched (`git diff a2c47bc..HEAD -- lib/` is empty — the limiter's constants were **not** relaxed). Scope is still clean: the branch touches only the four allowed source files plus `work/**`.
+
+One correction to the Dev's handoff note: `margin-left: auto` on `.headerTrigger` was **not** new since my review — it landed in `3c70927`, before round 1, and my round-1 probes already covered it.
+
+## Gates — all re-run by me, foreground, port 3184
+
+| Gate | Result |
+| --- | --- |
+| `PORT=3184 npx playwright test` (FULL suite, run 1, clean `.next`) | **PASS — 80/80**, 3.4m |
+| `PORT=3184 npx playwright test` (FULL suite, run 2, clean `.next`) | **PASS — 80/80**, 3.4m |
+| `npm test` (jest) | **PASS** — 43 suites, **683/683** |
+| `npx tsc --noEmit` | 2230 lines, unchanged baseline noise; **0** mention the changed files |
+| `npm run build` | **PASS** — compiled successfully (run with 3184 dead and `.next` wiped) |
+
+Two independent clean full-suite runs, 80/80 both times — matching the Dev's claim and, more importantly, matching base's 77/77 plus this branch's 3 new tests. **F1 is resolved.**
+
+## F1 fix — I agree it isolates rather than weakens. Here is why, checked not assumed.
+
+The Dev asked me to confirm the `x-forwarded-for` fixture trick does not weaken the limiter. I checked four things:
+
+1. **`lib/queue-rate-limit.ts` is untouched.** `RATE_IP_MAX` is still 60 and `RATE_UUID_MAX` still 10. Nothing about production behaviour changed.
+2. **The trick is confined to one file.** `seedQueue` is a module-local helper in `feedback-widget-safe-area.spec.ts`; `grep -rln "x-forwarded-for" e2e/` returns that file only. No other spec's implicit limiter exposure changes.
+3. **The limiter keeps dedicated coverage.** `__tests__/queue-rate-limit.test.ts` has 5 tests including `"IP bucket trips across rotating uuids (rotation can't dodge it)"`, driven off the exported `SUBMIT_RATE_IP_MAX` — so the IP bucket is still asserted directly, at the unit level, where it belongs. The e2e fixture was never the thing testing the limiter; it was accidentally *tripping* it.
+4. **The per-uuid bucket still applies to the seeds.** Distinct IP does not exempt the 10/min uuid bucket, and `seedQueue` still charges it.
+
+So the fix moves the fixture out of the way of a limiter that keeps its full strength and its own tests. That is isolation. Choosing the fixture over the limiter was the right call — relaxing `RATE_IP_MAX` to make tests pass would have been the weakening version, and the Dev explicitly declined it.
+
+The added `expect(res.ok(), ...)` inside `seedQueue` is the more valuable half of this fix: it converts a starved fixture from a silent, misattributed `toHaveCount` failure three tests downstream into a loud failure at the exact seed that was rejected, with status and body. That directly addresses the misdiagnosis risk that cost round 1.
+
+## Re-confirmed: my own 35-row x 21-position sweep still reports zero overlaps
+
+Re-created my throwaway probe (deleted again afterwards; tree verified clean) and re-ran it against `8382b88`. **I deliberately seeded WITHOUT the branch's new `x-forwarded-for` trick**, so the probe stays an independent check rather than inheriting the fix under review.
+
+| Run | Checks | Overlaps |
+| --- | --- | --- |
+| Branch `8382b88` | **8,820** | **0** |
+
+35 rows x 21 scroll positions (every 5%) x 3 boxes (`queue-row-title`, `queue-row-badge`, whole `<li>`) x 2 affordances x {390, 320}, with the 18-char nickname. Identical geometry to round 1 — `scrollHeight` 3320 / `maxScroll` 2476 at 390px, 3351 / 2507 at 320px; `position: static` for both affordances at both widths; trigger fully inside the viewport (390: x 334→374, y 69→109; 320: x 264→304, y 69→109); `<header>` horizontal overflow 0 at both widths. Nothing regressed.
+
+(The round-1 negative control stands: forcing the trigger to `position: fixed` produced 89 overlaps across the same 8,820 checks, so the sweep is not vacuous.)
+
+## F3 fix — teeth confirmed by my own method
+
+I re-ran my round-1 teeth-proof against the new spec: patch `.headerTrigger` to `position: fixed; right: 16px; bottom: 16px` **and** comment out BOTH `expect(...position).toBe("static")` assertions, leaving only geometry.
+
+```
+✘ TICKET-72 — header trigger … never overlaps a 25-row queue
+    Error: row 1 badge overlaps the header trigger                          (spec:429)
+✘ TICKET-72 — landing page: header trigger is on screen at 390px and 320px
+    Error: w=390 scroll 20%: trigger overlaps interactive landing content    (spec:491)
+✓ TICKET-72 — desktop keeps only the fixed pill: no header trigger is rendered
+```
+
+In round 1 the landing test **passed** under exactly this treatment. It now fails on geometry alone. **F3 is resolved** — both mobile tests hold a fixed re-implementation accountable without leaning on the CSS assertion. All patches reverted with `git checkout HEAD -- …`; tree clean.
+
+The implementation is reasonable: 11 scroll positions x {390, 320} against every `a, button, input, h1, h2` on the page, self-excluded by testid, zero-size elements filtered out. Broad enough to have teeth, specific enough not to be flaky (two clean full-suite runs bear that out).
+
+## My responses to the Dev's positions on the remaining findings
+
+- **F2 (process) — agreed, and please do surface it.** Escalating "seeding specs need a full-suite run; the suite needs a rate-limit-isolated seed helper" to the TM as a house guardrail is exactly right, and out of scope here. I'd add one line to the proposal: the generalised seed helper should carry the loud `res.ok()` assertion this ticket just added, since that is the part that makes the next occurrence self-diagnosing.
+- **F4 — agreed, leave as is.** I measured no observable cost (5 observer callbacks at load, still 5 after 30 s on a live polling room, and the callback reads no geometry). Noting it in the ticket is the proportionate response; changing working code on a nitpick is not.
+- **F5 / F6 / F7 — agreed, follow-up tickets.** On F6 in particular I agree with the reasoning: `AdminRoom.tsx`'s header is a real third target for the global `document.querySelector("header")`, my probe could not reach it past the host-auth gate, and patching an unverified surface blind is worse than covering it in its own ticket with real evidence. F5 (13–16px landing `<header>` overflow at 320px, trigger still fully inside) genuinely needs a base-vs-branch measurement I did not take, so it belongs in its own ticket rather than being guessed at here.
+
+## One new observation (INFO, not a finding against this ticket)
+
+`clientIpFrom` (`lib/host-auth.ts:208`) takes the **first** comma-separated value of a client-supplied `x-forwarded-for` header. That is what makes the fixture fix work — and it means the production IP bucket is bypassable by any client that sets the header, since nothing pins the trusted-proxy hop. The per-`patronUuid` bucket is the real backstop. This is a **pre-existing** product property, not introduced by this branch, and the uuid bucket makes it low-impact — but the test now depends on it, so it is worth someone's attention as a separate ticket rather than being rediscovered later.
+
+## Final assessment
+
+Round 1's blocker is fixed at the right layer, with no product code touched and no limiter weakened; the fix additionally makes the next occurrence of that class fail loudly instead of silently. F3's landing test now has real geometric teeth, proven with the same disable-the-CSS-assertion attack that exposed it. My independent 8,820-check sweep is still at zero overlaps, the full suite is green twice from clean, and jest / tsc / build are unchanged.
+
+Everything that made the design sound in round 1 is unchanged: an in-flow second affordance with a geometric no-overlap guarantee, `position: static` confirmed at the CSS level, a clean 700/701 breakpoint, no per-frame measurement anywhere, a benign and measured `MutationObserver`, a 30-char-unbroken-nickname x 3-locale x 2-width robustness sweep with zero clipping, and a latent pre-existing 50px header overflow at 320px fixed along the way. The remaining findings are agreed follow-ups, none blocking.
+
+**APPROVE.**
