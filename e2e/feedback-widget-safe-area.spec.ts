@@ -67,9 +67,35 @@ async function expectRowsClearOfPill(page: Page, rows: ReturnType<Page["getByTes
   }
 }
 
+/**
+ * Every seeding call gets its OWN synthetic client IP.
+ *
+ * `POST /api/queue` is rate limited at 60 submits/minute/IP (lib/queue-rate-limit.ts,
+ * keyed off `x-forwarded-for` via `clientIpFrom`). Every Playwright request in the
+ * whole suite otherwise arrives from the same loopback address and shares one
+ * bucket, so seeding-heavy specs silently spend each other's budget: this file
+ * alone seeds 63 rows, and a Reviewer's full-suite run had seeds 429'd, which
+ * showed up as this file's 25-row test receiving 19 rows AND as a previously
+ * green TICKET-71 desktop test receiving 0 of 3. The tests were correct; the
+ * shared budget was the bug.
+ *
+ * Giving each seed batch a distinct IP isolates the buckets. It does NOT weaken
+ * or bypass the limiter under test elsewhere — the per-patronUuid bucket
+ * (10/min) still applies unchanged, real venues are distinct IPs anyway, and
+ * the limiter has its own dedicated coverage. This only stops one spec's
+ * fixture setup from starving another's.
+ */
+let seedIpCounter = Math.floor(Math.random() * 200);
+
 async function seedQueue(page: Page, roomId: string, count: number, prefix = "Musica de teste") {
+  seedIpCounter += 1;
+  // TEST-NET-3 (203.0.113.0/24), reserved by RFC 5737 for documentation/tests.
+  // Random start so this file cannot collide with another spec that adopts the
+  // same trick.
+  const seedIp = `203.0.113.${seedIpCounter % 250}`;
   for (let i = 0; i < count; i++) {
-    await page.request.post("/api/queue", {
+    const res = await page.request.post("/api/queue", {
+      headers: { "x-forwarded-for": seedIp },
       data: {
         room: roomId,
         videoId: "dQw4w9WgXcQ",
@@ -79,6 +105,14 @@ async function seedQueue(page: Page, roomId: string, count: number, prefix = "Mu
         mode: "sing",
       },
     });
+    // Fail LOUDLY on a rejected seed. Previously a 429'd fixture surfaced only
+    // as a downstream `toHaveCount` mismatch in a different test, which reads
+    // like a product regression instead of a starved fixture — that
+    // misdiagnosis cost a full Reviewer cycle.
+    expect(
+      res.ok(),
+      `seed ${i + 1}/${count} into ${roomId} failed: ${res.status()} ${await res.text()}`,
+    ).toBe(true);
   }
 }
 
@@ -425,6 +459,39 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
       expect(box.x, `w=${width}: trigger not clipped left`).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width, `w=${width}: trigger not clipped right`).toBeLessThanOrEqual(width);
       expect(await trigger.evaluate((el) => getComputedStyle(el).position)).toBe("static");
+
+      // GEOMETRIC teeth, so this test does not rest solely on the CSS
+      // `position` assertion above (a Reviewer finding: with that one line
+      // disabled, an earlier version of this test passed even against a
+      // deliberately `position: fixed` trigger). The landing page is the page
+      // where a fixed affordance was rejected on measurement — a probe counted
+      // 12 / 8 / 7 intersections with interactive content across 21 scroll
+      // positions for a 178x48 pill, a 48px circle and a 40px circle. Sweep
+      // the same way and require ZERO.
+      const maxScroll = await page.evaluate(
+        () => document.body.scrollHeight - window.innerHeight,
+      );
+      for (let i = 0; i <= 10; i++) {
+        await page.evaluate((y) => window.scrollTo(0, y), Math.round(Math.max(0, maxScroll) * (i / 10)));
+        await page.waitForTimeout(30);
+        const triggerBox = await trigger.boundingBox();
+        if (!triggerBox) continue; // scrolled past the header
+        const targets = await page.evaluate(() =>
+          Array.from(document.querySelectorAll("a, button, input, h1, h2"))
+            .filter((el) => el.getAttribute("data-testid") !== "feedback-header-trigger")
+            .map((el) => {
+              const r = el.getBoundingClientRect();
+              return { x: r.x, y: r.y, width: r.width, height: r.height };
+            })
+            .filter((r) => r.width > 0 && r.height > 0),
+        );
+        for (const target of targets) {
+          expect(
+            rectsIntersect(triggerBox, target),
+            `w=${width} scroll ${i * 10}%: trigger overlaps interactive landing content`,
+          ).toBe(false);
+        }
+      }
     }
   });
 
