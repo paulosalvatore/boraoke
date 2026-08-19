@@ -101,6 +101,20 @@ Net effect on a busy bar night: the old flow spent a daily search on every mode 
 - `messages/{pt-BR,en,es}.json` — 11 new `Search` keys, all three catalogs.
 - `__tests__/search-pagination.test.ts` (new), `__tests__/search-cache.test.ts`, `e2e/search.spec.ts`.
 
+## Reviewer-gate fixes (opus, clean context)
+
+The first review returned CHANGES REQUESTED with two MEDIUM blockers, both real and both fixed:
+
+1. **Cache-key collision → page-2 poisoning.** The page marker was lowercase `p:` while the query is lowercased into the same namespace, so a crafted first-page query `p:<token>::<query>` could occupy the legitimate page-2 entry — and `nextPageToken` is handed to every client, so the cursor is not secret. Impact: attacker-chosen videos served as page 2 to every venue for the 12h TTL, on a product that feeds a bar's TV queue. Fixed by making the marker **uppercase `P:`**, which is unforgeable from the query side because the query is lowercased. The first-page key stays byte-identical. Regression test added.
+2. **"Load more" could spend a daily search on the wrong query.** `loadMore` used the live `input` with the *previous* query's cursor — during the 400ms debounce the old results and button are still painted, so a tap sent new-query + old-cursor: a guaranteed cache miss, one of the day's 100 searches wasted and junk cached for 12h. Fixed by pinning `resultsQuery` alongside `resultsMode` and paging against that; additionally the load-more affordance now **withdraws** (`queryDirty`) while the input has moved off the query the cursor belongs to. Revealing already-fetched rows stays available throughout, since that is free. E2E regression test added.
+
+Non-blocking items also addressed:
+- **Depth cap was sidesteppable** via `page=1&pageToken=<deep cursor>`. The route now requires `page` and `pageToken` to **agree** (page 1 ⟺ no cursor), so the declared depth cannot lie in that direction. Two tests added.
+- A leftover comment still cited the **old "~101 quota units"** model — the exact figure this ticket corrects. Fixed.
+- The visually-hidden radios left the mode chips with **no visible focus ring**; keyboard focus now paints an outline on the chip.
+
+Accepted and left as-is: a legacy (pre-deploy) bare-array cache entry has no `nextPageToken`, so for up to 12h after deploy a patron on such an entry sees "that's everything" rather than a load-more. Self-heals on TTL expiry and costs nothing; forcing a re-fetch would spend daily searches to fix a cosmetic transient.
+
 ## Out of scope / follow-ups
 
 - The TICKET-85 spike's own follow-ups touch these files; the TM is sequencing them after this PR merges.

@@ -139,6 +139,19 @@ describe("cacheKey is page-scoped (paging back is free)", () => {
     expect(cacheKey("foo bar", "BR", "")).toBe("BR::foo bar");
   });
 
+  it("a crafted QUERY cannot forge a deep-page key (reviewer finding 1)", () => {
+    // nextPageToken is handed to every client, so an attacker knows the real
+    // cursor. If the page marker were lowercase, searching the literal text
+    // "p:<token>::<query>" would land on page 2's entry for a popular search and
+    // serve attacker-chosen videos to every venue for the 12h TTL. The marker is
+    // uppercase and the query is lowercased, so the two namespaces cannot meet.
+    const realDeepKey = cacheKey("evidencias", "BR", "cursor2");
+    const forged = cacheKey("P:cursor2::evidencias", "BR");
+    const forgedLower = cacheKey("p:cursor2::evidencias", "BR");
+    expect(forged).not.toBe(realDeepKey);
+    expect(forgedLower).not.toBe(realDeepKey);
+  });
+
   it("gives each page its own key", () => {
     const p1 = cacheKey("evidencias", "BR");
     const p2 = cacheKey("evidencias", "BR", "CURSOR_2");
@@ -185,14 +198,14 @@ describe("GET /api/search — paged requests", () => {
     }) as unknown as typeof fetch;
 
     // Cold deep page: search.list + videos.list.
-    const first = await (await GET(makeReq("evidencias", testUuid(2), "CURSOR_2"))).json();
+    const first = await (await GET(makeReq("evidencias", testUuid(2), "CURSOR_2", 2))).json();
     expect(first.cached).toBeUndefined();
     const afterCold = calls;
     expect(afterCold).toBeGreaterThan(0);
 
     // The patron pages forward then back to the SAME page (even as another
     // patron/uuid) → cache hit, no quota spent.
-    const again = await (await GET(makeReq("evidencias", testUuid(3), "CURSOR_2"))).json();
+    const again = await (await GET(makeReq("evidencias", testUuid(3), "CURSOR_2", 2))).json();
     expect(again.cached).toBe(true);
     expect(again.nextPageToken).toBe("CURSOR_3");
     expect(calls).toBe(afterCold);
@@ -210,7 +223,7 @@ describe("GET /api/search — paged requests", () => {
     }) as unknown as typeof fetch;
 
     await GET(makeReq("evidencias", testUuid(4)));
-    await GET(makeReq("evidencias", testUuid(5), "CURSOR_2"));
+    await GET(makeReq("evidencias", testUuid(5), "CURSOR_2", 2));
     // Both were real calls (distinct keys), and the token was forwarded.
     expect(tokensSeen).toEqual([null, "CURSOR_2"]);
   });
@@ -230,7 +243,7 @@ describe("GET /api/search — paged requests", () => {
 
   it("degraded (no key) ignores pageToken and still returns the fallback contract", async () => {
     // No YOUTUBE_API_KEY set → the paste-a-link path. Pagination must not break it.
-    const res = await GET(makeReq("evidencias", testUuid(7), "CURSOR_2"));
+    const res = await GET(makeReq("evidencias", testUuid(7), "CURSOR_2", 2));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.degraded).toBe(true);
@@ -275,6 +288,37 @@ describe("page-depth cap (the daily search budget is scarce)", () => {
     }) as unknown as typeof fetch;
 
     const url = `http://127.0.0.1:3040/api/search?q=evidencias&uuid=${testUuid(22)}&page=abc`;
+    const res = await GET(new Request(url) as unknown as NextRequest);
+    expect(res.status).toBe(400);
+    expect(calls).toBe(0);
+  });
+});
+
+describe("page/pageToken must agree (the cap is not sidesteppable)", () => {
+  it("rejects a deep cursor smuggled in as page 1", async () => {
+    process.env.YOUTUBE_API_KEY = "FAKE_KEY";
+    let calls = 0;
+    global.fetch = (async () => {
+      calls++;
+      return okJson(searchListJson(3, "CURSOR_9"));
+    }) as unknown as typeof fetch;
+
+    // page defaults to 1; a cursor means depth >= 2, so this is incoherent and
+    // would otherwise let a caller page forever at "page 1".
+    const res = await GET(makeReq("evidencias", testUuid(30), "CURSOR_5"));
+    expect(res.status).toBe(400);
+    expect(calls).toBe(0);
+  });
+
+  it("rejects page 2 with no cursor", async () => {
+    process.env.YOUTUBE_API_KEY = "FAKE_KEY";
+    let calls = 0;
+    global.fetch = (async () => {
+      calls++;
+      return okJson(searchListJson(3));
+    }) as unknown as typeof fetch;
+
+    const url = `http://127.0.0.1:3040/api/search?q=evidencias&uuid=${testUuid(31)}&page=2`;
     const res = await GET(new Request(url) as unknown as NextRequest);
     expect(res.status).toBe(400);
     expect(calls).toBe(0);

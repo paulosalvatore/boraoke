@@ -324,7 +324,16 @@ const queryCache = new Map<string, CacheEntry>();
  */
 export function cacheKey(q: string, regionCode: string, pageToken = ""): string {
   const normalized = q.trim().toLowerCase().replace(/\s+/g, " ");
-  const page = pageToken ? `p:${pageToken}::` : "";
+  // The page marker is UPPERCASE on purpose. `normalized` is lowercased, so an
+  // uppercase marker is unforgeable from the query side: a patron searching the
+  // literal text "P:CURSOR::evidencias" normalizes to "p:cursor::evidencias"
+  // and can never collide with a real deep-page key.
+  //
+  // A lowercase `p:` marker WOULD collide — and exploitably so, since
+  // nextPageToken is handed to every client: a crafted first-page query could
+  // occupy the page-2 entry for a popular search and serve attacker-chosen
+  // videos to every venue for the 12h TTL. Do not "simplify" this to `p:`.
+  const page = pageToken ? `P:${pageToken}::` : "";
   return `${regionCode}::${page}${normalized}`;
 }
 

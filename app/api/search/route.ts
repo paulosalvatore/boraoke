@@ -83,6 +83,15 @@ export async function GET(req: NextRequest) {
       { status: 400 },
     );
   }
+  // `page` and `pageToken` must AGREE, otherwise the cap is trivially sidestepped
+  // by sending page=1 with a deep cursor: page 1 is by definition the cursor-less
+  // first page, and any cursor means depth ≥ 2.
+  if ((pageNum === 1) !== (pageToken === "")) {
+    return NextResponse.json(
+      { error: "page and pageToken disagree" },
+      { status: 400 },
+    );
+  }
 
   // Validate the uuid BEFORE using it as a map key: absent or the literal
   // "anon" (pre-boot client) → "anon"; anything else that is not UUID-shaped

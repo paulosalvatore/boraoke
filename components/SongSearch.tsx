@@ -75,11 +75,23 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
   const [pagesFetched, setPagesFetched] = useState(1);
   /** The mode the CURRENT results were searched under (null = none/paste). */
   const [resultsMode, setResultsMode] = useState<Mode | null>(null);
+  /**
+   * The RAW query the current results came from. "load more" must page against
+   * THIS, not the live input: during the 400ms debounce after the patron edits
+   * the query, the old results (and the load-more button) are still on screen
+   * while `nextPageToken` still belongs to the OLD query. Pairing a new query
+   * with an old cursor is a guaranteed cache miss — one of the platform's 100
+   * daily searches spent on a request whose results are junk, then cached for
+   * 12h. Pinning the query makes that impossible.
+   */
+  const [resultsQuery, setResultsQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [degraded, setDegraded] = useState(false);
   const [rateLimitMsg, setRateLimitMsg] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Which mode chip has keyboard focus (the real radio is visually hidden). */
+  const [focusedMode, setFocusedMode] = useState<Mode | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seqRef = useRef(0); // guards against out-of-order responses
@@ -123,6 +135,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           const data = await res.json().catch(() => ({}));
           setResults([]);
           setResultsMode(null);
+          setResultsQuery("");
           setRateLimitMsg(data.error ?? t("rateLimited"));
           return;
         }
@@ -130,17 +143,20 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         if (data.degraded) {
           setResults([]);
           setResultsMode(null);
+          setResultsQuery("");
           setDegraded(true);
           return;
         }
         setResults(Array.isArray(data.results) ? data.results : []);
         setNextPageToken(typeof data.nextPageToken === "string" ? data.nextPageToken : "");
         setResultsMode(searchMode);
+        setResultsQuery(q);
       } catch {
         if (seq !== seqRef.current) return;
         // Network error → fail soft to the paste-link fallback.
         setResults([]);
         setResultsMode(null);
+        setResultsQuery("");
         setDegraded(true);
       } finally {
         if (seq === seqRef.current) setLoading(false);
@@ -173,11 +189,14 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     // Depth cap: past this the honest answer is "refine your search", not
     // another 1% of the platform's daily search budget.
     if (!nextPageToken || loadingMore || pagesFetched >= MAX_SEARCH_PAGES) return;
+    // The cursor belongs to `resultsQuery`; if we don't have it, we have no
+    // business spending a daily search.
+    if (!resultsQuery) return;
 
     const seq = seqRef.current;
     setLoadingMore(true);
     try {
-      const augmented = augmentQuery(input.trim(), resultsMode ?? modeRef.current);
+      const augmented = augmentQuery(resultsQuery, resultsMode ?? modeRef.current);
       const params = new URLSearchParams({
         q: augmented,
         uuid: patronUuid || "anon",
@@ -201,7 +220,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     } finally {
       setLoadingMore(false);
     }
-  }, [visible, results.length, nextPageToken, loadingMore, pagesFetched, input, resultsMode, patronUuid]);
+  }, [visible, results.length, nextPageToken, loadingMore, pagesFetched, resultsQuery, resultsMode, patronUuid]);
 
   // React to input changes: resolve pasted links locally, else debounce a search.
   useEffect(() => {
@@ -213,6 +232,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     if (!trimmed) {
       setResults([]);
       setResultsMode(null);
+      setResultsQuery("");
       setVisible(PAGE_SIZE);
       setNextPageToken("");
       setPagesFetched(1);
@@ -236,6 +256,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       setNextPageToken("");
       setPagesFetched(1);
       setResultsMode(null);
+      setResultsQuery("");
       setResults([
         {
           videoId: pastedId,
@@ -256,6 +277,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     if (trimmed.length < MIN_CHARS) {
       setResults([]);
       setResultsMode(null);
+      setResultsQuery("");
       setVisible(PAGE_SIZE);
       setNextPageToken("");
       setPagesFetched(1);
@@ -286,14 +308,22 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
 
   const modeName = (m: Mode) => (m === "sing" ? t("modeSing") : t("modeListen"));
   const shown = results.slice(0, visible);
-  const canFetchMore = !!nextPageToken && pagesFetched < MAX_SEARCH_PAGES;
+  /**
+   * The patron has edited the query but the debounced search hasn't landed yet,
+   * so the results (and their cursor) belong to the PREVIOUS query. Offering
+   * "load more" here would spend one of the day's 100 searches deepening a
+   * query the patron has already moved off. Withdraw the affordance instead.
+   */
+  const queryDirty = resultsQuery !== "" && input.trim() !== resultsQuery;
+  const canFetchMore =
+    !!nextPageToken && pagesFetched < MAX_SEARCH_PAGES && !queryDirty;
   const hasMore = visible < results.length || canFetchMore;
   /** Everything fetched is shown and the page budget is spent — suggest refining. */
   const capped = !hasMore && !!nextPageToken;
   /** Results on screen were fetched under a different mode than the one now selected. */
   const staleMode = resultsMode !== null && resultsMode !== mode && results.length > 0;
 
-  const chipStyle = (active: boolean): CSSProperties => ({
+  const chipStyle = (active: boolean, focused: boolean): CSSProperties => ({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -308,6 +338,10 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     color: active ? "var(--accent-text)" : "var(--text-muted)",
     background: active ? "rgba(230,57,70,0.12)" : "var(--surface)",
     border: `${active ? 2 : 1}px solid ${active ? "var(--accent)" : "var(--border)"}`,
+    // The radio itself is visually hidden, so the chip has to carry the focus
+    // ring or keyboard users get no indication at all.
+    outline: focused ? "2px solid var(--accent-text)" : "none",
+    outlineOffset: 2,
   });
 
   return (
@@ -326,13 +360,15 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         </span>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           {(["sing", "listen-dance"] as const).map((m) => (
-            <label key={m} style={chipStyle(mode === m)}>
+            <label key={m} style={chipStyle(mode === m, focusedMode === m)}>
               <input
                 type="radio"
                 name="song-search-mode"
                 value={m}
                 checked={mode === m}
                 onChange={() => onModeChange(m)}
+                onFocus={() => setFocusedMode(m)}
+                onBlur={() => setFocusedMode(null)}
                 style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
               />
               {modeName(m)}

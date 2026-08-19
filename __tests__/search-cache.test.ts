@@ -208,7 +208,7 @@ describe("search-cache (redis path)", () => {
       nextPageToken: "CURSOR_3",
     });
     expect(setMock).toHaveBeenCalledWith(
-      "sc:BR::p:CURSOR_2::evidencias",
+      "sc:BR::P:CURSOR_2::evidencias",
       { results: RESULTS, nextPageToken: "CURSOR_3" },
       { px: SEARCH_CACHE_TTL_MS },
     );
@@ -227,7 +227,7 @@ describe("search-cache (redis path)", () => {
 
   it("still accepts a LEGACY bare-array entry written before TICKET-83", async () => {
     // Entries live for 12h; a deploy must not invalidate them (each one is
-    // ~101 quota units that would otherwise be re-burned).
+    // one of the platform's 100 daily searches that would otherwise be re-spent).
     const { sc, ys } = await freshModules();
     getMock.mockImplementation(async () => RESULTS);
     const hit = await sc.getCachedSearchPage(ys.cacheKey("evidencias", "BR"));

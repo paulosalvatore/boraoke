@@ -318,3 +318,61 @@ test("degraded search has no pagination and the mode chooser still works", async
   await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 5000 });
   await expect(page.getByTestId("search-load-more")).toHaveCount(0);
 });
+
+/**
+ * TICKET-83 reviewer finding 2 — "load more" must never pair a NEW query with
+ * the PREVIOUS query's cursor. That combination is a guaranteed cache miss:
+ * one of the platform's 100 daily searches spent on a request whose results are
+ * junk, then cached for 12h. The affordance withdraws while the debounce is in
+ * flight rather than paging a query the patron has moved off.
+ */
+test("load more withdraws once the query is edited (no stale-cursor search)", async ({ page }) => {
+  const requests: { q: string; pageToken: string | null }[] = [];
+  const many = Array.from({ length: 12 }, (_, i) => ({
+    videoId: `svid${i}`,
+    title: `Stale Song ${i}`,
+    channelTitle: "Ch",
+    duration: "3:00",
+    thumbnailUrl: "https://i.ytimg.com/vi/x/mqdefault.jpg",
+  }));
+
+  await page.route("**/api/search**", async (route) => {
+    const url = new URL(route.request().url());
+    requests.push({ q: url.searchParams.get("q") ?? "", pageToken: url.searchParams.get("pageToken") });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: many, nextPageToken: "CURSOR_2" }),
+    });
+  });
+
+  await joinAs(page, "StaleUser");
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("evidencias");
+  await expect(page.getByRole("button", { name: /Stale Song 0/ })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId("search-load-more")).toBeVisible();
+
+  // Edit the query. For the length of the debounce the OLD results are still
+  // painted while the cursor belongs to a query the patron has abandoned —
+  // `queryDirty` withdraws the affordance across that window. (That window is a
+  // few hundred ms, so it is not asserted here; what IS asserted below is the
+  // guarantee it protects, which holds deterministically.)
+  await input.fill("outra musica");
+  // The mock returns identical rows for both queries, so "results are visible"
+  // proves nothing here — wait for the SECOND search to actually land.
+  await expect.poll(() => requests.length, { timeout: 5000 }).toBe(2);
+
+  // Page all the way into a deep fetch against the NEW query. (Wait for the
+  // reveal to commit between taps — two taps inside one render both read the
+  // same handler closure and would merely reveal twice, which is free but not
+  // what this test is exercising.)
+  await page.getByTestId("search-load-more").click();
+  await expect(page.getByRole("button", { name: /Stale Song 11/ })).toBeVisible();
+  await page.getByTestId("search-load-more").click();
+  await expect.poll(() => requests.filter((r) => r.pageToken).length, { timeout: 5000 }).toBe(1);
+
+  const deep = requests.filter((r) => r.pageToken);
+  expect(deep).toHaveLength(1);
+  // The critical assertion: the cursor was never paired with a different query.
+  expect(deep[0].q).toBe("outra musica karaoke");
+});
