@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-19T16:03:37Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-89", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/89-fullscreen-idle-transition", "short_sha": "0ce0a83", "message_slug": "TICKET-89: Fullscreen API probes — display:none never exits fullscreen"}}
