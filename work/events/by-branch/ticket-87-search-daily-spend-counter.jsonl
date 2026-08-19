@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-19T15:57:57Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-87", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/87-search-daily-spend-counter", "short_sha": "a3651e5", "message_slug": "TICKET-87: add cross-instance daily search.list spend counter"}}
