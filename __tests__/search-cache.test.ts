@@ -133,18 +133,24 @@ describe("search-cache (redis path)", () => {
     const { sc, ys } = await freshModules();
     await sc.setCachedSearch(ys.cacheKey("evidencias", "BR"), RESULTS);
     expect(setMock).toHaveBeenCalledTimes(1);
-    expect(setMock).toHaveBeenCalledWith("sc:BR::evidencias", RESULTS, {
-      px: SEARCH_CACHE_TTL_MS,
-    });
+    // TICKET-83: the stored payload is a PAGE ({ results, nextPageToken? }),
+    // not a bare array, so a page's forward cursor is cached with its rows.
+    expect(setMock).toHaveBeenCalledWith(
+      "sc:BR::evidencias",
+      { results: RESULTS },
+      { px: SEARCH_CACHE_TTL_MS },
+    );
     expect(SEARCH_CACHE_TTL_MS).toBe(12 * 60 * 60 * 1000);
   });
 
   it("set (empty): cached with the short 10min px TTL", async () => {
     const { sc, ys } = await freshModules();
     await sc.setCachedSearch(ys.cacheKey("zxqjvw nothing", "BR"), []);
-    expect(setMock).toHaveBeenCalledWith("sc:BR::zxqjvw nothing", [], {
-      px: SEARCH_CACHE_EMPTY_TTL_MS,
-    });
+    expect(setMock).toHaveBeenCalledWith(
+      "sc:BR::zxqjvw nothing",
+      { results: [] },
+      { px: SEARCH_CACHE_EMPTY_TTL_MS },
+    );
     expect(SEARCH_CACHE_EMPTY_TTL_MS).toBe(10 * 60 * 1000);
   });
 
@@ -192,5 +198,40 @@ describe("search-cache (redis path)", () => {
     await expect(sc.setCachedSearch(key, RESULTS)).resolves.toBeUndefined();
     // The per-instance L1 was written before the failed Redis SET.
     expect(await sc.getCachedSearch(key)).toEqual(RESULTS);
+  });
+
+  // ── TICKET-83: paged payloads ────────────────────────────────────────────
+  it("stores a deep page under its OWN pageToken-scoped key", async () => {
+    const { sc, ys } = await freshModules();
+    await sc.setCachedSearchPage(ys.cacheKey("evidencias", "BR", "CURSOR_2"), {
+      results: RESULTS,
+      nextPageToken: "CURSOR_3",
+    });
+    expect(setMock).toHaveBeenCalledWith(
+      "sc:BR::P:CURSOR_2::evidencias",
+      { results: RESULTS, nextPageToken: "CURSOR_3" },
+      { px: SEARCH_CACHE_TTL_MS },
+    );
+  });
+
+  it("reads a page back with its cursor intact (paging back burns no quota)", async () => {
+    const { sc, ys } = await freshModules();
+    getMock.mockImplementation(async () => ({
+      results: RESULTS,
+      nextPageToken: "CURSOR_3",
+    }));
+    const hit = await sc.getCachedSearchPage(ys.cacheKey("evidencias", "BR", "CURSOR_2"));
+    expect(hit?.results).toEqual(RESULTS);
+    expect(hit?.nextPageToken).toBe("CURSOR_3");
+  });
+
+  it("still accepts a LEGACY bare-array entry written before TICKET-83", async () => {
+    // Entries live for 12h; a deploy must not invalidate them (each one is
+    // one of the platform's 100 daily searches that would otherwise be re-spent).
+    const { sc, ys } = await freshModules();
+    getMock.mockImplementation(async () => RESULTS);
+    const hit = await sc.getCachedSearchPage(ys.cacheKey("evidencias", "BR"));
+    expect(hit?.results).toEqual(RESULTS);
+    expect(hit?.nextPageToken).toBeUndefined();
   });
 });

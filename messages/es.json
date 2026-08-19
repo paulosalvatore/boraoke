@@ -204,7 +204,18 @@
     "rateLimited": "Demasiadas búsquedas — espera un momento.",
     "youtubeLink": "Link de YouTube",
     "pastedLink": "Link pegado",
-    "degraded": "La búsqueda no está disponible — pega un enlace de YouTube"
+    "degraded": "La búsqueda no está disponible — pega un enlace de YouTube",
+    "modeLegend": "Quieres",
+    "modeSing": "🎤 Cantar",
+    "modeListen": "💃 Solo disfrutar",
+    "modeHint": "Elige antes de buscar — cambiar después no repite la búsqueda.",
+    "resultsFor": "Resultados para: {mode}",
+    "modeChanged": "Estos resultados son de {mode}.",
+    "searchAgain": "Buscar de nuevo",
+    "loadMore": "Ver más resultados",
+    "loadingMore": "Cargando más…",
+    "noMoreResults": "Eso es todo lo que encontramos.",
+    "refineSearch": "¿No lo encontraste? Prueba con otras palabras."
   },
   "Feedback": {
     "trigger": "Enviar comentarios",

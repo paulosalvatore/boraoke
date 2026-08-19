@@ -408,10 +408,15 @@ export default function PatronRoom({
       <section style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: "1.25rem", marginBottom: "2rem" }}>
         <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>{t("addSong")}</h2>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {/* TICKET-83: the sing/vibe chooser now lives INSIDE SongSearch,
+              above the query input, so the patron picks before searching and a
+              change of mind costs no YouTube quota. The state stays here
+              because the submit payload carries it. */}
           <SongSearch
             key={searchKey}
             patronUuid={patronUuid}
             mode={mode}
+            onModeChange={setMode}
             onSelect={handleSelect}
           />
           {parsedVideoId && (
@@ -430,28 +435,19 @@ export default function PatronRoom({
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-            <div>
-              <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem", color: "var(--text-muted)" }}>
-                {t("tableLabel")}
-              </label>
-              <input
-                placeholder={t("tablePlaceholder")}
-                aria-label={t("tableAria")}
-                maxLength={10}
-                value={table}
-                onChange={(e) => updateTable(e.target.value)}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem", color: "var(--text-muted)" }}>
-                {t("modeLabel")}
-              </label>
-              <select value={mode} onChange={(e) => setMode(e.target.value as Mode)} aria-label={t("modeLabel")}>
-                <option value="sing">{t("modeSing")}</option>
-                <option value="listen-dance">{t("modeListen")}</option>
-              </select>
-            </div>
+          {/* Mode used to sit here as a <select>; TICKET-83 moved it above the
+              search input (see SongSearch), so the table field is now full width. */}
+          <div>
+            <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem", color: "var(--text-muted)" }}>
+              {t("tableLabel")}
+            </label>
+            <input
+              placeholder={t("tablePlaceholder")}
+              aria-label={t("tableAria")}
+              maxLength={10}
+              value={table}
+              onChange={(e) => updateTable(e.target.value)}
+            />
           </div>
 
           {submitError && <p style={{ color: "var(--accent-text)", fontSize: "0.875rem" }}>{submitError}</p>}
