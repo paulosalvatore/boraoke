@@ -25,7 +25,6 @@ import type { NextRequest } from "next/server";
  * fail-closed test below. The rest of this file runs on the memory driver, so
  * this mock is inert there.
  */
-let redisIsDown = false;
 jest.mock("@upstash/redis", () => {
   const failing = {
     eval: async () => {
@@ -249,7 +248,6 @@ describe("Redis-unreachable behaviour is FAIL-CLOSED", () => {
     process.env.STORE_DRIVER = "upstash";
     process.env.UPSTASH_REDIS_REST_URL = "https://unreachable.invalid";
     process.env.UPSTASH_REDIS_REST_TOKEN = "token";
-    redisIsDown = true;
     jest.resetModules();
     const { GET: FreshGET } = await import("@/app/api/search/route");
 
@@ -265,7 +263,6 @@ describe("Redis-unreachable behaviour is FAIL-CLOSED", () => {
     // Not one unaccounted call escaped to Google during the outage.
     expect(searchListCalls).toBe(0);
 
-    redisIsDown = false;
     process.env.STORE_DRIVER = "memory";
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
