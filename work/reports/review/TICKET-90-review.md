@@ -117,3 +117,37 @@ Worth recording, because the gate is not only about defects:
 ## 6. Re-gate criteria
 
 Fix DEFECT-1 through DEFECT-4 (document-only edits; no code change is required by this gate) and this is an **APPROVE**. NIT-1/NIT-2 are optional. The ADVISORY is a Tech-Lead decision, not a gate condition.
+
+---
+
+# Re-review — 2026-08-19
+
+**Re-reviewed at:** `9d2b1dc` (fix commit `8509805`, "docs(quota): address reviewer defects 1-4"). Diff scope confirmed: `work/youtube-quota-form.md` only, 15 lines changed (+ the auto-committed event log). No code was touched, which is correct — every defect in the first pass was a documentation defect.
+
+## Verdict: **APPROVE** — filing-ready, subject to the §6 pre-filing checklist
+
+All four defects and both nits are fixed, and each fix was re-verified against the same code evidence as the first pass rather than accepted on the author's description.
+
+| Item | Fix as landed | Re-verification | Result |
+|---|---|---|---|
+| DEFECT-1 (MEDIUM) | §2 bullet now reads "…this limiter is per serverless instance and is a burst control, not a platform-wide daily bound — the cross-instance daily spend counter described immediately below is the piece that provides that bound, and it is not yet shipped." | Matches `lib/youtube-search.ts:395-417` exactly, including the "best-effort per instance" scoping and the fact that the search path does not use `lib/rate-limit-counter.ts`. The overclaiming causal clause is gone, and the sentence now names the gap and its owner (TICKET-87) instead of papering over it. | **RESOLVED** |
+| DEFECT-2 (LOW-MED) | "≈ **40–480** patron search requests per venue night (low end: 20 × 2 × 1; high end: 40 × 4 × 3)"; net "roughly **25–380** `search.list` calls per venue night". | Arithmetic re-checked: 20 × 2 × 1 = 40 ✓, 40 × 4 × 3 = 480 ✓, 40 × 0.6 = 24 ≈ 25 ✓, 480 × 0.8 = 384 ≈ 380 ✓. Showing the derivation inline is better than what I asked for — a Google reviewer can now check it without reconstructing it. | **RESOLVED** |
+| DEFECT-3 (LOW) | Basis now: "10–20 concurrent early-access venues × the ~150-call/venue-night central case ≈ 1,500–3,000/day, with the remainder as headroom for busier-than-modelled nights and for growth". | 10 × 150 = 1,500 ✓, 20 × 150 = 3,000 ✓. 5,000 is now explicitly the modelled load *plus* an identified headroom margin, rather than the ceiling of its own basis mislabelled as containing headroom. The bogus "midpoint" characterisation is gone, and the ~150 central case is stated where the band is introduced (§2) so the two sections agree. | **RESOLVED** |
+| DEFECT-4 (LOW) | §0 table: "a patron's search costs 1 call, or 2 if they explicitly ask for a deeper page (hard-capped at 2 — see §2)"; §2 adds "A minority of queries spend a second call when the patron asks for a deeper page; that is capped at 2 and pushes the result toward the upper end of the range rather than beyond it." | Consistent with `MAX_SEARCH_PAGES = 2` (`lib/youtube-search.ts:112`, enforced server-side at `app/api/search/route.ts:78-94`) and with §1's existing "hard-capped at two `search.list` calls per query". The new §2 bullet also closes the modelling gap I raised — the 1:1 request→call assumption is now stated and bounded rather than silent. | **RESOLVED** |
+| NIT-1 | §1 now: "two closely related read purposes, both driven by a patron action: user-initiated song search, and a metadata lookup for the video a patron chooses … We use no other endpoints, and we never write to the API." | Verified accurate and now *stronger* than before: `YOUTUBE_API_KEY` is consumed only at `app/api/search/route.ts:132` and `app/api/queue/route.ts:237`, reaching only `search.list` and `videos.list`; no `playlistItems`/`playlists`/`channels` usage anywhere, and no write endpoint. The added "no other endpoints / never write" sentence is itself a verified claim, not a flourish. | **RESOLVED** |
+| NIT-2 | §3 now: "(60 seconds, bounded to 100 entries) … Shared-cache entries are deleted automatically at their TTL; the in-memory tier's entries are never served past their 60-second TTL and are evicted on the next read or by the size bound." | Matches `lib/youtube-search.ts:311` (`CACHE_MAX = 100`), `:352-363` (expired entry deleted on read, never returned) and `:381-387` (size-bound eviction), against `lib/search-cache.ts:195` (`px` TTL) for the Redis tier. This is now a precise description of a two-tier retention model rather than a blanket guarantee. | **RESOLVED** |
+
+## The room/queue retention question — NOT blocking
+
+Confirmed acceptable as handled. It was filed as an ADVISORY, not a defect, and deliberately so: the *accuracy* of §3 is intact either way, because the document states the absence of an expiry plainly ("These entries currently have no automatic expiry") rather than implying a bound that does not exist. Adding a retention bound is code, it is out of TICKET-90's scope, and this gate does not require it.
+
+Two things to keep straight, though, so the non-blocking call is not mistaken for a resolved one:
+
+1. It remains a **Tech-Lead decision at filing time**, correctly parked in the §6 checklist. The form as written tells an auditor, in the same paragraph that cites the 30-day limit in Policies §III.E.4, that API-derived display metadata (the stored `title`) currently has no retention bound and rooms are never deleted (`lib/rooms.ts:316-317`). That is the honest answer and probably the right one to give — but it is a disclosure with a consequence, not a formality, and the TL should file it knowingly.
+2. If the TL would rather answer cleanly, the sequencing is "ship the bound, then file", not "soften the sentence". Nothing in this document should be weakened to make that answer read better.
+
+## Remaining defects
+
+**None.** No new defects were introduced by the fix commit, and no first-pass finding is left open. The document's factual claims are, to the limit of what I could check, accurate: three code-verified cache tiers, two verbatim-matching Google quotations with correct dates, an independently corroborated form-fields claim, a correctly-labelled `[UNVERIFIED]` grant-magnitude question, and estimates that are labelled as estimates and now show their arithmetic.
+
+The only gate condition that survives is the one the document already imposes on itself: **§6's pre-filing checklist must be run at filing time**, because two of its items can go stale between now and submission — the TTL constants, and TICKET-87's "in progress" status (branch `ticket/87-search-daily-spend-counter` exists on `origin`; if it merges before filing, §2's "not yet shipped" wording and DEFECT-1's fix text both need updating in the same edit).
