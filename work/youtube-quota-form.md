@@ -26,7 +26,7 @@ So the two resources are **decoupled**, and only one of them constrains Boraoke:
 
 | Resource | Default | Boraoke's usage |
 |---|---|---|
-| `search.list` calls/day (own bucket) | **100** | **the binding constraint** — one patron search costs 1 |
+| `search.list` calls/day (own bucket) | **100** | **the binding constraint** — a patron's search costs 1 call, or 2 if they explicitly ask for a deeper page (hard-capped at 2 — see §2) |
 | all other endpoints (shared units/day) | 10,000 | ~1–2 units per search (`videos.list` durations), plus 1 unit per pasted-link embeddability check — a small fraction of the pool |
 | embedded playback (IFrame Player API) | not a Data API call | **0** [VERIFIED] https://developers.google.com/youtube/iframe_api_reference |
 
@@ -38,7 +38,7 @@ So the two resources are **decoupled**, and only one of them constrains Boraoke:
 
 > Boraoke (https://boraoke.com) is a shared karaoke-queue platform for any room with a TV and a group of people — bars, parties, residential-building common rooms, and company events. A host creates a room in about 30 seconds and displays a QR code; each guest scans it, joins with a nickname (and optionally a table number) from their phone browser with no app and no account, searches for a song, and adds it to the room's shared queue. The room's TV screen plays that queue **exclusively through the official YouTube IFrame Player API** — embedded playback only, with no downloading, no proxying, and no modification of YouTube's ads, branding, attribution, or player controls. A fairness rotation (full karaoke / two per table / one per person) decides the play order; it never touches how a video is played.
 >
-> We use the YouTube Data API v3 for exactly one purpose: **user-initiated song search**. A patron's search issues one `search.list` call (or is served entirely from our cache), plus one `videos.list` call to fetch the durations of the returned ids so we can display them. Patrons may also paste a YouTube link directly instead of searching; that path issues one `videos.list` call to verify the video is embeddable and consumes no `search.list` quota at all.
+> We use the YouTube Data API v3 for two closely related read purposes, both driven by a patron action: **user-initiated song search**, and a **metadata lookup for the video a patron chooses**. A search issues one `search.list` call (or is served entirely from our cache), plus one `videos.list` call to fetch the durations of the returned ids so we can display them. Patrons may also paste a YouTube link directly instead of searching; that path issues one `videos.list` call to verify the video is embeddable and consumes no `search.list` quota at all. We use no other endpoints, and we never write to the API.
 >
 > Searches are debounced client-side (400 ms) with a 3-character minimum, cached server-side across all serverless instances, hard-capped at two `search.list` calls per query, never prefetched, and rate-limited per patron **and** per IP. The API key is read server-side only, inside an API route, and is never exposed to the client bundle (it is not a `NEXT_PUBLIC_*` variable and is never serialised into any response).
 
@@ -54,10 +54,11 @@ Default allocation: **100 `search.list` calls/day for the entire platform, acros
 
 **[ESTIMATE — stated as an estimate on purpose.]** We do not yet have live query-level telemetry (our current events record a result *count*, never the query text), so the following is modelled from the product's shape rather than measured. We would rather present it as an estimate than present a measured-sounding number we cannot support.
 
-- 20–40 guests per venue night × 2–4 songs each × 1–3 search attempts per song ≈ **80–480 patron search requests per venue night**.
+- 20–40 guests per venue night × 2–4 songs each × 1–3 search attempts per song ≈ **40–480 patron search requests per venue night** (low end: 20 × 2 × 1; high end: 40 × 4 × 3).
 - Client-side debounce (400 ms) and the 3-character minimum already collapse keystroke bursts into whole-query requests before any of these reach the server.
 - Our cross-instance cache then absorbs repeated *identical* queries. **[ESTIMATE]** we model a 20–40% hit rate within a single evening; karaoke demand is highly repetitive at the *song* level, but patrons type the same song many different ways, so string-level hits are far rarer than song-level repeats.
-- Net: roughly **50–380 `search.list` calls per venue night, from one venue.**
+- A minority of queries spend a second call when the patron asks for a deeper page; that is capped at 2 and pushes the result toward the upper end of the range rather than beyond it.
+- Net: roughly **25–380 `search.list` calls per venue night, from one venue** — a wide band because it is a model, not a measurement. A **central case of ~150 calls per venue night** is what we size the request against.
 
 **A single active venue can therefore exhaust the entire platform-wide daily allowance in one evening, several times over.** That is the concrete problem this request addresses.
 
@@ -65,7 +66,7 @@ Default allocation: **100 `search.list` calls/day for the entire platform, acros
 
 | Field | Request | Basis |
 |---|---|---|
-| `youtube.search.list` — total per day | **5,000 calls/day** | 10–20 concurrent early-access venues × ~150–250 calls/venue-night (midpoint of the range above), plus headroom for growth within the early-access period |
+| `youtube.search.list` — total per day | **5,000 calls/day** | 10–20 concurrent early-access venues × the ~150-call/venue-night central case ≈ 1,500–3,000/day, with the remainder as headroom for busier-than-modelled nights and for growth within the early-access period |
 | `youtube.search.list` — peak per minute | **100 calls/minute** | searches cluster at the start of an evening and after each song change; 20 venues × a few concurrent searches each |
 | All other endpoints (combined units/day) | **no increase requested** — the default 10,000/day is sufficient | our only consumers are duration lookups and embeddability checks, at 1 unit each |
 | `videos.insert` | **not used** — no increase requested | Boraoke never uploads to YouTube |
@@ -82,7 +83,7 @@ These are not plans; each is verifiable in the codebase today.
 - **Nothing is ever prefetched.** A deeper page is fetched only after a deliberate tap, so we never spend a call on results nobody scrolls to.
 - **Paged results are cached under their own key**, so paging forward and back over an evening costs zero additional quota.
 - **Debounce and minimum query length.** 400 ms debounce, 3-character minimum — no search-on-every-keystroke.
-- **Dual-bucket rate limiting**, per anonymous patron id *and* per IP, so a single client cannot burst against the allowance.
+- **Dual-bucket rate limiting**, per anonymous patron id *and* per IP (a sliding window on each), so no single client or single host can issue searches at an unbounded rate. To be precise about its scope: this limiter is per serverless instance and is a burst control, not a platform-wide daily bound — the cross-instance daily spend counter described immediately below is the piece that provides that bound, and it is not yet shipped.
 - **Paste-a-link is a first-class path** that bypasses search entirely and costs no `search.list` quota.
 
 **In progress (not yet shipped at the time of writing):** a cross-instance **daily `search.list` spend counter** that tracks the platform-wide daily total across all serverless instances and refuses further searches at a safety margin below the cap, so the allowance can never be silently drained by one misbehaving client. **Planned, not started:** a locally-harvested karaoke song index, populated via `playlistItems.list` from the separate 10,000-unit pool, so that most searches are answered locally and `search.list` becomes a long-tail fallback rather than the core interaction. We mention the index explicitly rather than omit it: it would be an internal implementation detail behind our own search box, never a publicly browsable catalogue.
@@ -92,7 +93,7 @@ These are not plans; each is verifiable in the codebase today.
 ## 3. Compliance answers
 
 - **Data displayed:** for search results, only the video title, channel name, thumbnail, and duration. A selected video plays unmodified in the official IFrame embed.
-- **Data storage — API responses.** We cache `search.list`/`videos.list` responses server-side in Redis so repeat queries do not re-spend quota. **Non-empty result sets are cached for 12 hours; empty result sets for 10 minutes; API errors are never cached.** There is additionally a short per-instance in-memory cache (60 seconds) that sits in front of the shared one. Cached entries expire automatically at their TTL and are not retained beyond it. This is well inside the 30-day limit in the YouTube API Services Developer Policies §III.E.4 ("API Clients may temporarily store limited amounts of Non-Authorized Data … but not longer than 30 calendar days").
+- **Data storage — API responses.** We cache `search.list`/`videos.list` responses server-side in Redis so repeat queries do not re-spend quota. **Non-empty result sets are cached for 12 hours; empty result sets for 10 minutes; API errors are never cached.** There is additionally a short per-instance in-memory cache (60 seconds, bounded to 100 entries) that sits in front of the shared one. Shared-cache entries are deleted automatically at their TTL; the in-memory tier's entries are never served past their 60-second TTL and are evicted on the next read or by the size bound. This is well inside the 30-day limit in the YouTube API Services Developer Policies §III.E.4 ("API Clients may temporarily store limited amounts of Non-Authorized Data … but not longer than 30 calendar days").
 - **Data storage — queue contents.** When a guest adds a song, we store the `videoId` and title in that room's queue so the TV can play it and the room can see what is coming. **These entries currently have no automatic expiry**; they persist until the entry is played and removed, or the room is deleted. We are treating that as an item to fix rather than to describe loosely: we intend to add an explicit retention bound to room/queue data. Separately, our anonymous product-analytics events already carry a hard 90-day expiry.
 - **No media is ever downloaded, proxied, or stored.** We store identifiers and display metadata only.
 - **User data:** guests are anonymous — a random UUID plus a self-chosen nickname, and optionally a table number. No Google or YouTube account data is accessed, no OAuth is used, no YouTube account features are used. The application uses an API key only.
