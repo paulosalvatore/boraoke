@@ -18,7 +18,6 @@
  */
 import {
   reserveSearchCall,
-  getSearchBudgetUsage,
   pacificDayKey,
   SEARCH_DAILY_CAP,
   SEARCH_DAILY_BUDGET,
@@ -37,6 +36,8 @@ interface FakeOpts {
   nonAtomic?: boolean;
   /** When set, every eval rejects with this error. */
   failWith?: Error;
+  /** When set, every eval RESOLVES with this raw value instead of running. */
+  replyWith?: unknown;
 }
 
 function makeFakeRedis(opts: FakeOpts = {}) {
@@ -70,6 +71,7 @@ function makeFakeRedis(opts: FakeOpts = {}) {
     async eval(script: string, keys: string[], args: (string | number)[]) {
       evalCalls.push({ script, keys, args });
       if (opts.failWith) throw opts.failWith;
+      if ("replyWith" in opts) return opts.replyWith;
       const key = keys[0];
       const budget = Number(args[0]);
       const ttl = Number(args[1]);
@@ -113,6 +115,7 @@ beforeEach(() => {
   _resetSearchBudget();
   jest.spyOn(console, "info").mockImplementation(() => {});
   jest.spyOn(console, "warn").mockImplementation(() => {});
+  jest.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -218,15 +221,6 @@ describe("memory path", () => {
     expect(afterUtcMidnight.reason).toBe("cap");
   });
 
-  it("reports usage without mutating it", async () => {
-    const now = new Date("2026-08-19T18:00:00Z");
-    await reserveSearchCall(now);
-    await reserveSearchCall(now);
-    const a = await getSearchBudgetUsage(now);
-    const b = await getSearchBudgetUsage(now);
-    expect(a).toEqual({ day: "2026-08-19", used: 2, remaining: SEARCH_DAILY_BUDGET - 2 });
-    expect(b).toEqual(a);
-  });
 });
 
 // ─── Redis path: ONE atomic EVAL ─────────────────────────────────────────────
@@ -325,22 +319,123 @@ describe("redis path", () => {
     expect(r.reason).toBe("store");
   });
 
-  it("getSearchBudgetUsage returns null (not a misleading 0) when Redis fails", async () => {
-    fake = makeFakeRedis({ failWith: new Error("down") });
-    installFake(fake);
-    // `get` on this fake still works; force the read to throw instead.
-    fake.get = async () => {
-      throw new Error("down");
-    };
-    expect(await getSearchBudgetUsage()).toBeNull();
-  });
-
   it("exposes no refund/decrement API (an error-refund is a free credit)", async () => {
     const mod = await import("@/lib/search-budget");
     const names = Object.keys(mod).join(" ").toLowerCase();
     expect(names).not.toContain("refund");
     expect(names).not.toContain("release");
     expect(RESERVE_SEARCH_SCRIPT).not.toContain("DECR");
+  });
+});
+
+// ─── Security-review regressions (F-1, F-2, F-5) ────────────────────────────
+
+describe("F-1 — an anomalous EVAL reply must DENY, never coerce to a grant", () => {
+  beforeEach(() => {
+    process.env.STORE_DRIVER = "upstash";
+    process.env.UPSTASH_REDIS_REST_URL = "https://fake.upstash.io";
+  });
+
+  // Every one of these coerces to a FINITE number via Number(), and all but the
+  // last coerce to 0 — i.e. the old `Number(res)` + isFinite guard read them as
+  // "granted, 0 remaining" and kept granting forever with no log and no denial.
+  const coercibleJunk: Array<[string, unknown]> = [
+    ["null", null],
+    ["undefined", undefined],
+    ["empty string", ""],
+    ["false", false],
+    ["empty array", []],
+    ["numeric string", "0"],
+    ["float", 1.5],
+    ["object", {}],
+  ];
+
+  for (const [label, reply] of coercibleJunk) {
+    it(`denies (fail-closed) on a ${label} reply`, async () => {
+      installFake(makeFakeRedis({ replyWith: reply }));
+      const r = await reserveSearchCall(new Date("2026-08-19T18:00:00Z"));
+      expect(r.ok).toBe(false);
+      expect(r.reason).toBe("store");
+    });
+  }
+
+  it("does not grant 1000 free reservations on a null reply (the measured bug)", async () => {
+    installFake(makeFakeRedis({ replyWith: null }));
+    const results = await Promise.all(
+      Array.from({ length: 1000 }, () => reserveSearchCall()),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(0);
+  });
+
+  it("still accepts a legitimate integer reply", async () => {
+    installFake(makeFakeRedis({ replyWith: 42 }));
+    const r = await reserveSearchCall();
+    expect(r.ok).toBe(true);
+    expect(r.remaining).toBe(42);
+  });
+
+  it("accepts a bigint reply (some transports widen integers)", async () => {
+    installFake(makeFakeRedis({ replyWith: BigInt(7) }));
+    const r = await reserveSearchCall();
+    expect(r.ok).toBe(true);
+    expect(r.remaining).toBe(7);
+  });
+});
+
+describe("F-2 — a DEPLOYED instance without Upstash denies instead of counting per-process", () => {
+  const NODE_ENV_DESC = Object.getOwnPropertyDescriptor(process.env, "NODE_ENV");
+
+  afterEach(() => {
+    if (NODE_ENV_DESC) Object.defineProperty(process.env, "NODE_ENV", NODE_ENV_DESC);
+    delete process.env.VERCEL_ENV;
+  });
+
+  it("denies every request and logs an error when deployed with no store", async () => {
+    // The measured failure: 5 lambda instances granted 450 reservations against
+    // a hard cap of 100, with nothing in the logs but ordinary spend lines.
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.STORE_DRIVER;
+    process.env.VERCEL_ENV = "production";
+
+    const results = await Promise.all(
+      Array.from({ length: 200 }, () => reserveSearchCall()),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(0);
+    expect(results.every((r) => r.reason === "store")).toBe(true);
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("MISCONFIGURED"),
+    );
+  });
+
+  it("still uses the in-process counter in dev/CI (unchanged behavior)", async () => {
+    delete process.env.VERCEL_ENV;
+    process.env.STORE_DRIVER = "memory";
+    const r = await reserveSearchCall();
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe("F-5 — the in-process counter survives a BACKWARDS clock step", () => {
+  it("does not re-grant a whole budget when the day flips back and forth", async () => {
+    const day1 = new Date("2026-08-19T18:00:00Z");
+    const day2 = new Date("2026-08-20T18:00:00Z");
+
+    for (let i = 0; i < SEARCH_DAILY_BUDGET; i++) await reserveSearchCall(day1);
+    expect((await reserveSearchCall(day1)).ok).toBe(false);
+
+    // A new day legitimately gets a fresh budget...
+    expect((await reserveSearchCall(day2)).ok).toBe(true);
+
+    // ...but stepping BACK to the spent day must NOT reset it. A single
+    // current-day/count pair reset on any change, so this granted a third
+    // budget (measured: 270 grants from a day2 → day1 → day2 sequence).
+    expect((await reserveSearchCall(day1)).ok).toBe(false);
+    expect((await reserveSearchCall(day1)).reason).toBe("cap");
+
+    // And day2's own count was not clobbered by the excursion.
+    const back = await reserveSearchCall(day2);
+    expect(back.ok).toBe(true);
+    expect(back.remaining).toBe(SEARCH_DAILY_BUDGET - 2);
   });
 });
 

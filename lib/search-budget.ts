@@ -78,11 +78,13 @@
  * unbounded, so any per-process allowance multiplies by an unbounded factor and
  * is not a bound at all.
  *
- * IMPORTANT — "fail closed" applies ONLY to a Redis that is CONFIGURED and
- * failing. When Upstash is not configured at all (local dev, CI, zero-secret
- * boot) this module uses the in-process counter, exactly like every sibling
- * store's driver resolution. That path is still a real ceiling for a
- * single-instance deployment, and it keeps dev/CI behavior unchanged.
+ * A DEPLOYED instance with NO Upstash configured is treated the same way —
+ * denied, loudly (see `deployedWithoutStore`). Falling back to the in-process
+ * counter there would be the per-process middle path rejected two paragraphs
+ * above, granted silently as the default for a missing env var. The in-process
+ * counter is therefore reached ONLY in local dev, CI and jest, where it is a
+ * real ceiling for the single process that exists and keeps dev/CI behavior
+ * unchanged.
  */
 
 import "server-only";
@@ -132,18 +134,27 @@ const KEY_TTL_MS = 36 * 60 * 60 * 1000;
 /**
  * Calendar date in `America/Los_Angeles` as `YYYY-MM-DD`.
  *
- * `en-CA` yields ISO-ordered `YYYY-MM-DD` for the given zone; the IANA zone
- * makes this DST-correct with no offset math. Purely server-clock-derived — NO
+ * The IANA zone makes this DST-correct with no offset math, and the parts are
+ * assembled by hand so the shape never depends on ICU locale data (see below).
+ * Purely server-clock-derived — NO
  * caller/attacker input reaches this value, so the counter key cannot be
  * poisoned, split, or rotated by anything a patron sends.
  */
 export function pacificDayKey(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
+  // `formatToParts` + manual assembly rather than relying on a locale's output
+  // ORDER: under a small-ICU Node build an `en-CA` format string silently falls
+  // back to `en-US` and yields "08/19/2026". That would still be a unique key
+  // per day (so the counter would keep working), but the key shape is part of
+  // this module's operational contract — it is what an operator greps for in
+  // Redis — so it is pinned deterministically instead of inherited from ICU.
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Los_Angeles",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(now);
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 function redisKeyFor(day: string): string {
@@ -227,6 +238,49 @@ function configuredButUnavailable(): boolean {
   return useUpstash() && getRedis() === null;
 }
 
+/**
+ * True in a real deployed environment (as opposed to local dev, CI, or jest).
+ * Vercel sets VERCEL_ENV on every deployment including previews; NODE_ENV is
+ * the fallback for any other host. Under jest NODE_ENV is "test" and VERCEL_ENV
+ * is absent, so the suite gets the in-process path by default and opts INTO the
+ * deployed path by setting VERCEL_ENV — deliberately, rather than the guard
+ * special-casing "test" and thereby making itself untestable.
+ */
+function isDeployed(): boolean {
+  return !!process.env.VERCEL_ENV || process.env.NODE_ENV === "production";
+}
+
+/**
+ * SECURITY (review finding F-2): a DEPLOYED instance with no Upstash configured
+ * must NOT fall back to the in-process counter.
+ *
+ * The header argues at length that a per-process allowance is not a bound at
+ * all, because serverless instance count is unbounded — so silently landing on
+ * `memReserve` in production would be that exact rejected middle path, granted
+ * as the DEFAULT for a missing env var. One dropped secret on an env promotion
+ * would silently un-do this whole ticket, and the only log output would be the
+ * ordinary "spent 1 search.list" line, indistinguishable from healthy
+ * operation. Measured in review: 5 simulated instances granted 450 reservations
+ * against a hard cap of 100, with no warning emitted.
+ *
+ * So a deployed instance without Upstash is treated exactly like a configured
+ * store that is unreachable: deny, and say so loudly. Local dev, CI and jest
+ * are unaffected — they keep the in-process counter, which IS a real ceiling
+ * for a single process.
+ */
+function deployedWithoutStore(): boolean {
+  return isDeployed() && !useUpstash();
+}
+
+let warnedNoStore = false;
+function warnDeployedWithoutStore(): void {
+  if (warnedNoStore) return;
+  warnedNoStore = true;
+  console.error(
+    "[search-budget] MISCONFIGURED: deployed without UPSTASH_REDIS_REST_URL, so the daily search.list budget cannot be enforced across instances. Denying all search.list spend (fail-closed). Paste-a-link is unaffected. Set the Upstash credentials to restore search.",
+  );
+}
+
 // ─── In-process path (no Upstash configured: local dev / CI / single instance) ─
 
 /**
@@ -236,22 +290,32 @@ function configuredButUnavailable(): boolean {
  * cross-instance — which is exactly why the Redis path exists and why a
  * configured-but-broken Redis fails closed instead of landing here.
  */
-let memDay = "";
-let memUsed = 0;
+/**
+ * Counts keyed BY DAY rather than a single "current day + count" pair (review
+ * finding F-5). A single pair resets on ANY day change, including a BACKWARDS
+ * one — an NTP correction across the Pacific midnight, or simply two calls
+ * whose clock readings straddle it out of order, re-granted a whole fresh
+ * budget each time it flipped (measured: 3 budgets from a day2→day1→day2
+ * sequence). Keying by day makes revisiting a day resume its count, which is
+ * the same property the Redis path gets for free from the key name.
+ *
+ * Bounded to the two most recent days so it cannot grow.
+ */
+const memCounts = new Map<string, number>();
+const MEM_DAYS_KEPT = 2;
 
 function memReserve(day: string, budget: number): number {
-  if (memDay !== day) {
-    memDay = day;
-    memUsed = 0;
+  const used = memCounts.get(day) ?? 0;
+  if (used >= budget) return -1;
+  memCounts.set(day, used + 1);
+  while (memCounts.size > MEM_DAYS_KEPT) {
+    const oldest = memCounts.keys().next().value;
+    if (oldest === undefined) break;
+    memCounts.delete(oldest);
   }
-  if (memUsed >= budget) return -1;
-  memUsed += 1;
-  return budget - memUsed;
+  return budget - (used + 1);
 }
 
-function memUsage(day: string): number {
-  return memDay === day ? memUsed : 0;
-}
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -285,6 +349,12 @@ export async function reserveSearchCall(
   const day = pacificDayKey(now);
   const budget = SEARCH_DAILY_BUDGET;
 
+  if (deployedWithoutStore()) {
+    warnDeployedWithoutStore();
+    logDenied(day, "store");
+    return { ok: false, remaining: 0, day, reason: "store" };
+  }
+
   if (configuredButUnavailable()) {
     logDenied(day, "store");
     return { ok: false, remaining: 0, day, reason: "store" };
@@ -308,8 +378,25 @@ export async function reserveSearchCall(
       [redisKeyFor(day)],
       [budget, Math.round(KEY_TTL_MS)],
     );
-    remaining = Number(res);
-    if (!Number.isFinite(remaining)) throw new Error("non-numeric EVAL reply");
+    // SECURITY (review finding F-1) — validate the TYPE before any coercion.
+    //
+    // The previous guard was `Number(res)` + `Number.isFinite`, which is a
+    // fail-OPEN hole punched straight through this fail-CLOSED module:
+    // `Number(null)`, `Number("")`, `Number([])` and `Number(false)` are all
+    // `0` — finite, not negative — so an EVAL reply of `null` fell through to
+    // "reservation granted, 0 remaining" and kept granting FOREVER, with no
+    // denial and no error log. Measured in review: 1000/1000 requests granted.
+    // That is strictly worse than the fail-open behaviour this module's header
+    // spends twenty lines arguing against, and it is reachable from any
+    // REST-transport anomaly that returns 200 with an absent/null result
+    // (gateway rewrite, an Upstash response-shape change, a stubbed client in a
+    // preview environment).
+    //
+    // The script's only legitimate reply is a Redis integer, so anything that
+    // is not an integer number/bigint is an anomaly and must DENY, not coerce.
+    if (typeof res === "bigint") remaining = Number(res);
+    else if (typeof res === "number" && Number.isInteger(res)) remaining = res;
+    else throw new Error(`unexpected EVAL reply (${typeof res}): ${String(res)}`);
   } catch (err) {
     // FAIL CLOSED. Unlike the cache and the login throttle, an unaccounted spend
     // here is unrecoverable for the rest of the Pacific day (header).
@@ -326,31 +413,6 @@ export async function reserveSearchCall(
   }
   logSpend(day, remaining);
   return { ok: true, remaining, day };
-}
-
-/**
- * Read-only usage probe for observability/tests. Never mutates and never denies;
- * returns `null` when the count cannot be read (so callers can render "unknown"
- * rather than a misleading zero).
- */
-export async function getSearchBudgetUsage(
-  now: Date = new Date(),
-): Promise<{ day: string; used: number; remaining: number } | null> {
-  const day = pacificDayKey(now);
-  if (configuredButUnavailable()) return null;
-  const redis = getRedis();
-  if (!redis) {
-    const used = memUsage(day);
-    return { day, used, remaining: Math.max(0, SEARCH_DAILY_BUDGET - used) };
-  }
-  try {
-    const raw = await redis.get<unknown>(redisKeyFor(day));
-    const used = Number(raw ?? 0);
-    if (!Number.isFinite(used)) return null;
-    return { day, used, remaining: Math.max(0, SEARCH_DAILY_BUDGET - used) };
-  } catch {
-    return null;
-  }
 }
 
 // ─── Observability ───────────────────────────────────────────────────────────
@@ -374,8 +436,8 @@ function logDenied(day: string, reason: "cap" | "store"): void {
  * touches Redis, so it can never wipe a production day's counter.
  */
 export function _resetSearchBudget(): void {
-  memDay = "";
-  memUsed = 0;
+  memCounts.clear();
+  warnedNoStore = false;
 }
 
 /** Test-only: drop the memoized Redis client so driver resolution re-runs. */
