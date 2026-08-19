@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 4 «Madrugada» — Celular</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --breu:  #120817;
+    --roxo:  #2B1140;
+    --pink:  #FF3DAE;
+    --laser: #7CFF4F;
+    --nevoa: #C9BAD6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--breu);
+    background-image:
+      radial-gradient(420px 320px at 100% 0%, rgba(255,61,174,0.2), transparent 65%),
+      radial-gradient(420px 320px at 0% 100%, rgba(124,255,79,0.12), transparent 65%);
+    color: #fff;
+    font-family: "Chakra Petch", sans-serif;
+    min-height: 100vh;
+    padding-bottom: 112px;
+  }
+  .chrome {
+    font-family: "Anton", sans-serif;
+    background: linear-gradient(180deg, #FFFFFF 0%, #C6CBDE 34%, #6E7590 49%, #F4F6FF 55%, #9BA3BE 78%, #E8ECFA 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-transform: uppercase;
+  }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 18px 10px;
+  }
+  .marca {
+    font-size: 30px; line-height: 1;
+    transform: skewX(-8deg);
+    filter: drop-shadow(0 2px 0 var(--pink));
+  }
+  .voce {
+    font-weight: 700; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--laser);
+    border: 1px solid rgba(124,255,79,0.6);
+    padding: 6px 12px;
+    transform: skewX(-8deg);
+  }
+  .casa {
+    padding: 0 18px 14px;
+    font-weight: 600; font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--nevoa);
+  }
+
+  /* sua posição — flyer strip */
+  .posicao {
+    margin: 0 18px 22px;
+    border: 2px solid var(--pink);
+    box-shadow: 0 0 22px rgba(255,61,174,0.35), inset 0 0 30px rgba(255,61,174,0.08);
+    background: rgba(43,17,64,0.55);
+    padding: 14px 16px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .posicao .num {
+    font-family: "Anton", sans-serif;
+    font-size: 54px; line-height: 1;
+    flex: none;
+    transform: skewX(-8deg);
+    background: linear-gradient(180deg, #FFF, #8E93A6 55%, #F8F8FF);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 2px 0 var(--pink));
+  }
+  .posicao .txt { font-weight: 600; font-size: 14.5px; line-height: 1.45; }
+  .posicao .txt em { font-style: normal; color: var(--laser); }
+
+  h2.secao {
+    font-family: "Anton", sans-serif;
+    font-size: 21px; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--laser);
+    text-shadow: 0 0 14px rgba(124,255,79,0.5);
+    transform: skewX(-6deg);
+    margin: 0 18px 10px;
+  }
+
+  /* pedir música */
+  .pedido {
+    margin: 0 18px 24px;
+    background: rgba(43,17,64,0.55);
+    border: 1px solid rgba(255,61,174,0.4);
+    padding: 16px 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .campo label {
+    display: block;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--nevoa); margin-bottom: 6px;
+  }
+  .campo input {
+    width: 100%; min-height: 54px;
+    background: var(--breu);
+    border: 1px solid rgba(201,186,214,0.35);
+    color: #fff;
+    font-family: "Chakra Petch", sans-serif; font-size: 16px; font-weight: 600;
+    padding: 0 14px;
+  }
+  .campo input:focus { outline: none; border-color: var(--pink); box-shadow: 0 0 14px rgba(255,61,174,0.35); }
+  .campo input::placeholder { color: #6E5A80; font-weight: 400; }
+  .duplo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modo { display: flex; gap: 8px; }
+  .modo button {
+    flex: 1; min-height: 54px;
+    font-family: "Anton", sans-serif;
+    font-size: 16px; letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid rgba(201,186,214,0.35);
+    background: transparent; color: var(--nevoa);
+    cursor: pointer;
+    transform: skewX(-6deg);
+  }
+  .modo button.ativo {
+    border-color: var(--laser); color: var(--breu);
+    background: linear-gradient(180deg, var(--laser), #4ADF1E);
+    box-shadow: 0 0 16px rgba(124,255,79,0.45);
+  }
+
+  /* line-up (fila) */
+  .fila { list-style: none; margin: 0 18px; display: flex; flex-direction: column; gap: 12px; }
+  .fila li {
+    display: flex; align-items: center; gap: 12px;
+    min-height: 64px;
+    padding: 12px;
+    background: rgba(43,17,64,0.45);
+    border: 1px solid rgba(201,186,214,0.25);
+  }
+  .fila li.tocando {
+    border-color: var(--pink);
+    box-shadow: 0 0 18px rgba(255,61,174,0.35);
+  }
+  .fila li.eu {
+    border: 2px solid var(--laser);
+    box-shadow: 0 0 18px rgba(124,255,79,0.35);
+  }
+  .fila .n {
+    font-family: "Anton", sans-serif;
+    font-size: 28px; color: var(--pink);
+    text-shadow: 0 0 12px rgba(255,61,174,0.6);
+    width: 36px; flex: none; text-align: center;
+    transform: skewX(-8deg);
+  }
+  .fila li.eu .n { color: var(--laser); text-shadow: 0 0 12px rgba(124,255,79,0.6); }
+  .fila .txt { flex: 1; min-width: 0; }
+  .fila .quem {
+    font-family: "Anton", sans-serif;
+    font-size: 21px; line-height: 1.05; letter-spacing: 0.02em; text-transform: uppercase;
+    background: linear-gradient(180deg, #FFF 0%, #C6CBDE 45%, #7C84A0 55%, #EEF1FF 65%, #A9B0C9 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fila .que {
+    font-size: 12.5px; font-weight: 500; color: var(--nevoa); margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fila .tag {
+    flex: none;
+    font-weight: 700; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 4px 9px;
+    transform: skewX(-8deg);
+  }
+  .tag.mesa { color: var(--laser); border: 1px solid rgba(124,255,79,0.6); }
+  .tag.mic { background: var(--pink); color: var(--breu); }
+  .tag.danca { background: var(--nevoa); color: var(--breu); }
+
+  /* CTA fixo */
+  .rodape-fixo {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 12px 18px 20px;
+    background: linear-gradient(transparent, var(--breu) 45%);
+  }
+  .btn-fila {
+    width: 100%; min-height: 62px;
+    font-family: "Anton", sans-serif;
+    font-size: 24px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--breu);
+    background: linear-gradient(180deg, var(--laser), #4ADF1E);
+    border: none;
+    box-shadow: 0 0 26px rgba(124,255,79,0.5);
+    transform: skewX(-4deg);
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="marca chrome">Boraoke</span>
+    <span class="voce">Duda · M12</span>
+  </header>
+  <p class="casa">Boteco da Lu · rodízio 1 por pessoa</p>
+
+  <div class="posicao">
+    <span class="num">3º</span>
+    <p class="txt">Tá quase, Duda — <em>faltam 2 músicas</em> pra você dominar o mic.</p>
+  </div>
+
+  <h2 class="secao">Pedir música</h2>
+  <section class="pedido">
+    <div class="campo">
+      <label for="busca">Buscar no YouTube ou colar link</label>
+      <input id="busca" type="text" placeholder="Ex.: Evidências karaokê">
+    </div>
+    <div class="duplo">
+      <div class="campo">
+        <label for="mesa">Mesa</label>
+        <input id="mesa" type="text" value="12">
+      </div>
+      <div class="campo">
+        <label>Modo</label>
+        <div class="modo">
+          <button type="button" class="ativo">Cantar</button>
+          <button type="button">Dançar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <h2 class="secao">Line-up da noite</h2>
+  <ol class="fila">
+    <li class="tocando">
+      <span class="n">♪</span>
+      <div class="txt">
+        <p class="quem">Carla</p>
+        <p class="que">Evidências — Chitãozinho &amp; Xororó</p>
+      </div>
+      <span class="tag mic">no mic</span>
+    </li>
+    <li>
+      <span class="n">2</span>
+      <div class="txt">
+        <p class="quem">Seu Marcos</p>
+        <p class="que">Garçom — Reginaldo Rossi</p>
+      </div>
+      <span class="tag mesa">M3</span>
+    </li>
+    <li class="eu">
+      <span class="n">3</span>
+      <div class="txt">
+        <p class="quem">Duda — você</p>
+        <p class="que">Exagerado — Cazuza</p>
+      </div>
+      <span class="tag mesa">M12</span>
+    </li>
+    <li>
+      <span class="n">4</span>
+      <div class="txt">
+        <p class="quem">Paty &amp; Leo</p>
+        <p class="que">Cheia de Manias — Raça Negra</p>
+      </div>
+      <span class="tag danca">dança</span>
+    </li>
+    <li>
+      <span class="n">5</span>
+      <div class="txt">
+        <p class="quem">Renato</p>
+        <p class="que">Anunciação — Alceu Valença</p>
+      </div>
+      <span class="tag mesa">M3</span>
+    </li>
+  </ol>
+
+  <div class="rodape-fixo">
+    <button class="btn-fila" type="button">Colar no line-up</button>
+  </div>
+</body>
+</html>

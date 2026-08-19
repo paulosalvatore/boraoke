@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 3 «Comanda» — Celular</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shrikhand&family=Karla:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --papel:        #FBF6EC;
+    --papel-sombra: #EFE6D3;
+    --tinta:        #2A2E6E;
+    --laranja:      #FF5A1F;
+    --verde:        #178F5A;
+    --rosa:         #E94F8A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: "Karla", sans-serif;
+    min-height: 100vh;
+    padding-bottom: 116px;
+  }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 18px 10px;
+  }
+  .marca {
+    font-family: "Shrikhand", serif;
+    font-size: 26px;
+    color: var(--laranja);
+    text-shadow: 2px 2px 0 var(--tinta);
+    transform: rotate(-2deg);
+  }
+  .voce {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 13px;
+    background: #FFFFFF; border: 2px solid var(--tinta);
+    border-radius: 999px;
+    padding: 6px 12px;
+  }
+  .casa {
+    padding: 0 18px 14px;
+    font-weight: 700; font-size: 15px; color: #6A6D9C;
+  }
+  .casa strong { color: var(--tinta); }
+
+  /* sua ficha — o bilhete do usuário */
+  .minha-ficha {
+    margin: 0 18px 22px;
+    background: var(--laranja);
+    color: var(--papel);
+    border-radius: 12px;
+    padding: 16px 18px 14px;
+    position: relative;
+    transform: rotate(-0.8deg);
+    box-shadow: 5px 6px 0 var(--tinta);
+    display: flex; align-items: center; gap: 16px;
+  }
+  .minha-ficha::after {
+    content: "";
+    position: absolute; top: 8px; bottom: 8px; right: 78px;
+    border-right: 3px dashed rgba(251,246,236,0.65);
+  }
+  .minha-ficha .pos {
+    font-family: "Shrikhand", serif;
+    font-size: 44px; line-height: 1;
+    flex: none;
+    text-shadow: 2px 2px 0 var(--tinta);
+  }
+  .minha-ficha .txt { flex: 1; font-weight: 700; font-size: 15px; line-height: 1.35; padding-right: 12px; }
+  .minha-ficha .serial {
+    flex: none; width: 58px;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 13px;
+    text-align: center;
+    transform: rotate(90deg);
+    letter-spacing: 0.08em;
+  }
+
+  h2.secao {
+    font-family: "Shrikhand", serif;
+    font-size: 21px;
+    color: var(--tinta);
+    margin: 0 18px 10px;
+  }
+  h2.secao .mini { font-family: "Karla", sans-serif; font-weight: 700; font-size: 13px; color: #6A6D9C; }
+
+  /* pedir música */
+  .pedido {
+    margin: 0 18px 24px;
+    background: #FFFFFF;
+    border: 3px solid var(--tinta);
+    border-radius: 12px;
+    box-shadow: 5px 6px 0 var(--papel-sombra);
+    padding: 16px 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .campo label {
+    display: block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    color: #6A6D9C; margin-bottom: 6px;
+  }
+  .campo input {
+    width: 100%; min-height: 54px;
+    background: var(--papel);
+    border: 2px solid var(--tinta);
+    border-radius: 8px;
+    color: var(--tinta);
+    font-family: "Karla", sans-serif; font-size: 17px; font-weight: 700;
+    padding: 0 14px;
+  }
+  .campo input:focus { outline: none; border-color: var(--laranja); }
+  .campo input::placeholder { color: #A6A9CB; font-weight: 400; }
+  .duplo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modo { display: flex; gap: 8px; }
+  .modo button {
+    flex: 1; min-height: 54px;
+    font-family: "Karla", sans-serif;
+    font-weight: 800; font-size: 15px;
+    border: 2px solid var(--tinta);
+    border-radius: 999px;
+    background: #FFFFFF; color: var(--tinta);
+    cursor: pointer;
+  }
+  .modo button.ativo { background: var(--verde); border-color: var(--verde); color: #fff; }
+
+  /* fila de fichas */
+  .fila { list-style: none; margin: 0 18px; display: flex; flex-direction: column; gap: 12px; }
+  .fila li {
+    background: #FFFFFF;
+    border: 3px solid var(--tinta);
+    border-radius: 10px;
+    padding: 12px 14px;
+    min-height: 64px;
+    display: flex; align-items: center; gap: 12px;
+    position: relative;
+    box-shadow: 4px 5px 0 var(--papel-sombra);
+  }
+  .fila li:nth-child(odd) { transform: rotate(-0.5deg); }
+  .fila li:nth-child(even) { transform: rotate(0.5deg); }
+  .fila li.tocando { border-color: var(--laranja); background: #FFF1E8; }
+  .fila li.eu { border-color: var(--laranja); background: var(--laranja); color: var(--papel); box-shadow: 4px 5px 0 var(--tinta); }
+  .fila .n {
+    font-family: "Shrikhand", serif;
+    font-size: 24px; color: var(--laranja);
+    width: 40px; flex: none; text-align: center;
+  }
+  .fila li.eu .n { color: var(--papel); text-shadow: 2px 2px 0 var(--tinta); }
+  .fila .txt { flex: 1; min-width: 0; }
+  .fila .quem {
+    font-weight: 800; font-size: 18px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fila .que {
+    font-size: 13px; font-weight: 600; color: #6A6D9C; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fila li.eu .que { color: #FFD9C4; }
+  .fila .tag {
+    flex: none;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 12px;
+    border-radius: 999px;
+    padding: 4px 10px;
+  }
+  .tag.mesa { border: 2px solid var(--papel-sombra); color: var(--tinta); }
+  .fila li.eu .tag.mesa { border-color: rgba(251,246,236,0.6); color: var(--papel); }
+  .tag.palco { background: var(--laranja); color: #fff; }
+  .tag.danca { background: var(--rosa); color: #fff; }
+
+  /* CTA fixo */
+  .rodape-fixo {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 14px 18px 22px;
+    background: linear-gradient(transparent, var(--papel) 40%);
+  }
+  .btn-fila {
+    width: 100%; min-height: 62px;
+    font-family: "Shrikhand", serif;
+    font-size: 21px;
+    background: var(--laranja); color: var(--papel);
+    border: 3px solid var(--tinta);
+    border-radius: 999px;
+    box-shadow: 0 5px 0 var(--tinta);
+    cursor: pointer;
+  }
+  .btn-fila:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--tinta); }
+</style>
+</head>
+<body>
+  <header>
+    <span class="marca">Boraoke</span>
+    <span class="voce">você: Duda</span>
+  </header>
+  <p class="casa"><strong>Festa da Bia — Salão 2</strong> · Mesa 12 · rodízio 2 por mesa</p>
+
+  <div class="minha-ficha">
+    <span class="pos">3º</span>
+    <p class="txt">Sua ficha tá quase lá, Duda!<br>Faltam 2 músicas pra sua vez.</p>
+    <span class="serial">Nº 043</span>
+  </div>
+
+  <h2 class="secao">Pedir música</h2>
+  <section class="pedido">
+    <div class="campo">
+      <label for="busca">Buscar no YouTube ou colar o link</label>
+      <input id="busca" type="text" placeholder="Ex.: Evidências karaokê">
+    </div>
+    <div class="duplo">
+      <div class="campo">
+        <label for="mesa">Mesa</label>
+        <input id="mesa" type="text" value="12">
+      </div>
+      <div class="campo">
+        <label>Modo</label>
+        <div class="modo">
+          <button type="button" class="ativo">Cantar</button>
+          <button type="button">Dançar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <h2 class="secao">Fila de fichas <span class="mini">· 6 na fila</span></h2>
+  <ol class="fila">
+    <li class="tocando">
+      <span class="n">♪</span>
+      <div class="txt">
+        <p class="quem">Carla</p>
+        <p class="que">Evidências — Chitãozinho &amp; Xororó</p>
+      </div>
+      <span class="tag palco">no palco</span>
+    </li>
+    <li>
+      <span class="n">2º</span>
+      <div class="txt">
+        <p class="quem">Seu Marcos</p>
+        <p class="que">Garçom — Reginaldo Rossi</p>
+      </div>
+      <span class="tag mesa">M3</span>
+    </li>
+    <li class="eu">
+      <span class="n">3º</span>
+      <div class="txt">
+        <p class="quem">Duda — você</p>
+        <p class="que">Exagerado — Cazuza</p>
+      </div>
+      <span class="tag mesa">M12</span>
+    </li>
+    <li>
+      <span class="n">4º</span>
+      <div class="txt">
+        <p class="quem">Paty &amp; Leo</p>
+        <p class="que">Cheia de Manias — Raça Negra</p>
+      </div>
+      <span class="tag danca">dança</span>
+    </li>
+    <li>
+      <span class="n">5º</span>
+      <div class="txt">
+        <p class="quem">Renato</p>
+        <p class="que">Anunciação — Alceu Valença</p>
+      </div>
+      <span class="tag mesa">M3</span>
+    </li>
+  </ol>
+
+  <div class="rodape-fixo">
+    <button class="btn-fila" type="button">Pegar minha ficha</button>
+  </div>
+</body>
+</html>

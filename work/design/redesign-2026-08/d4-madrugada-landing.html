@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 4 «Madrugada» — Landing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --breu:  #120817;
+    --roxo:  #2B1140;
+    --pink:  #FF3DAE;
+    --laser: #7CFF4F;
+    --nevoa: #C9BAD6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--breu);
+    background-image:
+      radial-gradient(1100px 640px at 80% -10%, rgba(255,61,174,0.22), transparent 65%),
+      radial-gradient(900px 560px at 0% 55%, rgba(124,255,79,0.10), transparent 65%);
+    color: #fff;
+    font-family: "Chakra Petch", sans-serif;
+    overflow-x: hidden;
+  }
+  .chrome {
+    font-family: "Anton", sans-serif;
+    background: linear-gradient(180deg, #FFFFFF 0%, #C6CBDE 34%, #6E7590 49%, #F4F6FF 55%, #9BA3BE 78%, #E8ECFA 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-transform: uppercase;
+  }
+  .pagina { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
+
+  header.topo {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 24px 0 16px;
+    flex-wrap: wrap;
+  }
+  .marca {
+    font-size: 34px; line-height: 1;
+    transform: skewX(-8deg);
+    filter: drop-shadow(0 2px 0 var(--pink));
+  }
+  .topo-dir { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .acesso {
+    font-weight: 700; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--laser); border: 1px solid rgba(124,255,79,0.6);
+    padding: 6px 14px;
+    transform: skewX(-8deg);
+  }
+  .idiomas { font-size: 13px; font-weight: 600; color: var(--nevoa); letter-spacing: 0.1em; }
+  .idiomas strong { color: #fff; }
+
+  /* -------- hero: o flyer -------- */
+  .hero {
+    text-align: left;
+    padding: 66px 0 30px;
+    position: relative;
+  }
+  .hero .datas {
+    font-weight: 700; font-size: 15px; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--pink);
+    margin-bottom: 18px;
+  }
+  .hero h1 {
+    font-size: clamp(72px, 11vw, 168px);
+    line-height: 0.88;
+    transform: skewX(-6deg);
+    filter: drop-shadow(0 6px 0 var(--pink)) drop-shadow(0 -3px 0 rgba(124,255,79,0.5));
+    text-wrap: balance;
+  }
+  .hero .linha2 {
+    display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
+    margin-top: 26px;
+  }
+  .hero .sub {
+    font-size: 19px; line-height: 1.6; font-weight: 500;
+    color: var(--nevoa);
+    max-width: 34em;
+  }
+  .hero .sub em { font-style: normal; color: var(--laser); font-weight: 700; }
+  .selo-gratis {
+    flex: none;
+    font-family: "Anton", sans-serif;
+    font-size: 30px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--breu);
+    background: linear-gradient(180deg, var(--laser), #4ADF1E);
+    padding: 16px 26px;
+    transform: rotate(-4deg);
+    box-shadow: 0 0 30px rgba(124,255,79,0.5);
+  }
+  .cta-linha { margin-top: 40px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .btn-criar {
+    display: inline-block;
+    font-family: "Anton", sans-serif;
+    font-size: 28px; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--breu);
+    background: linear-gradient(180deg, #FF77C6, var(--pink) 55%, #D6198B);
+    padding: 20px 44px;
+    text-decoration: none;
+    transform: skewX(-6deg);
+    box-shadow: 0 0 34px rgba(255,61,174,0.55);
+  }
+  .btn-criar:hover { filter: brightness(1.1); }
+  .gratis { font-size: 14px; font-weight: 600; line-height: 1.5; color: var(--nevoa); max-width: 20em; }
+
+  /* line-up strip */
+  .lineup {
+    margin-top: 64px;
+    border-top: 2px solid var(--pink);
+    border-bottom: 2px solid var(--pink);
+    box-shadow: 0 0 30px rgba(255,61,174,0.25);
+    padding: 26px 0;
+    display: flex; align-items: center; gap: 34px;
+    overflow: hidden; white-space: nowrap;
+  }
+  .lineup .rot {
+    flex: none;
+    font-weight: 700; font-size: 15px; letter-spacing: 0.26em; text-transform: uppercase;
+    color: var(--laser);
+  }
+  .lineup .nomes {
+    font-family: "Anton", sans-serif;
+    font-size: 40px; text-transform: uppercase; letter-spacing: 0.02em;
+    background: linear-gradient(180deg, #FFF 0%, #C6CBDE 45%, #7C84A0 55%, #EEF1FF 65%, #A9B0C9 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lineup .nomes i { font-style: normal; color: var(--pink); -webkit-text-fill-color: var(--pink); margin: 0 10px; }
+
+  /* -------- atrações (features) -------- */
+  .atracoes { padding: 66px 0; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 30px; }
+  .atracao {
+    border: 1px solid rgba(201,186,214,0.3);
+    background: rgba(43,17,64,0.5);
+    padding: 28px 26px 30px;
+    position: relative;
+  }
+  .atracao::before {
+    content: "";
+    position: absolute; top: -1px; left: -1px; right: -1px; height: 4px;
+  }
+  .atracao:nth-child(1)::before { background: var(--pink); box-shadow: 0 0 16px rgba(255,61,174,0.6); }
+  .atracao:nth-child(2)::before { background: var(--laser); box-shadow: 0 0 16px rgba(124,255,79,0.6); }
+  .atracao:nth-child(3)::before { background: linear-gradient(90deg, var(--pink), var(--laser)); }
+  .atracao h3 {
+    font-family: "Anton", sans-serif;
+    font-size: 26px; letter-spacing: 0.04em; text-transform: uppercase;
+    transform: skewX(-6deg);
+    margin-bottom: 12px;
+  }
+  .atracao:nth-child(1) h3 { color: var(--pink); }
+  .atracao:nth-child(2) h3 { color: var(--laser); }
+  .atracao:nth-child(3) h3 { color: #fff; }
+  .atracao p { font-size: 15.5px; line-height: 1.65; font-weight: 500; color: var(--nevoa); }
+
+  /* -------- código -------- */
+  .codigo {
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+    border: 2px solid var(--laser);
+    box-shadow: 0 0 26px rgba(124,255,79,0.3);
+    padding: 32px 34px;
+    margin-bottom: 70px;
+    background: rgba(43,17,64,0.5);
+  }
+  .codigo h2 {
+    font-family: "Anton", sans-serif;
+    font-size: 28px; letter-spacing: 0.04em; text-transform: uppercase;
+    transform: skewX(-6deg);
+    color: var(--laser);
+    text-shadow: 0 0 16px rgba(124,255,79,0.5);
+  }
+  .codigo form { display: flex; gap: 12px; flex: 1; min-width: 300px; max-width: 540px; }
+  .codigo input {
+    flex: 1; min-height: 58px;
+    background: var(--breu);
+    border: 1px solid rgba(201,186,214,0.35);
+    color: #fff;
+    font-family: "Chakra Petch", sans-serif; font-size: 17px; font-weight: 600;
+    padding: 0 16px;
+  }
+  .codigo input:focus { outline: none; border-color: var(--pink); box-shadow: 0 0 14px rgba(255,61,174,0.4); }
+  .codigo input::placeholder { color: #6E5A80; font-weight: 400; }
+  .codigo button {
+    min-height: 58px;
+    font-family: "Anton", sans-serif;
+    font-size: 20px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--breu);
+    background: linear-gradient(180deg, #FF77C6, var(--pink) 55%, #D6198B);
+    border: none; padding: 0 30px; cursor: pointer;
+    transform: skewX(-6deg);
+  }
+
+  footer.rodape {
+    border-top: 1px solid rgba(201,186,214,0.25);
+    padding: 26px 0 44px;
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--nevoa);
+  }
+  footer .promessa { color: var(--laser); }
+
+  @media (max-width: 940px) {
+    .atracoes { grid-template-columns: 1fr; padding: 48px 0; }
+    .hero { padding-top: 44px; }
+    .lineup { margin-top: 44px; }
+    .lineup .nomes { font-size: 28px; }
+    .selo-gratis { font-size: 22px; padding: 12px 20px; }
+  }
+  @media (max-width: 560px) {
+    .codigo { padding: 22px 18px; }
+    .codigo form { flex: 1 1 100%; min-width: 0; }
+    .codigo input { min-width: 0; }
+    .codigo button { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <header class="topo">
+    <span class="marca chrome">Boraoke</span>
+    <div class="topo-dir">
+      <span class="acesso">Acesso antecipado</span>
+      <span class="idiomas"><strong>PT</strong> · EN · ES</span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <p class="datas">Hoje · na sua TV · entrada franca</p>
+    <h1 class="chrome">Bora<br>cantar</h1>
+    <div class="linha2">
+      <p class="sub">O karaokê que transforma qualquer festa em <em>baile</em>: QR na TV, música do YouTube no celular de cada convidado e uma fila justa que roda sozinha a noite inteira. Sem aparelho, sem cadastro, sem dó.</p>
+      <span class="selo-gratis">100% grátis</span>
+    </div>
+    <div class="cta-linha">
+      <a class="btn-criar" href="#">Criar minha sala</a>
+      <p class="gratis">Bar, festa, condomínio, empresa — se tem uma TV e um celular, tem baile.</p>
+    </div>
+  </section>
+
+  <div class="lineup" aria-label="Exemplo de fila">
+    <span class="rot">Line-up de agora</span>
+    <span class="nomes">Carla<i>M7</i>Seu Marcos<i>M3</i>Duda<i>M12</i>Paty &amp; Leo<i>M5</i>Renato<i>M3</i></span>
+  </div>
+
+  <section class="atracoes">
+    <div class="atracao">
+      <h3>QR abre o palco</h3>
+      <p>Escaneou a TV, entrou com apelido e mesa. Busca no YouTube ou cola o link do karaokê que quiser — vale clássico, vale vergonha alheia.</p>
+    </div>
+    <div class="atracao">
+      <h3>Fila sem panelinha</h3>
+      <p>Três modos de rodízio — 1 por pessoa, 2 por mesa ou fila livre. O telão chama o próximo nome sozinho e ninguém fura a vez de ninguém.</p>
+    </div>
+    <div class="atracao">
+      <h3>O host no comando</h3>
+      <p>Quem criou a sala modera pelo celular: aprova, reordena, pausa e pula. Dá pra entrar só pra dançar também — a pista agradece.</p>
+    </div>
+  </section>
+
+  <section class="codigo">
+    <h2>Já tem código?</h2>
+    <form>
+      <input type="text" placeholder="ex.: boteco-da-lu" aria-label="Código da sala">
+      <button type="submit">Entrar</button>
+    </form>
+  </section>
+
+  <footer class="rodape">
+    <span class="promessa">Grátis no acesso antecipado — o que é grátis hoje segue grátis</span>
+    <span>boraoke.com · pt · en · es</span>
+  </footer>
+</div>
+</body>
+</html>

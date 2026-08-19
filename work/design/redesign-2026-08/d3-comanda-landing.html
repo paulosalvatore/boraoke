@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 3 «Comanda» — Landing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shrikhand&family=Karla:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --papel:        #FBF6EC;
+    --papel-sombra: #EFE6D3;
+    --tinta:        #2A2E6E;
+    --laranja:      #FF5A1F;
+    --verde:        #178F5A;
+    --rosa:         #E94F8A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: "Karla", sans-serif;
+    overflow-x: hidden;
+  }
+  .pagina { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+
+  header.topo {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 22px 0 14px;
+    flex-wrap: wrap;
+    position: relative; z-index: 3;
+  }
+  .marca {
+    font-family: "Shrikhand", serif;
+    font-size: 32px;
+    color: var(--laranja);
+    text-shadow: 2px 2px 0 var(--tinta);
+    transform: rotate(-2deg);
+  }
+  .topo-dir { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .acesso {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 12px; letter-spacing: 0.06em;
+    color: #fff; background: var(--verde);
+    border-radius: 999px;
+    padding: 6px 14px;
+  }
+  .idiomas { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: #6A6D9C; }
+  .idiomas strong { color: var(--tinta); }
+
+  /* -------- hero: colagem de fichas -------- */
+  .hero {
+    position: relative;
+    overflow: clip;
+    display: grid;
+    grid-template-columns: minmax(0,1.05fr) minmax(0,0.95fr);
+    gap: 56px;
+    align-items: center;
+    padding: 58px 0 64px;
+  }
+  .hero::before {
+    /* serpentina */
+    content: "";
+    position: absolute; top: 30px; right: -220px; width: 640px; height: 640px;
+    z-index: 0;
+    background:
+      linear-gradient(120deg, transparent 0 46%, var(--rosa) 46% 48%, transparent 48% 100%),
+      linear-gradient(60deg, transparent 0 60%, var(--verde) 60% 62%, transparent 62% 100%);
+    pointer-events: none;
+  }
+  .hero h1 {
+    font-family: "Shrikhand", serif;
+    font-size: clamp(42px, 5.6vw, 74px);
+    line-height: 1.06;
+    color: var(--tinta);
+    text-wrap: balance;
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--laranja);
+    text-shadow: 3px 3px 0 var(--tinta);
+  }
+  .hero .sub {
+    margin-top: 20px;
+    font-size: 19px; line-height: 1.6; font-weight: 600;
+    color: #545788;
+    max-width: 33em;
+  }
+  .hero .onde { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .hero .onde span {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 13px;
+    border: 2px solid var(--tinta); border-radius: 999px;
+    padding: 5px 14px;
+  }
+  .cta-linha { margin-top: 30px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .btn-criar {
+    display: inline-block;
+    font-family: "Shrikhand", serif;
+    font-size: 21px;
+    color: var(--papel);
+    background: var(--laranja);
+    border: 3px solid var(--tinta);
+    border-radius: 999px;
+    padding: 16px 34px;
+    text-decoration: none;
+    box-shadow: 0 6px 0 var(--tinta);
+  }
+  .btn-criar:hover { transform: translateY(-2px); box-shadow: 0 8px 0 var(--tinta); }
+  .gratis { font-weight: 700; font-size: 14px; line-height: 1.5; color: #545788; max-width: 17em; }
+
+  /* pilha de fichas do hero */
+  .pilha { position: relative; min-height: 420px; }
+  .tk {
+    position: absolute;
+    background: #FFFFFF;
+    border: 3px solid var(--tinta);
+    border-radius: 12px;
+    padding: 18px 22px 16px;
+    width: 320px;
+    box-shadow: 6px 7px 0 var(--papel-sombra), 6px 7px 0 3px var(--tinta);
+  }
+  .tk .n { font-family: "Shrikhand", serif; font-size: 30px; color: var(--laranja); }
+  .tk .quem { font-weight: 800; font-size: 26px; margin-top: 4px; }
+  .tk .que { font-size: 15px; font-weight: 600; color: #6A6D9C; margin-top: 2px; }
+  .tk .pé {
+    margin-top: 10px; padding-top: 8px;
+    border-top: 2px dashed var(--papel-sombra);
+    display: flex; justify-content: space-between;
+    font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 14px;
+  }
+  .tk.um   { top: 6px;   left: 8%;  transform: rotate(-4deg); z-index: 1; }
+  .tk.dois { top: 118px; left: 24%; transform: rotate(2.5deg); z-index: 2; }
+  .tk.tres {
+    top: 236px; left: 4%; transform: rotate(-1.5deg); z-index: 3;
+    background: var(--laranja); color: var(--papel); border-color: var(--tinta);
+    box-shadow: 6px 7px 0 var(--tinta);
+  }
+  .tk.tres .n { color: var(--papel); text-shadow: 2px 2px 0 var(--tinta); }
+  .tk.tres .que { color: #FFD9C4; }
+  .tk.tres .pé { border-top-color: rgba(251,246,236,0.55); }
+
+  /* -------- como funciona: canhotos numerados -------- */
+  .como { padding: 10px 0 66px; }
+  .como h2 {
+    font-family: "Shrikhand", serif;
+    font-size: 34px;
+    margin-bottom: 26px;
+  }
+  .como h2 em { font-style: normal; color: var(--laranja); }
+  .passos { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 26px; }
+  .passo {
+    background: #FFFFFF;
+    border: 3px solid var(--tinta);
+    border-radius: 12px;
+    padding: 24px 24px 26px;
+    position: relative;
+    box-shadow: 6px 7px 0 var(--papel-sombra), 6px 7px 0 3px var(--tinta);
+  }
+  .passo:nth-child(1) { transform: rotate(-0.8deg); }
+  .passo:nth-child(3) { transform: rotate(0.8deg); }
+  .passo .selo {
+    position: absolute; top: -16px; right: 18px;
+    font-family: "Shrikhand", serif;
+    font-size: 18px;
+    color: #fff;
+    padding: 4px 14px;
+    border-radius: 999px;
+    border: 3px solid var(--tinta);
+    transform: rotate(3deg);
+  }
+  .passo:nth-child(1) .selo { background: var(--laranja); }
+  .passo:nth-child(2) .selo { background: var(--verde); }
+  .passo:nth-child(3) .selo { background: var(--rosa); }
+  .passo h3 { font-weight: 800; font-size: 21px; margin-bottom: 8px; }
+  .passo p { font-size: 15.5px; line-height: 1.6; font-weight: 600; color: #545788; }
+
+  /* -------- código -------- */
+  .codigo {
+    background: var(--tinta);
+    color: var(--papel);
+    border-radius: 16px;
+    padding: 34px 36px;
+    margin-bottom: 70px;
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+  }
+  .codigo h2 { font-family: "Shrikhand", serif; font-size: 26px; color: #FFB48F; }
+  .codigo form { display: flex; gap: 10px; flex: 1; min-width: 280px; max-width: 520px; }
+  .codigo input {
+    flex: 1; min-height: 58px;
+    background: var(--papel); border: none; border-radius: 10px;
+    color: var(--tinta);
+    font-family: "Karla", sans-serif; font-size: 17px; font-weight: 700;
+    padding: 0 16px;
+  }
+  .codigo input::placeholder { color: #A6A9CB; font-weight: 400; }
+  .codigo button {
+    min-height: 58px;
+    font-family: "Shrikhand", serif; font-size: 18px;
+    background: var(--laranja); color: var(--papel);
+    border: none; border-radius: 10px;
+    padding: 0 28px; cursor: pointer;
+  }
+
+  footer.rodape {
+    border-top: 3px dashed var(--papel-sombra);
+    padding: 24px 0 40px;
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    font-weight: 700; font-size: 14px; color: #6A6D9C;
+  }
+  footer .promessa { color: var(--verde); }
+
+  @media (max-width: 940px) {
+    .hero { grid-template-columns: 1fr; gap: 40px; padding: 40px 0 44px; }
+    .pilha { min-height: 400px; }
+    .tk { width: min(320px, 82vw); }
+    .tk.um { left: 0; } .tk.dois { left: 12%; } .tk.tres { left: 2%; }
+    .passos { grid-template-columns: 1fr; }
+    .hero::before { display: none; }
+  }
+  @media (max-width: 560px) {
+    .codigo { padding: 24px 20px; }
+    .codigo form { flex: 1 1 100%; min-width: 0; }
+    .codigo input { min-width: 0; }
+    .tk.dois { left: 6%; }
+  }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <header class="topo">
+    <span class="marca">Boraoke</span>
+    <div class="topo-dir">
+      <span class="acesso">acesso antecipado · grátis</span>
+      <span class="idiomas"><strong>PT</strong> · EN · ES</span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1>A festa canta.<br>A fila é <em>de todo mundo</em>.</h1>
+      <p class="sub">Cada convidado escaneia o QR da TV, pega sua ficha e escolhe a música no YouTube. A tela toca uma atrás da outra, com rodízio justo — ninguém monopoliza o microfone, nem no aniversário, nem no churrasco do condomínio.</p>
+      <div class="onde">
+        <span>festa</span><span>bar</span><span>condomínio</span><span>empresa</span>
+      </div>
+      <div class="cta-linha">
+        <a class="btn-criar" href="#">Criar minha sala</a>
+        <p class="gratis">Grátis, sem cadastro e sem baixar app. Abriu, cantou.</p>
+      </div>
+    </div>
+
+    <aside class="pilha" aria-label="Exemplo da fila de fichas">
+      <div class="tk um">
+        <span class="n">2º</span>
+        <p class="quem">Seu Marcos</p>
+        <p class="que">Garçom — Reginaldo Rossi</p>
+        <div class="pé"><span>MESA 3</span><span>Nº 042</span></div>
+      </div>
+      <div class="tk dois">
+        <span class="n">4º</span>
+        <p class="quem">Paty &amp; Leo</p>
+        <p class="que">Cheia de Manias — Raça Negra</p>
+        <div class="pé"><span>MESA 5</span><span>Nº 044</span></div>
+      </div>
+      <div class="tk tres">
+        <span class="n">Agora!</span>
+        <p class="quem">Carla</p>
+        <p class="que">Evidências — Chitãozinho &amp; Xororó</p>
+        <div class="pé"><span>MESA 7</span><span>Nº 041</span></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="como">
+    <h2>Funciona como <em>fichinha de festa</em></h2>
+    <div class="passos">
+      <div class="passo">
+        <span class="selo">1</span>
+        <h3>Escaneia o QR da TV</h3>
+        <p>Entra pelo navegador com apelido e mesa. Nada de instalar aplicativo, nada de criar conta.</p>
+      </div>
+      <div class="passo">
+        <span class="selo">2</span>
+        <h3>Pega sua ficha</h3>
+        <p>Busca a música no YouTube ou cola o link. Escolhe se vai cantar ou se é só pra dançar.</p>
+      </div>
+      <div class="passo">
+        <span class="selo">3</span>
+        <h3>A TV chama seu nome</h3>
+        <p>Rodízio justo com três modos — 1 por pessoa, 2 por mesa ou fila livre. Quem organiza modera tudo pelo celular.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="codigo">
+    <h2>Já tem um código?</h2>
+    <form>
+      <input type="text" placeholder="ex.: festa-da-bia" aria-label="Código da sala">
+      <button type="submit">Entrar</button>
+    </form>
+  </section>
+
+  <footer class="rodape">
+    <span class="promessa">Grátis no acesso antecipado — e o que é grátis hoje segue grátis.</span>
+    <span>Boraoke · pt-BR · en · es</span>
+  </footer>
+</div>
+</body>
+</html>

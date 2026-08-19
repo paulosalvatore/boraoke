@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 1 «Letreiro» — Landing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Asap:wght@400;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --verde-garrafa: #17452B;
+    --verde-sombra:  #0E2F1D;
+    --cal:           #F4EBD9;
+    --cal-suja:      #E4D8BE;
+    --amarelo:       #F2B705;
+    --vermelho:      #B33A2B;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--verde-garrafa);
+    background-image:
+      radial-gradient(1000px 700px at 15% 0%, rgba(244,235,217,0.06), transparent 60%),
+      radial-gradient(800px 600px at 100% 100%, rgba(0,0,0,0.28), transparent 60%);
+    color: var(--cal);
+    font-family: "Asap", sans-serif;
+  }
+  .pagina { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
+
+  header.topo {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 22px 0 18px;
+    border-bottom: 4px solid var(--cal);
+    flex-wrap: wrap;
+  }
+  .marca {
+    font-family: "Alfa Slab One", serif;
+    font-size: 30px;
+    color: var(--amarelo);
+    text-shadow: 2px 2px 0 var(--verde-sombra);
+  }
+  .topo-dir { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .acesso {
+    font-family: "Oswald", sans-serif; font-weight: 600;
+    font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--verde-garrafa); background: var(--amarelo);
+    padding: 5px 12px;
+  }
+  .idiomas { font-family: "Oswald", sans-serif; font-size: 14px; letter-spacing: 0.1em; color: var(--cal-suja); }
+  .idiomas strong { color: var(--cal); }
+
+  /* -------- hero: fachada de letrista -------- */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: 56px;
+    align-items: center;
+    padding: 64px 0 56px;
+  }
+  .hero h1 {
+    font-family: "Alfa Slab One", serif;
+    font-size: clamp(44px, 6.5vw, 84px);
+    line-height: 0.98;
+    text-wrap: balance;
+    color: var(--cal);
+    text-shadow: 4px 4px 0 var(--verde-sombra);
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--amarelo);
+    display: inline-block;
+    transform: rotate(-1.5deg);
+  }
+  .hero .sub {
+    margin-top: 22px;
+    font-size: 20px; line-height: 1.55;
+    color: var(--cal-suja);
+    max-width: 34em;
+  }
+  .hero .onde {
+    margin-top: 18px;
+    font-family: "Oswald", sans-serif;
+    font-size: 15px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--amarelo);
+  }
+  .cta-linha { margin-top: 30px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .btn-criar {
+    display: inline-block;
+    font-family: "Alfa Slab One", serif;
+    font-size: 22px;
+    color: var(--verde-garrafa);
+    background: var(--amarelo);
+    padding: 18px 34px;
+    text-decoration: none;
+    box-shadow: 6px 6px 0 var(--verde-sombra);
+  }
+  .btn-criar:hover { transform: translate(-2px,-2px); box-shadow: 8px 8px 0 var(--verde-sombra); }
+  .gratis {
+    font-family: "Oswald", sans-serif;
+    font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--cal-suja);
+    max-width: 16em; line-height: 1.5;
+  }
+
+  /* placa pendurada — mini TV */
+  .placa {
+    background: var(--verde-sombra);
+    border: 5px solid var(--cal);
+    box-shadow: 12px 12px 0 rgba(0,0,0,0.35);
+    padding: 22px 24px;
+    transform: rotate(1.4deg);
+  }
+  .placa .cabeca {
+    font-family: "Alfa Slab One", serif;
+    font-size: 26px; color: var(--amarelo);
+    text-align: center;
+    border-bottom: 3px double var(--cal);
+    padding-bottom: 10px; margin-bottom: 16px;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.4);
+  }
+  .placa ol { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+  .placa li { display: flex; align-items: baseline; gap: 10px; }
+  .placa .n { font-family: "Alfa Slab One", serif; font-size: 20px; color: var(--amarelo); width: 26px; flex: none; }
+  .placa .quem {
+    font-family: "Oswald", sans-serif; font-weight: 700; font-size: 19px;
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .placa .pontos { flex: 1; border-bottom: 3px dotted rgba(244,235,217,0.4); transform: translateY(-5px); min-width: 20px; }
+  .placa .mesa { font-family: "Oswald", sans-serif; font-weight: 600; font-size: 16px; color: var(--amarelo); text-transform: uppercase; flex: none; }
+  .placa .rabo {
+    margin-top: 18px; padding-top: 12px;
+    border-top: 3px solid var(--cal);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .placa .qr { background: var(--cal); padding: 5px; flex: none; }
+  .placa .qr svg { display: block; width: 52px; height: 52px; }
+  .placa .rabo p { font-weight: 600; font-size: 15px; line-height: 1.4; }
+  .placa .rabo em { font-style: normal; color: var(--amarelo); }
+
+  /* -------- como funciona: três placas -------- */
+  .como { padding: 26px 0 60px; }
+  .como h2 {
+    font-family: "Alfa Slab One", serif;
+    font-size: 34px; color: var(--amarelo);
+    text-shadow: 3px 3px 0 var(--verde-sombra);
+    margin-bottom: 26px;
+  }
+  .placas { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 24px; }
+  .p-item {
+    background: var(--cal);
+    color: var(--verde-garrafa);
+    border: 4px solid var(--verde-sombra);
+    box-shadow: 7px 7px 0 var(--verde-sombra);
+    padding: 22px 22px 24px;
+  }
+  .p-item:nth-child(2) { transform: rotate(-0.8deg); }
+  .p-item:nth-child(3) { transform: rotate(0.8deg); }
+  .p-item .num {
+    font-family: "Alfa Slab One", serif;
+    font-size: 30px;
+    color: var(--cal);
+    background: var(--vermelho);
+    display: inline-block;
+    padding: 2px 14px 4px;
+    margin-bottom: 14px;
+    box-shadow: 3px 3px 0 var(--verde-sombra);
+  }
+  .p-item h3 {
+    font-family: "Oswald", sans-serif;
+    font-size: 22px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+  .p-item p { font-size: 16px; line-height: 1.55; color: #365243; }
+
+  /* -------- já tem código -------- */
+  .codigo {
+    border-top: 4px solid var(--cal);
+    padding: 42px 0 56px;
+    display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
+  }
+  .codigo h2 { font-family: "Alfa Slab One", serif; font-size: 26px; }
+  .codigo form { display: flex; gap: 0; flex: 1; min-width: 280px; max-width: 520px; }
+  .codigo input {
+    flex: 1; min-height: 60px;
+    background: var(--cal); border: 4px solid var(--verde-sombra);
+    color: var(--verde-garrafa);
+    font-family: "Asap", sans-serif; font-size: 18px; font-weight: 600;
+    padding: 0 16px;
+  }
+  .codigo input::placeholder { color: #6E8377; font-weight: 400; }
+  .codigo button {
+    min-height: 60px;
+    font-family: "Alfa Slab One", serif; font-size: 18px;
+    background: var(--amarelo); color: var(--verde-garrafa);
+    border: 4px solid var(--verde-sombra); border-left: none;
+    padding: 0 26px; cursor: pointer;
+  }
+
+  footer.rodape {
+    border-top: 4px solid var(--cal);
+    padding: 26px 0 40px;
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    font-size: 14px; color: var(--cal-suja);
+  }
+  footer .promessa { font-family: "Oswald", sans-serif; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amarelo); }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; gap: 40px; padding: 44px 0 40px; }
+    .placas { grid-template-columns: 1fr; }
+    .codigo button { border-left: 4px solid var(--verde-sombra); }
+  }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <header class="topo">
+    <span class="marca">Boraoke</span>
+    <div class="topo-dir">
+      <span class="acesso">Acesso antecipado</span>
+      <span class="idiomas"><strong>PT</strong> · EN · ES</span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1>Karaokê na sua casa, no seu bar, <em>na hora</em>.</h1>
+      <p class="sub">Os convidados escaneiam um QR, escolhem a música no YouTube e entram numa fila justa. A TV toca sozinha, uma atrás da outra — sem aparelho, sem cadastro, sem briga pelo microfone.</p>
+      <p class="onde">Serve pra: bar · festa · condomínio · empresa</p>
+      <div class="cta-linha">
+        <a class="btn-criar" href="#">Criar minha sala — grátis</a>
+        <p class="gratis">Sem cartão, sem instalação. Abriu, cantou.</p>
+      </div>
+    </div>
+
+    <aside class="placa" aria-label="Exemplo da tela da TV">
+      <p class="cabeca">Hoje no palco</p>
+      <ol>
+        <li><span class="n">♪</span><span class="quem">Carla</span><span class="pontos"></span><span class="mesa">Mesa 7</span></li>
+        <li><span class="n">2</span><span class="quem">Seu Marcos</span><span class="pontos"></span><span class="mesa">Mesa 3</span></li>
+        <li><span class="n">3</span><span class="quem">Duda</span><span class="pontos"></span><span class="mesa">Mesa 12</span></li>
+        <li><span class="n">4</span><span class="quem">Paty &amp; Leo</span><span class="pontos"></span><span class="mesa">Mesa 5</span></li>
+      </ol>
+      <div class="rabo">
+        <span class="qr" aria-hidden="true"><svg viewBox="0 0 21 21"><path fill="#17452B" d="M0 0h7v7H0zM2 2h3v3H2zM14 0h7v7h-7zM16 2h3v3h-3zM0 14h7v7H0zM2 16h3v3H2zM9 0h1v2H9zM11 0h2v1h-2zM12 2h1v3h-1zM9 3h2v1H9zM9 5h1v2H9zM11 6h2v1h-2zM0 9h1v2H0zM2 9h2v1H2zM5 9h2v2H5zM3 11h1v2H3zM0 12h2v1H0zM5 12h1v2H5zM8 8h2v2H8zM11 8h1v2h-1zM13 9h2v1h-2zM16 8h1v2h-1zM18 9h3v1h-3zM8 11h1v3H8zM10 11h3v2h-3zM14 11h1v2h-1zM16 11h2v1h-2zM19 11h2v2h-2zM9 14h2v2H9zM12 14h1v1h-1zM14 14h3v3h-3zM18 14h1v2h-1zM20 14h1v3h-1zM9 17h1v2H9zM11 17h2v1h-2zM12 19h3v2h-3zM16 18h2v2h-2zM19 18h1v1h-1zM20 19h1v2h-1zM9 20h2v1H9z"/></svg></span>
+        <p>Escaneou, <em>entrou na fila</em>.<br>Cada mesa com sua vez.</p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="como">
+    <h2>Como funciona</h2>
+    <div class="placas">
+      <div class="p-item">
+        <span class="num">1</span>
+        <h3>Escaneia o QR da TV</h3>
+        <p>Cada convidado entra pelo celular com um apelido e o número da mesa. Nada de baixar aplicativo.</p>
+      </div>
+      <div class="p-item">
+        <span class="num">2</span>
+        <h3>Escolhe a música</h3>
+        <p>Busca direto no YouTube ou cola o link do karaokê favorito. Dá pra entrar pra cantar ou só pra dançar.</p>
+      </div>
+      <div class="p-item">
+        <span class="num">3</span>
+        <h3>A TV toca sozinha</h3>
+        <p>Fila justa com três modos de rodízio — uma por pessoa, duas por mesa ou fila livre. O anfitrião modera tudo.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="codigo">
+    <h2>Já tem um código?</h2>
+    <form>
+      <input type="text" placeholder="ex.: boteco-da-lu" aria-label="Código da sala">
+      <button type="submit">Entrar</button>
+    </form>
+  </section>
+
+  <footer class="rodape">
+    <span class="promessa">Grátis no acesso antecipado — e o que é grátis hoje segue grátis.</span>
+    <span>Boraoke · pt-BR · en · es</span>
+  </footer>
+</div>
+</body>
+</html>

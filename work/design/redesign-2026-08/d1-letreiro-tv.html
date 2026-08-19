@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 1 «Letreiro» — TV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Asap:wght@400;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Direção 1 — LETREIRO. Placa pintada à mão de boteco: verde-garrafa,
+     amarelo de rótulo de cerveja, cal, tinta vermelha de letrista. */
+  :root {
+    --verde-garrafa: #17452B;
+    --verde-sombra:  #0E2F1D;
+    --cal:           #F4EBD9;
+    --cal-suja:      #E4D8BE;
+    --amarelo:       #F2B705;
+    --vermelho:      #B33A2B;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    background: var(--verde-garrafa);
+    /* leve textura de parede pintada */
+    background-image:
+      radial-gradient(1200px 800px at 20% 10%, rgba(244,235,217,0.05), transparent 60%),
+      radial-gradient(900px 700px at 90% 90%, rgba(0,0,0,0.25), transparent 60%);
+    color: var(--cal);
+    font-family: "Asap", sans-serif;
+  }
+  .frame {
+    width: 1920px; height: 1080px;
+    padding: 40px 48px 36px;
+    display: grid;
+    grid-template-rows: 96px 1fr 122px;
+    gap: 26px;
+  }
+
+  /* ---------- faixa do topo: nome da casa pintado ---------- */
+  .topo {
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 4px solid var(--cal);
+    border-bottom: 4px solid var(--cal);
+    padding: 10px 8px;
+  }
+  .marca {
+    font-family: "Alfa Slab One", serif;
+    font-size: 44px;
+    color: var(--amarelo);
+    letter-spacing: 0.01em;
+    text-shadow: 3px 3px 0 var(--verde-sombra);
+  }
+  .casa {
+    font-family: "Oswald", sans-serif;
+    font-weight: 600;
+    font-size: 34px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--cal);
+  }
+  .rodizio {
+    font-family: "Oswald", sans-serif;
+    font-weight: 600;
+    font-size: 24px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--verde-garrafa);
+    background: var(--amarelo);
+    padding: 8px 22px;
+    box-shadow: 4px 4px 0 var(--verde-sombra);
+  }
+
+  /* ---------- miolo: vídeo + quadro "hoje no palco" ---------- */
+  .miolo {
+    display: grid;
+    grid-template-columns: 1180px 1fr;
+    gap: 36px;
+    min-height: 0;
+  }
+
+  .palco { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+  .video {
+    flex: 1;
+    background: #0B1A11;
+    border: 6px solid var(--cal);
+    box-shadow: 10px 10px 0 var(--verde-sombra);
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .video .letra {
+    text-align: center;
+    padding: 0 80px;
+  }
+  .video .letra .verso {
+    font-family: "Asap", sans-serif;
+    font-weight: 700;
+    font-size: 58px;
+    line-height: 1.25;
+    color: #fff;
+  }
+  .video .letra .verso em { color: var(--amarelo); font-style: normal; }
+  .video .yt {
+    position: absolute; right: 18px; bottom: 14px;
+    font-family: "Oswald", sans-serif; font-size: 18px; letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.55); text-transform: uppercase;
+  }
+  .agora {
+    display: flex; align-items: center; gap: 26px;
+    background: var(--cal);
+    color: var(--verde-garrafa);
+    border: 4px solid var(--verde-sombra);
+    box-shadow: 8px 8px 0 var(--verde-sombra);
+    padding: 18px 26px;
+  }
+  .agora .selo {
+    font-family: "Alfa Slab One", serif;
+    font-size: 34px;
+    color: var(--cal);
+    background: var(--vermelho);
+    padding: 8px 20px 10px;
+    transform: rotate(-2deg);
+    box-shadow: 4px 4px 0 var(--verde-sombra);
+    flex: none;
+  }
+  .agora .quem {
+    min-width: 0;
+  }
+  .agora .nome {
+    font-family: "Alfa Slab One", serif;
+    font-size: 52px;
+    line-height: 1.05;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .agora .musica {
+    font-family: "Asap", sans-serif;
+    font-weight: 600;
+    font-size: 27px;
+    margin-top: 2px;
+    color: #365243;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .agora .mesa {
+    flex: none;
+    margin-left: auto;
+    text-align: center;
+    font-family: "Oswald", sans-serif;
+    text-transform: uppercase;
+    color: var(--verde-garrafa);
+    border-left: 3px dashed var(--verde-garrafa);
+    padding-left: 26px;
+  }
+  .agora .mesa .rot { font-size: 20px; font-weight: 600; letter-spacing: 0.14em; }
+  .agora .mesa .num { font-family: "Alfa Slab One", serif; font-size: 64px; line-height: 1; }
+
+  /* ---------- quadro lateral: cardápio da fila ---------- */
+  .quadro {
+    background: var(--verde-sombra);
+    border: 5px solid var(--cal);
+    box-shadow: 10px 10px 0 rgba(0,0,0,0.35);
+    padding: 26px 30px 20px;
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .quadro h2 {
+    font-family: "Alfa Slab One", serif;
+    font-size: 40px;
+    color: var(--amarelo);
+    text-align: center;
+    letter-spacing: 0.01em;
+    padding-bottom: 14px;
+    border-bottom: 3px double var(--cal);
+    margin-bottom: 18px;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.4);
+  }
+  .fila { list-style: none; flex: 1; display: flex; flex-direction: column; gap: 20px; }
+  .fila li { display: flex; align-items: baseline; gap: 14px; }
+  .fila .n {
+    font-family: "Alfa Slab One", serif;
+    font-size: 34px;
+    color: var(--amarelo);
+    flex: none; width: 46px;
+  }
+  .fila .txt { min-width: 0; flex: 0 1 auto; max-width: 430px; }
+  .fila .quem {
+    font-family: "Oswald", sans-serif;
+    font-weight: 700; font-size: 33px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--cal);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fila .que {
+    font-size: 21px; font-weight: 400; color: var(--cal-suja);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+  .fila .mesa {
+    flex: none;
+    font-family: "Oswald", sans-serif;
+    font-weight: 600; font-size: 24px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--amarelo);
+  }
+  .fila .danca {
+    flex: none;
+    font-family: "Oswald", sans-serif;
+    font-size: 17px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--verde-sombra);
+    background: var(--cal-suja);
+    padding: 3px 10px;
+    align-self: center;
+  }
+  /* pontilhado de cardápio entre o nome e a mesa */
+  .fila .pontos {
+    flex: 1;
+    border-bottom: 3px dotted rgba(244,235,217,0.45);
+    transform: translateY(-8px);
+    min-width: 30px;
+  }
+
+  /* ---------- rodapé: QR pintado ---------- */
+  .rodape {
+    display: flex; align-items: center; gap: 34px;
+    border-top: 4px solid var(--cal);
+    padding-top: 20px;
+  }
+  .qr {
+    flex: none;
+    background: var(--cal);
+    padding: 8px;
+    box-shadow: 6px 6px 0 var(--verde-sombra);
+  }
+  .qr svg { display: block; width: 78px; height: 78px; }
+  .chamada {
+    font-family: "Alfa Slab One", serif;
+    font-size: 42px;
+    color: var(--cal);
+  }
+  .chamada em { color: var(--amarelo); font-style: normal; }
+  .endereco {
+    margin-left: auto;
+    text-align: right;
+    font-family: "Oswald", sans-serif;
+  }
+  .endereco .url {
+    font-size: 34px; font-weight: 700; letter-spacing: 0.04em;
+    color: var(--amarelo);
+  }
+  .endereco .por {
+    font-size: 18px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--cal-suja); margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header class="topo">
+    <span class="marca">Boraoke</span>
+    <span class="casa">Boteco da Lu</span>
+    <span class="rodizio">Rodízio · 1 por pessoa</span>
+  </header>
+
+  <main class="miolo">
+    <section class="palco">
+      <div class="video">
+        <div class="letra">
+          <p class="verso">Quando eu digo que deixei de te amar<br>é porque eu <em>te amo</em></p>
+        </div>
+        <span class="yt">▶ YouTube</span>
+      </div>
+      <div class="agora">
+        <span class="selo">Agora</span>
+        <div class="quem">
+          <p class="nome">Carla</p>
+          <p class="musica">Evidências — Chitãozinho &amp; Xororó</p>
+        </div>
+        <div class="mesa">
+          <div class="rot">Mesa</div>
+          <div class="num">7</div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="quadro">
+      <h2>Hoje no palco</h2>
+      <ol class="fila">
+        <li>
+          <span class="n">2</span>
+          <div class="txt">
+            <p class="quem">Seu Marcos</p>
+            <p class="que">Garçom — Reginaldo Rossi</p>
+          </div>
+          <span class="pontos"></span>
+          <span class="mesa">Mesa 3</span>
+        </li>
+        <li>
+          <span class="n">3</span>
+          <div class="txt">
+            <p class="quem">Duda</p>
+            <p class="que">Exagerado — Cazuza</p>
+          </div>
+          <span class="pontos"></span>
+          <span class="mesa">Mesa 12</span>
+        </li>
+        <li>
+          <span class="n">4</span>
+          <div class="txt">
+            <p class="quem">Paty &amp; Leo</p>
+            <p class="que">Cheia de Manias — Raça Negra</p>
+          </div>
+          <span class="danca">dançar</span>
+          <span class="pontos"></span>
+          <span class="mesa">Mesa 5</span>
+        </li>
+        <li>
+          <span class="n">5</span>
+          <div class="txt">
+            <p class="quem">Renato</p>
+            <p class="que">Anunciação — Alceu Valença</p>
+          </div>
+          <span class="pontos"></span>
+          <span class="mesa">Mesa 3</span>
+        </li>
+        <li>
+          <span class="n">6</span>
+          <div class="txt">
+            <p class="quem">Thi</p>
+            <p class="que">Sozinho — Caetano Veloso</p>
+          </div>
+          <span class="pontos"></span>
+          <span class="mesa">Mesa 9</span>
+        </li>
+      </ol>
+    </aside>
+  </main>
+
+  <footer class="rodape">
+    <div class="qr" aria-hidden="true">
+      <svg viewBox="0 0 21 21"><path fill="#17452B" d="M0 0h7v7H0zM2 2h3v3H2zM14 0h7v7h-7zM16 2h3v3h-3zM0 14h7v7H0zM2 16h3v3H2zM9 0h1v2H9zM11 0h2v1h-2zM12 2h1v3h-1zM9 3h2v1H9zM9 5h1v2H9zM11 6h2v1h-2zM0 9h1v2H0zM2 9h2v1H2zM5 9h2v2H5zM3 11h1v2H3zM0 12h2v1H0zM5 12h1v2H5zM8 8h2v2H8zM11 8h1v2h-1zM13 9h2v1h-2zM16 8h1v2h-1zM18 9h3v1h-3zM8 11h1v3H8zM10 11h3v2h-3zM14 11h1v2h-1zM16 11h2v1h-2zM19 11h2v2h-2zM9 14h2v2H9zM12 14h1v1h-1zM14 14h3v3h-3zM18 14h1v2h-1zM20 14h1v3h-1zM9 17h1v2H9zM11 17h2v1h-2zM12 19h3v2h-3zM16 18h2v2h-2zM19 18h1v1h-1zM20 19h1v2h-1zM9 20h2v1H9z"/></svg>
+    </div>
+    <p class="chamada">Aponta a câmera e <em>bora cantar</em></p>
+    <div class="endereco">
+      <p class="url">boraoke.com/boteco-da-lu</p>
+      <p class="por">movido a Boraoke — grátis</p>
+    </div>
+  </footer>
+</div>
+</body>
+</html>
