@@ -376,3 +376,38 @@ test("load more withdraws once the query is edited (no stale-cursor search)", as
   // The critical assertion: the cursor was never paired with a different query.
   expect(deep[0].q).toBe("outra musica karaoke");
 });
+
+/**
+ * TICKET-83 reviewer finding 3 — a LEGACY cache entry (written before this
+ * ticket, live for up to 12h after deploy) is a bare 8-row array with no
+ * cursor. It is indistinguishable from an exhausted list, so the UI must not
+ * assert "that's everything we found" — Google had more, we just can't see it.
+ */
+test("a cursor-less short page does not claim the results are exhausted", async ({ page }) => {
+  const legacyEight = Array.from({ length: 8 }, (_, i) => ({
+    videoId: `lvid${i}`,
+    title: `Legacy Song ${i}`,
+    channelTitle: "Ch",
+    duration: "3:00",
+    thumbnailUrl: "https://i.ytimg.com/vi/x/mqdefault.jpg",
+  }));
+
+  await page.route("**/api/search**", async (route) => {
+    // Exactly the pre-TICKET-83 payload shape: 8 rows, no nextPageToken.
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: legacyEight }),
+    });
+  });
+
+  await joinAs(page, "LegacyUser");
+  await page.getByLabel(/Buscar música/i).fill("evidencias");
+  await expect(page.getByRole("button", { name: /Legacy Song 0/ })).toBeVisible({ timeout: 5000 });
+
+  // Nothing more to reveal and no cursor → no load-more affordance.
+  await expect(page.getByTestId("search-load-more")).toHaveCount(0);
+  // ...but the copy stays neutral rather than asserting a falsehood.
+  await expect(page.getByTestId("search-no-more")).toContainText(/outras palavras/i);
+  await expect(page.getByTestId("search-no-more")).not.toContainText(/tudo que a gente achou/i);
+});

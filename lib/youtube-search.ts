@@ -317,6 +317,17 @@ const queryCache = new Map<string, CacheEntry>();
  * whitespace runs to a single space (TICKET-55 — "foo  bar" and "foo bar" are
  * the same search, so they must share one cross-instance cache entry).
  *
+ * THE MODE IS ALREADY IN THIS KEY, transitively, and must not be added again:
+ * `augmentQuery()` (lib/search-query.ts) appends "karaoke" for sing mode
+ * CLIENT-SIDE, BEFORE the request, so sing and vibe send different `q` and land
+ * on different keys. The one case where they converge — a raw query that already
+ * contains "karaoke" — is one where both modes send Google a byte-identical
+ * query, so sharing the entry is correct and a separate mode component would
+ * spend a second of the day's 100 searches re-answering the same question.
+ * INVARIANT: this holds only while augmentation stays client-side and
+ * pre-request. If it ever moves server-side, `q` stops encoding the mode and
+ * this key MUST gain a mode component or it will poison across modes.
+ *
  * TICKET-83: a `pageToken` is folded in so each Google page of the SAME query
  * gets its own entry — paging forward then back is served from cache and burns
  * ZERO quota. The first page (no token) produces the byte-identical key it did

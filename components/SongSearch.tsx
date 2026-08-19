@@ -320,6 +320,15 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
   const hasMore = visible < results.length || canFetchMore;
   /** Everything fetched is shown and the page budget is spent — suggest refining. */
   const capped = !hasMore && !!nextPageToken;
+  /**
+   * Can we honestly claim we've seen everything? Only if this payload came from
+   * a post-TICKET-83 fetch. A LEGACY cache entry (written before this ticket, and
+   * live for up to 12h after deploy) is a bare array of the OLD 8-row page with
+   * no cursor — Google had more, we just can't see it from here. Those look
+   * exactly like an exhausted list, so on anything at or under one client page
+   * we use the neutral "try other words" copy rather than asserting a falsehood.
+   */
+  const certainlyExhausted = results.length > PAGE_SIZE;
   /** Results on screen were fetched under a different mode than the one now selected. */
   const staleMode = resultsMode !== null && resultsMode !== mode && results.length > 0;
 
@@ -329,6 +338,9 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     justifyContent: "center",
     gap: "0.4rem",
     flex: 1,
+    // Positioned ancestor for the visually-hidden radio, so the native focus
+    // ring lands on the chip rather than the initial containing block.
+    position: "relative",
     minHeight: 44, // comfortable phone tap target
     padding: "0.5rem 0.75rem",
     borderRadius: "999px",
@@ -572,13 +584,15 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         </button>
       )}
 
-      {/* End of the road: everything fetched is shown and Google has no more. */}
+      {/* End of the road: everything fetched is shown and Google has no more.
+          Deliberately gated on >1 row: a single result (including a resolved
+          paste-link) needs no epilogue telling the patron the list ended. */}
       {!loading && results.length > 1 && !hasMore && (
         <p
           data-testid="search-no-more"
           style={{ marginTop: "0.6rem", fontSize: "0.8rem", color: "var(--text-muted)", textAlign: "center" }}
         >
-          {capped ? t("refineSearch") : t("noMoreResults")}
+          {capped || !certainlyExhausted ? t("refineSearch") : t("noMoreResults")}
         </p>
       )}
     </div>

@@ -113,9 +113,12 @@ Non-blocking items also addressed:
 - A leftover comment still cited the **old "~101 quota units"** model — the exact figure this ticket corrects. Fixed.
 - The visually-hidden radios left the mode chips with **no visible focus ring**; keyboard focus now paints an outline on the chip.
 
-Accepted and left as-is: a legacy (pre-deploy) bare-array cache entry has no `nextPageToken`, so for up to 12h after deploy a patron on such an entry sees "that's everything" rather than a load-more. Self-heals on TTL expiry and costs nothing; forcing a re-fetch would spend daily searches to fix a cosmetic transient.
+- **A legacy cache entry made the UI assert a falsehood.** A pre-deploy bare-array entry is 8 rows with no cursor — indistinguishable from an exhausted list — so for up to 12h after deploy the hottest (cached) queries would have shown "Isso é tudo que a gente achou." when Google in fact had more. Rather than orphan the cache (which would spend real daily searches), the end-of-list copy now only makes that claim when the payload is provably post-83 (`results.length > PAGE_SIZE`); otherwise it falls back to the neutral "try other words". E2E regression test added.
+- The mode-is-already-in-the-key invariant is now **written into `cacheKey()` itself**, cross-referencing `lib/search-query.ts`, so a future editor cannot move augmentation server-side without seeing that the key must then gain a mode component.
+- Confirmed deliberate: the end-of-list line is gated on more than one row — a single result (including a resolved paste-link) needs no epilogue. Comment added.
 
 ## Out of scope / follow-ups
 
 - The TICKET-85 spike's own follow-ups touch these files; the TM is sequencing them after this PR merges.
 - Board rows and the quota form still describe the pre-June model. Corrected here only in the files this ticket owns.
+- **Follow-up recommended by the reviewer: a cross-instance daily search-spend counter.** The real ceiling on hostile quota drain is the rate limiter (5/uuid, 30/IP per 10s), which in principle permits the whole 100-search day to be drained from one IP in ~35s. That was equally true before this ticket (varying `q` produces distinct keys just as easily), so TICKET-83 does not regress it — but `lib/rate-limit-counter.ts` already anticipates the fix ("the room-create and search limiters can adopt it in their own follow-ups"). Worth its own ticket.
