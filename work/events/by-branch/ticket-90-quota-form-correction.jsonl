@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-19T15:57:57Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-90", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/90-quota-form-correction", "short_sha": "e8c43ee", "message_slug": "docs(quota): correct YouTube quota form — true cache TTL, search.list-de"}}
