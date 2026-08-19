@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-19T12:13:05Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-86", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/86-telemetry-client-ip", "short_sha": "ee35807", "message_slug": "TICKET-86: derive /api/t IP rate-limit bucket from hardened clientIpFrom"}}
