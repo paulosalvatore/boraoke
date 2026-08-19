@@ -17,6 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { clientIpFrom } from "@/lib/host-auth";
 import { track } from "@/lib/telemetry";
 import { beaconRateLimitOk } from "@/lib/telemetry-rate-limit";
 import {
@@ -34,17 +35,23 @@ function badRequest(error: string) {
 }
 
 /**
- * Caller IP for the rate-limit bucket (security M1). On Vercel the first hop
- * of x-forwarded-for is the client IP (the platform sets/normalizes the
- * header); x-real-ip is the fallback. "" when neither is present (unit tests).
+ * Caller IP for the rate-limit bucket (security M1, TICKET-86). Delegates to
+ * the shared, hardened `clientIpFrom` (lib/host-auth.ts, TICKET-78) instead of
+ * keeping a second, divergent x-forwarded-for-first derivation — that copy
+ * trusted the spoofable client-suppliable first hop of x-forwarded-for ahead
+ * of the edge-set x-real-ip, letting a caller rotate a forged header to spread
+ * beacon traffic across unlimited IP buckets.
+ *
+ * Sentinel seam: `clientIpFrom` returns "unknown" when no header is present at
+ * all; `beaconRateLimitOk` documents "" (not "unknown") as "bucket unavailable
+ * → this bucket does not apply". Mapping "unknown" back to "" here preserves
+ * today's fail-open, IP-bucket-not-applied behaviour for header-less requests
+ * (unit tests, local dev) while closing the spoof vector for every request
+ * that has real headers.
  */
 function clientIp(req: NextRequest): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return req.headers.get("x-real-ip")?.trim() ?? "";
+  const ip = clientIpFrom(req);
+  return ip === "unknown" ? "" : ip;
 }
 
 export async function POST(req: NextRequest) {
