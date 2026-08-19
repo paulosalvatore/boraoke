@@ -76,6 +76,16 @@
   gap: 3vw;
   min-height: 0;
 }
+/*
+ * TICKET-82: the main row is mounted for the whole life of the screen so React
+ * never tears the YouTube iframe out of the DOM (unmounting it orphaned the
+ * player and black-screened the TV until a manual refresh). While the queue is
+ * empty the idle poster takes over and this row is simply taken out of layout —
+ * `display: none` parks an iframe without reloading or resetting it.
+ */
+.mainHidden {
+  display: none;
+}
 .video {
   flex: 1.5;
   position: relative;

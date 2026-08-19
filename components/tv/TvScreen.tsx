@@ -50,6 +50,8 @@ interface YTPlayer {
   getPlayerState?(): number;
   seekTo?(seconds: number, allowSeekAhead: boolean): void;
   playVideo?(): void;
+  /** The API's own accessor for the iframe it swapped in (TICKET-82). */
+  getIframe?(): HTMLIFrameElement | null;
 }
 
 /** Minimal WakeLock typings — the lib.dom versions are still flaky across TS targets. */
@@ -115,7 +117,23 @@ export default function TvScreen({
   // deterministically and rebuilds the destroyed player (TICKET-41).
   const [playerEpoch, setPlayerEpoch] = useState(0);
   const playerRef = useRef<YTPlayer | null>(null);
-  const playerDivRef = useRef<HTMLDivElement>(null);
+  /**
+   * TICKET-82: the STABLE, React-owned container the player lives inside.
+   *
+   * React must never own the node `YT.Player` is handed, because the IFrame API
+   * *replaces* that node with its `<iframe>` — React's fiber then points at a
+   * detached div it no longer controls. Instead React owns this wrapper (which
+   * is mounted for the whole life of TvScreen, idle or playing) and we create
+   * the throwaway target div inside it imperatively. Two live bugs came from
+   * the old arrangement — see the player effect below.
+   */
+  const playerHostRef = useRef<HTMLDivElement>(null);
+  /**
+   * The node the API swapped in for our target div (its `<iframe>`), captured
+   * at creation so the effect can cheaply tell a LIVE player from an orphaned
+   * one whose iframe has left the document.
+   */
+  const playerNodeRef = useRef<Element | null>(null);
   const currentVideoIdRef = useRef<string | null>(null);
   const chromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevModeRef = useRef<string | null>(null);
@@ -372,10 +390,56 @@ export default function TvScreen({
   }, [advance]);
 
   // ---- Create/update YT player when ytReady and queue changes ----
+  //
+  // TICKET-82 — why this effect looks the way it does.
+  //
+  // `new YT.Player(el)` does NOT render into `el`: the IFrame API *replaces*
+  // `el` in the DOM with its own `<iframe>`. Two consequences used to black-
+  // screen the venue TV until a human refreshed the page:
+  //
+  //  1. The player host used to be rendered INSIDE the `nowPlaying ? ... : idle`
+  //     branch. When the queue emptied (last song ended), React unmounted that
+  //     whole subtree and took the player's iframe with it — but `playerRef`
+  //     still held the now-orphaned player object, because the idle path only
+  //     calls `stopVideo()`. Adding a song then re-mounted a FRESH, empty host
+  //     and the effect took the "player already exists" branch, calling
+  //     `loadVideoById` on a player that no longer had a node on the page. The
+  //     TV sat on a dead black embed forever. That is the reported bug, and it
+  //     is fixed structurally: the host is now mounted for the component's
+  //     whole life (hidden with `.mainHidden` while idle), so React never
+  //     removes the iframe.
+  //  2. The watchdog's `recreate` rung (`destroy()` → rebuild) handed the
+  //     constructor the SAME React-owned div every time. After the first
+  //     creation that div was already detached, so every recreate built the new
+  //     player into a node that was not in the document — the last-resort
+  //     self-heal was itself a permanent black screen. Fixed by giving the API
+  //     a fresh, imperatively-created target inside the stable host each time.
+  //
+  // A plain queue/rail update was NEVER the trigger and still is not: it does
+  // not touch this subtree at all, so the iframe (and its fullscreen state)
+  // survives untouched. Only an actual track change reaches `loadVideoById`.
   useEffect(() => {
-    if (!ytReady || !playerDivRef.current) return;
+    if (!ytReady || !playerHostRef.current) return;
+    const host = playerHostRef.current;
 
     const nowVideoId = queue[0]?.videoId ?? null;
+
+    // Liveness guard: if the player's iframe has left the host for ANY reason,
+    // the object is dead weight — drop it so the create path below rebuilds a
+    // working one instead of loading videos into nothing.
+    if (
+      playerRef.current &&
+      (playerNodeRef.current === null || !host.contains(playerNodeRef.current))
+    ) {
+      try {
+        playerRef.current.destroy();
+      } catch {
+        // already gone — nothing to clean up
+      }
+      playerRef.current = null;
+      playerNodeRef.current = null;
+      currentVideoIdRef.current = null;
+    }
 
     if (!nowVideoId) {
       if (playerRef.current) {
@@ -409,8 +473,15 @@ export default function TvScreen({
     // of crashing the TV (TICKET-41c).
     currentVideoIdRef.current = nowVideoId;
     stallStateRef.current = createStallState(Date.now());
+    // Fresh, React-free target node for the API to replace (see the effect's
+    // header comment). `replaceChildren` also clears any corpse a previous
+    // `destroy()` left behind, so the host holds exactly one player node.
+    const target = document.createElement("div");
+    target.id = "yt-player";
+    target.className = styles.playerHost;
+    host.replaceChildren(target);
     try {
-      playerRef.current = new window.YT.Player(playerDivRef.current, {
+      playerRef.current = new window.YT.Player(target, {
         videoId: nowVideoId,
         playerVars: {
           autoplay: 1,
@@ -442,8 +513,21 @@ export default function TvScreen({
           },
         },
       });
+      // The API swapped `target` for its iframe during the constructor; record
+      // whatever now occupies the host so the liveness guard above can tell a
+      // working player from an orphaned one. `getIframe()` is the API's own
+      // accessor and is the sturdier source; the host's first child is the
+      // fallback for an API build that doesn't expose it.
+      let node: Element | null = null;
+      try {
+        node = playerRef.current.getIframe?.() ?? null;
+      } catch {
+        // accessor unavailable on this API build — fall back below
+      }
+      playerNodeRef.current = node ?? host.firstElementChild;
     } catch {
       playerRef.current = null;
+      playerNodeRef.current = null;
       currentVideoIdRef.current = null; // retry cleanly on the next run
       // TICKET-62: that retry USED to ride on the queue poll writing a brand-new
       // array identity every 3s, which re-ran this effect for free. The poll is
@@ -504,6 +588,7 @@ export default function TvScreen({
             player.destroy();
           } catch {}
           playerRef.current = null;
+          playerNodeRef.current = null;
           currentVideoIdRef.current = null;
           setPlayerEpoch((n) => n + 1); // deterministic rebuild via the player effect
           break;
@@ -517,10 +602,23 @@ export default function TvScreen({
   }, [ytReady, skipUnplayable]);
 
   // Skip-notice + player-retry timer hygiene: cleared on unmount (TICKET-18).
+  // TICKET-82: the player is torn down here too. It is created imperatively and
+  // its iframe is NOT a node React can clean up, so without this the object (and
+  // its YT postMessage listeners) would outlive the component.
   useEffect(() => {
     return () => {
       if (skipNoticeTimerRef.current) clearTimeout(skipNoticeTimerRef.current);
       if (playerRetryTimerRef.current) clearTimeout(playerRetryTimerRef.current);
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch {
+          // already gone — nothing to clean up
+        }
+        playerRef.current = null;
+        playerNodeRef.current = null;
+        currentVideoIdRef.current = null;
+      }
     };
   }, []);
 
@@ -705,36 +803,52 @@ export default function TvScreen({
         <span className={styles.venue}>{venueName || t("venueFallback")}</span>
       </div>
 
+      {/*
+        TICKET-82 — the main row (and with it the player host) is ALWAYS
+        mounted, hidden with `.mainHidden` while idle rather than unmounted.
+
+        It used to live inside the `nowPlaying ? ... : idle` branch, so an empty
+        queue tore the YouTube iframe out of the DOM while `playerRef` kept
+        pointing at the now-nodeless player. The next song re-mounted an empty
+        host and loaded into that corpse: a dead black embed that only a manual
+        page refresh could clear — the reported venue-TV failure. Keeping the
+        host mounted means React never removes the iframe, so the player (and
+        any fullscreen the venue put it in) survives every queue transition.
+
+        `display: none` does not reload or reset an iframe — the player is
+        simply parked, and it is stopped via `stopVideo()` by the player effect
+        whenever the queue empties.
+      */}
+      <div className={`${styles.main} ${!nowPlaying ? styles.mainHidden : ""}`}>
+        <div ref={playerHostRef} className={styles.video} />
+        {nowPlaying && (
+          <div className={styles.meta}>
+            <span className={styles.label}>{t("nowPlaying")}</span>
+            <h1 className={styles.hero} data-testid="tv-hero">
+              {nowPlaying.title ?? `youtu.be/${nowPlaying.videoId}`}
+            </h1>
+            <div className={styles.singer} data-testid="tv-singer">
+              🎤 {singerLine(nowPlaying)}
+              {nowPlaying.table ? (
+                <span className={styles.mesa}> · {t("table", { table: nowPlaying.table })}</span>
+              ) : null}
+            </div>
+            {micCallSecs !== null && (
+              <div className={styles.micCall} data-testid="tv-mic-call" role="status">
+                {t.rich("micCall", {
+                  nickname: nowPlaying.nickname,
+                  table: nowPlaying.table ?? "none",
+                  seconds: micCallSecs,
+                  s: (chunks) => <strong>{chunks}</strong>,
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {nowPlaying ? (
         <>
-          {/* main row: video + meta */}
-          <div className={styles.main}>
-            <div className={styles.video}>
-              <div ref={playerDivRef} id="yt-player" className={styles.playerHost} />
-            </div>
-            <div className={styles.meta}>
-              <span className={styles.label}>{t("nowPlaying")}</span>
-              <h1 className={styles.hero} data-testid="tv-hero">
-                {nowPlaying.title ?? `youtu.be/${nowPlaying.videoId}`}
-              </h1>
-              <div className={styles.singer} data-testid="tv-singer">
-                🎤 {singerLine(nowPlaying)}
-                {nowPlaying.table ? (
-                  <span className={styles.mesa}> · {t("table", { table: nowPlaying.table })}</span>
-                ) : null}
-              </div>
-              {micCallSecs !== null && (
-                <div className={styles.micCall} data-testid="tv-mic-call" role="status">
-                  {t.rich("micCall", {
-                    nickname: nowPlaying.nickname,
-                    table: nowPlaying.table ?? "none",
-                    seconds: micCallSecs,
-                    s: (chunks) => <strong>{chunks}</strong>,
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
           {reorderNotice && (
             <div className={styles.reorderNotice} data-testid="tv-reorder-toast" role="status">
               {reorderNotice}

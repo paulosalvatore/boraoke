@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { drainQueue, warmTvRoutes } from "./helpers";
+import { advanceOnce, drainQueue, warmTvRoutes } from "./helpers";
 
 /**
  * E2E: /tv venue screen (TICKET-18) — 10-foot layout, idle poster,
@@ -350,6 +350,233 @@ test.describe("/tv", () => {
     // `F` key re-enters
     await page.keyboard.press("f");
     expect(await page.evaluate(() => (window as unknown as { __fsCalls: number }).__fsCalls)).toBe(2);
+  });
+
+  /**
+   * TICKET-82 — the player must OUTLIVE every queue change.
+   *
+   * Reported from a live venue: "I was on fullscreen for the YT player, when I
+   * added a new song and the page updated, the embed got black screened. I had
+   * to refresh the page." Root cause: `new YT.Player(el)` does not render into
+   * `el` — the IFrame API REPLACES `el` with its own `<iframe>`. The player host
+   * used to live inside the `nowPlaying ? ... : idle` branch, so an empty queue
+   * unmounted that subtree and took the iframe with it while `playerRef` kept
+   * holding the (now nodeless) player object. Adding a song re-mounted an empty
+   * host and the effect took its "player already exists" branch, calling
+   * `loadVideoById` on that corpse — a permanently dead black embed.
+   *
+   * These tests therefore assert NODE IDENTITY, not just "an iframe exists":
+   * a fresh-but-empty host would satisfy a presence check while being exactly
+   * the broken state. The stub below is deliberately FAITHFUL about the one
+   * behaviour that causes the bug (element replacement) — the tv-watchdog stub
+   * renders nothing and so cannot catch this class at all.
+   */
+  const YT_MARK = "data-yt-instance";
+
+  /** Stub the YT IFrame API, faithfully REPLACING the target node (as YT does). */
+  async function stubYouTubeReplacingNode(page: Page) {
+    await page.addInitScript(() => {
+      type Handler = (e: { data: number; target?: unknown }) => void;
+      const w = window as unknown as {
+        __ytCreated: number;
+        __ytLoaded: string[];
+        __ytDestroyed: number;
+        __ytClock: number;
+        YT: unknown;
+      };
+      w.__ytCreated = 0;
+      w.__ytLoaded = [];
+      w.__ytDestroyed = 0;
+      w.__ytClock = 0;
+      class FakePlayer {
+        events: { onReady?: Handler; onStateChange?: Handler; onError?: Handler };
+        node: HTMLIFrameElement;
+        constructor(el: HTMLElement, opts: { videoId?: string; events?: FakePlayer["events"] }) {
+          this.events = opts.events ?? {};
+          w.__ytCreated += 1;
+          // The real API swaps the passed element for an <iframe> it owns.
+          const iframe = document.createElement("iframe");
+          iframe.id = el.id;
+          iframe.className = el.className;
+          iframe.src = "about:blank";
+          iframe.setAttribute("data-yt-instance", String(w.__ytCreated));
+          el.parentNode!.replaceChild(iframe, el);
+          this.node = iframe;
+          setTimeout(() => this.events.onReady?.({ data: -1, target: this }), 0);
+        }
+        loadVideoById(id: string) {
+          // A player whose iframe has left the document can never show video —
+          // record the load as dead so a test can tell "loaded" from "played".
+          w.__ytLoaded.push(this.node.isConnected ? id : `ORPHANED:${id}`);
+        }
+        stopVideo() {}
+        destroy() {
+          w.__ytDestroyed += 1;
+          this.node.remove();
+        }
+        playVideo() {}
+        seekTo() {}
+        getPlayerState() {
+          return 1; // PLAYING — keep the stall ladder quiet
+        }
+        getCurrentTime() {
+          w.__ytClock += 5;
+          return w.__ytClock;
+        }
+      }
+      w.YT = {
+        Player: FakePlayer,
+        PlayerState: { ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 },
+      };
+    });
+  }
+
+  /** Snapshot of everything the regression cares about. */
+  const playerSnapshot = (page: Page) =>
+    page.evaluate((mark) => {
+      const w = window as unknown as {
+        __ytCreated: number;
+        __ytLoaded: string[];
+        __ytDestroyed: number;
+        __tracked?: Element | null;
+      };
+      const node = document.querySelector(`iframe[${mark}]`);
+      return {
+        present: Boolean(node),
+        instance: node?.getAttribute(mark) ?? null,
+        sameNode: node !== null && node === w.__tracked,
+        created: w.__ytCreated,
+        destroyed: w.__ytDestroyed,
+        loaded: [...w.__ytLoaded],
+        isFullscreenElement: document.fullscreenElement === node,
+        rail: document.querySelectorAll('[class*="nextCard"]').length,
+      };
+    }, YT_MARK);
+
+  const trackPlayerNode = (page: Page) =>
+    page.evaluate((mark) => {
+      (window as unknown as { __tracked?: Element | null }).__tracked =
+        document.querySelector(`iframe[${mark}]`);
+    }, YT_MARK);
+
+  test("player survives a queue update while fullscreen — no remount, no black screen (TICKET-82)", async ({ page }) => {
+    await stubYouTubeReplacingNode(page);
+    // Simulate the venue's fullscreen: the YT player's own fullscreen button
+    // makes the IFRAME the fullscreen element, which is exactly the state the
+    // reported bug destroyed. Stubbed (headless fullscreen is flaky) with the
+    // same posture as the AC2 test above.
+    await page.addInitScript(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        configurable: true,
+        get: () => document.querySelector("iframe[data-yt-instance]"),
+      });
+    });
+
+    const room = upnextRoom("t82-fullscreen");
+    await drainQueue(page.request, room);
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Song A", nickname: "Ana", table: "1", mode: "sing" });
+    await page.goto(`/${room}/tv`);
+
+    await expect(page.locator(`iframe[${YT_MARK}]`)).toHaveCount(1, { timeout: 15_000 });
+    await trackPlayerNode(page);
+    const before = await playerSnapshot(page);
+    expect(before).toMatchObject({ present: true, created: 1, destroyed: 0, isFullscreenElement: true, rail: 0 });
+
+    // The reported action: a patron adds a song mid-playback.
+    await seedRoom(page, room, { videoId: "oHg5SJYRHA0", title: "Song B", nickname: "Bruno", table: "2", mode: "sing" });
+
+    // The rail must still update promptly (the queue change is legitimate).
+    await expect(page.locator('[class*="nextCard"]')).toHaveCount(1, { timeout: 15_000 });
+    await page.waitForTimeout(1000);
+
+    const after = await playerSnapshot(page);
+    // Same DOM node, same player instance, still the fullscreen element, and
+    // NO video reload (the head of the queue did not change).
+    expect(after.sameNode).toBe(true);
+    expect(after.instance).toBe(before.instance);
+    expect(after.created).toBe(1);
+    expect(after.destroyed).toBe(0);
+    expect(after.loaded).toEqual([]);
+    expect(after.isFullscreenElement).toBe(true);
+
+    await drainQueue(page.request, room);
+  });
+
+  test("player survives the queue emptying and refilling — the reported black screen (TICKET-82)", async ({ page }) => {
+    // THE reproduction. Pre-fix this test fails at `sameNode` / `loaded`: the
+    // idle transition unmounted the iframe, and the refill logged
+    // "ORPHANED:<id>" — a load into a player with no node on the page, which is
+    // precisely the dead embed the Tech Lead had to refresh away.
+    await stubYouTubeReplacingNode(page);
+
+    const room = upnextRoom("t82-idle-refill");
+    await drainQueue(page.request, room);
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Song A", nickname: "Ana", table: "1", mode: "sing" });
+    await page.goto(`/${room}/tv`);
+
+    await expect(page.locator(`iframe[${YT_MARK}]`)).toHaveCount(1, { timeout: 15_000 });
+    await trackPlayerNode(page);
+    const before = await playerSnapshot(page);
+    expect(before.created).toBe(1);
+
+    // The show runs dry — last song ends, the TV falls back to the idle poster.
+    await drainQueue(page.request, room);
+    await expect(page.getByTestId("tv-idle")).toBeVisible({ timeout: 15_000 });
+    const idle = await playerSnapshot(page);
+    // The player is PARKED (hidden), never torn out of the document. Soft so
+    // the run continues to the refill assertions below — the two failure modes
+    // (node torn out at idle; load into an orphan on refill) are separate
+    // symptoms of the same defect and both are worth reporting in one run.
+    expect.soft(idle.sameNode).toBe(true);
+    expect.soft(idle.destroyed).toBe(0);
+    await expect.soft(page.locator(`iframe[${YT_MARK}]`)).toBeHidden();
+
+    // A patron adds a song — the exact moment the TV used to black-screen.
+    await seedRoom(page, room, { videoId: "oHg5SJYRHA0", title: "Song B", nickname: "Bruno", table: "2", mode: "sing" });
+    await expect(page.getByTestId("tv-hero")).toHaveText("Song B", { timeout: 15_000 });
+    await page.waitForTimeout(1000);
+
+    const after = await playerSnapshot(page);
+    expect(after.sameNode).toBe(true);
+    expect(after.instance).toBe(before.instance);
+    expect(after.created).toBe(1);
+    // The new video was loaded into a LIVE player — never an orphaned one.
+    expect(after.loaded).toEqual(["oHg5SJYRHA0"]);
+    await expect(page.locator(`iframe[${YT_MARK}]`)).toBeVisible();
+
+    await drainQueue(page.request, room);
+  });
+
+  test("a real track change loads the new video in the SAME player (TICKET-82)", async ({ page }) => {
+    // The other half of the contract: queue churn must not touch the player,
+    // but a genuine track change must still reach it. Note the player node is
+    // deliberately preserved here too — `loadVideoById` on the live instance is
+    // what swaps the video, and recreating the iframe would reintroduce exactly
+    // the flicker/fullscreen-loss this ticket removes.
+    await stubYouTubeReplacingNode(page);
+
+    const room = upnextRoom("t82-trackchange");
+    await drainQueue(page.request, room);
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Song A", nickname: "Ana", table: "1", mode: "sing" });
+    await seedRoom(page, room, { videoId: "oHg5SJYRHA0", title: "Song B", nickname: "Bruno", table: "2", mode: "sing" });
+    await page.goto(`/${room}/tv`);
+
+    await expect(page.getByTestId("tv-hero")).toHaveText("Song A", { timeout: 15_000 });
+    await expect(page.locator(`iframe[${YT_MARK}]`)).toHaveCount(1);
+    await trackPlayerNode(page);
+    expect((await playerSnapshot(page)).loaded).toEqual([]);
+
+    // Advance (host skip / song ended) — a REAL track change.
+    expect((await advanceOnce(page.request, room)).ok()).toBe(true);
+    await expect(page.getByTestId("tv-hero")).toHaveText("Song B", { timeout: 15_000 });
+    await page.waitForTimeout(1000);
+
+    const after = await playerSnapshot(page);
+    expect(after.sameNode).toBe(true);
+    expect(after.created).toBe(1);
+    expect(after.loaded).toEqual(["oHg5SJYRHA0"]);
+
+    await drainQueue(page.request, room);
   });
 
   test("chrome auto-hides and the cursor goes with it", async ({ page }) => {
