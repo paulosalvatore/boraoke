@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 2 «Placar» — Landing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800;900&family=Barlow:wght@400;500;600;700&family=Chivo+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --noite:    #0A1C36;
+    --noite-2:  #10294D;
+    --gelo:     #E9F1FC;
+    --ambar:    #FFB300;
+    --live:     #34D27B;
+    --cinza-az: #8CA3C3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--noite);
+    color: var(--gelo);
+    font-family: "Barlow", sans-serif;
+  }
+  .pagina { max-width: 1240px; margin: 0 auto; padding: 0 28px; }
+
+  header.topo {
+    display: flex; align-items: stretch; gap: 0;
+    height: 64px;
+    border-bottom: 3px solid var(--ambar);
+    margin: 0 -28px; padding: 0 28px;
+    background: var(--noite-2);
+  }
+  .marca {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 30px; text-transform: uppercase;
+    color: var(--noite); background: var(--ambar);
+    display: flex; align-items: center;
+    padding: 0 22px 0 20px; margin-left: -28px; padding-left: 48px;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%);
+    padding-right: 36px;
+  }
+  .topo-dir {
+    margin-left: auto; display: flex; align-items: center; gap: 22px;
+  }
+  .acesso {
+    font-family: "Chivo Mono", monospace; font-weight: 700;
+    font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--live); border: 1px solid var(--live);
+    padding: 5px 12px;
+  }
+  .idiomas { font-family: "Chivo Mono", monospace; font-size: 13px; color: var(--cinza-az); }
+  .idiomas strong { color: var(--gelo); }
+
+  /* -------- hero -------- */
+  .hero { padding: 72px 0 64px; display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,0.95fr); gap: 60px; align-items: center; }
+  .eyebrow {
+    font-family: "Chivo Mono", monospace; font-weight: 700;
+    font-size: 14px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--ambar);
+    margin-bottom: 18px;
+  }
+  .hero h1 {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900;
+    font-size: clamp(56px, 8vw, 118px);
+    line-height: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    text-wrap: balance;
+  }
+  .hero h1 em { font-style: normal; color: var(--ambar); }
+  .hero .sub {
+    margin-top: 24px;
+    font-size: 20px; line-height: 1.55; font-weight: 500;
+    color: var(--cinza-az);
+    max-width: 32em;
+  }
+  .cta-linha { margin-top: 34px; display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+  .btn-criar {
+    display: inline-flex; align-items: center;
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 26px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--noite); background: var(--ambar);
+    padding: 18px 38px;
+    text-decoration: none;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+  }
+  .btn-criar:hover { background: #FFC533; }
+  .gratis {
+    font-family: "Chivo Mono", monospace; font-size: 13px; line-height: 1.6;
+    color: var(--cinza-az); max-width: 22em;
+  }
+
+  /* mini-placar do hero */
+  .mini {
+    background: var(--noite-2);
+    border: 1px solid #24406B;
+    border-top: 3px solid var(--ambar);
+  }
+  .mini .cabeca {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 22px;
+    border-bottom: 1px solid #24406B;
+  }
+  .mini .cabeca h3 {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 24px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ambar);
+  }
+  .mini .cabeca .live {
+    font-family: "Chivo Mono", monospace; font-weight: 700; font-size: 13px;
+    letter-spacing: 0.14em; color: var(--live);
+  }
+  .mini ol { list-style: none; }
+  .mini li {
+    display: flex; align-items: center; gap: 16px;
+    padding: 15px 22px;
+    border-bottom: 1px solid #24406B;
+  }
+  .mini li:first-child { background: #142F58; }
+  .mini .n {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 34px; color: var(--ambar);
+    width: 40px; flex: none; text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .mini .quem {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 24px; text-transform: uppercase;
+    flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mini .mesa { font-family: "Chivo Mono", monospace; font-weight: 700; font-size: 15px; background: #1B3A66; padding: 4px 10px; flex: none; }
+  .mini .rabo {
+    display: flex; align-items: center; gap: 16px;
+    padding: 16px 22px;
+  }
+  .mini .qr { background: var(--gelo); padding: 6px; flex: none; }
+  .mini .qr svg { display: block; width: 62px; height: 62px; }
+  .mini .rabo p { font-weight: 600; font-size: 15px; line-height: 1.45; color: var(--cinza-az); }
+  .mini .rabo strong { color: var(--gelo); }
+
+  /* -------- números / como funciona -------- */
+  .stats {
+    display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+    border: 1px solid #24406B;
+    margin-bottom: 72px;
+  }
+  .stat {
+    padding: 26px 26px 28px;
+    border-right: 1px solid #24406B;
+  }
+  .stat:last-child { border-right: none; }
+  .stat .big {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 56px; line-height: 1;
+    color: var(--ambar);
+  }
+  .stat h3 {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 22px; letter-spacing: 0.04em; text-transform: uppercase;
+    margin: 10px 0 6px;
+  }
+  .stat p { font-size: 15px; line-height: 1.5; color: var(--cinza-az); }
+
+  /* -------- código -------- */
+  .codigo {
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+    background: var(--noite-2);
+    border: 1px solid #24406B; border-left: 4px solid var(--ambar);
+    padding: 30px 32px;
+    margin-bottom: 72px;
+  }
+  .codigo h2 {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 30px; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .codigo form { display: flex; flex: 1; min-width: 300px; max-width: 560px; }
+  .codigo input {
+    flex: 1; min-height: 58px;
+    background: var(--noite); border: 1px solid #24406B; border-right: none;
+    color: var(--gelo);
+    font-family: "Barlow", sans-serif; font-size: 17px; font-weight: 500;
+    padding: 0 16px;
+  }
+  .codigo input:focus { outline: none; border-color: var(--ambar); }
+  .codigo input::placeholder { color: #5B729A; }
+  .codigo button {
+    min-height: 58px;
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 20px; letter-spacing: 0.06em; text-transform: uppercase;
+    background: var(--ambar); color: var(--noite);
+    border: none; padding: 0 30px; cursor: pointer;
+  }
+
+  footer.rodape {
+    border-top: 1px solid #24406B;
+    padding: 26px 0 42px;
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    font-family: "Chivo Mono", monospace; font-size: 13px; color: var(--cinza-az);
+  }
+  footer .promessa { color: var(--live); }
+
+  @media (max-width: 960px) {
+    .hero { grid-template-columns: 1fr; gap: 44px; padding: 48px 0 48px; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .stat:nth-child(2) { border-right: none; }
+    .stat { border-bottom: 1px solid #24406B; }
+    .stat:nth-child(3), .stat:nth-child(4) { border-bottom: none; }
+    .marca { padding-left: 28px; }
+  }
+  @media (max-width: 560px) {
+    .stats { grid-template-columns: 1fr; }
+    .stat { border-right: none; border-bottom: 1px solid #24406B; }
+    .stat:nth-child(3) { border-bottom: 1px solid #24406B; }
+    .stat:last-child { border-bottom: none; }
+    .codigo button { padding: 0 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <header class="topo">
+    <span class="marca">Boraoke</span>
+    <div class="topo-dir">
+      <span class="acesso">Acesso antecipado</span>
+      <span class="idiomas"><strong>PT</strong> · EN · ES</span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Karaokê ao vivo · fila justa · zero instalação</p>
+      <h1>A noite inteira <em>no telão</em>.</h1>
+      <p class="sub">Boraoke transforma qualquer TV num palco: os convidados escaneiam o QR, pedem música do YouTube pelo celular e a fila roda sozinha — justa, moderada e ao vivo. Do boteco ao salão de festas do condomínio.</p>
+      <div class="cta-linha">
+        <a class="btn-criar" href="#">Criar sala grátis</a>
+        <p class="gratis">SEM CADASTRO · SEM CARTÃO ·<br>SEM APARELHO DE KARAOKÊ</p>
+      </div>
+    </div>
+
+    <aside class="mini" aria-label="Exemplo do placar da noite">
+      <div class="cabeca">
+        <h3>Placar da noite</h3>
+        <span class="live">● AO VIVO</span>
+      </div>
+      <ol>
+        <li><span class="n">1</span><span class="quem">Carla</span><span class="mesa">M7</span></li>
+        <li><span class="n">2</span><span class="quem">Seu Marcos</span><span class="mesa">M3</span></li>
+        <li><span class="n">3</span><span class="quem">Duda</span><span class="mesa">M12</span></li>
+        <li><span class="n">4</span><span class="quem">Paty &amp; Leo</span><span class="mesa">M5</span></li>
+      </ol>
+      <div class="rabo">
+        <span class="qr" aria-hidden="true"><svg viewBox="0 0 21 21"><path fill="#0A1C36" d="M0 0h7v7H0zM2 2h3v3H2zM14 0h7v7h-7zM16 2h3v3h-3zM0 14h7v7H0zM2 16h3v3H2zM9 0h1v2H9zM11 0h2v1h-2zM12 2h1v3h-1zM9 3h2v1H9zM9 5h1v2H9zM11 6h2v1h-2zM0 9h1v2H0zM2 9h2v1H2zM5 9h2v2H5zM3 11h1v2H3zM0 12h2v1H0zM5 12h1v2H5zM8 8h2v2H8zM11 8h1v2h-1zM13 9h2v1h-2zM16 8h1v2h-1zM18 9h3v1h-3zM8 11h1v3H8zM10 11h3v2h-3zM14 11h1v2h-1zM16 11h2v1h-2zM19 11h2v2h-2zM9 14h2v2H9zM12 14h1v1h-1zM14 14h3v3h-3zM18 14h1v2h-1zM20 14h1v3h-1zM9 17h1v2H9zM11 17h2v1h-2zM12 19h3v2h-3zM16 18h2v2h-2zM19 18h1v1h-1zM20 19h1v2h-1zM9 20h2v1H9z"/></svg></span>
+        <p><strong>Escaneia e entra no placar.</strong><br>Cada pessoa com sua vez, cada mesa com seu nome.</p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="stats" aria-label="Como funciona">
+    <div class="stat">
+      <span class="big">10s</span>
+      <h3>Do QR ao pedido</h3>
+      <p>Escaneou a TV, digitou o apelido e a mesa, escolheu a música. Sem baixar nada.</p>
+    </div>
+    <div class="stat">
+      <span class="big">3</span>
+      <h3>Modos de rodízio</h3>
+      <p>Uma por pessoa, duas por mesa ou fila livre — quem organiza escolhe, o placar garante a justiça.</p>
+    </div>
+    <div class="stat">
+      <span class="big">∞</span>
+      <h3>Repertório YouTube</h3>
+      <p>Busca no app ou cola o link de qualquer karaokê do YouTube. Toca no player oficial, na TV.</p>
+    </div>
+    <div class="stat">
+      <span class="big">3</span>
+      <h3>Idiomas</h3>
+      <p>Português, inglês e espanhol — a sala fala a língua da sua festa.</p>
+    </div>
+  </section>
+
+  <section class="codigo">
+    <h2>Já tem um código?</h2>
+    <form>
+      <input type="text" placeholder="ex.: boteco-da-lu" aria-label="Código da sala">
+      <button type="submit">Entrar</button>
+    </form>
+  </section>
+
+  <footer class="rodape">
+    <span class="promessa">GRÁTIS NO ACESSO ANTECIPADO — O QUE É GRÁTIS HOJE SEGUE GRÁTIS.</span>
+    <span>BORAOKE.COM</span>
+  </footer>
+</div>
+</body>
+</html>

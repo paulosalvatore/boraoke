@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 4 «Madrugada» — TV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Direção 4 — MADRUGADA. Flyer de baile: breu violeta, cromo espelhado,
+     laser rosa e verde. Descaradamente chamativo — de propósito. */
+  :root {
+    --breu:  #120817;
+    --roxo:  #2B1140;
+    --pink:  #FF3DAE;
+    --laser: #7CFF4F;
+    --nevoa: #C9BAD6; /* neutro puxado pro violeta */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    background: var(--breu);
+    background-image:
+      radial-gradient(900px 500px at 15% 0%, rgba(255,61,174,0.18), transparent 65%),
+      radial-gradient(900px 500px at 85% 100%, rgba(124,255,79,0.10), transparent 65%),
+      repeating-linear-gradient(0deg, transparent 0 118px, rgba(255,61,174,0.05) 118px 120px);
+    color: #fff;
+    font-family: "Chakra Petch", sans-serif;
+  }
+  .chrome {
+    font-family: "Anton", sans-serif;
+    background: linear-gradient(180deg, #FFFFFF 0%, #C6CBDE 34%, #6E7590 49%, #F4F6FF 55%, #9BA3BE 78%, #E8ECFA 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-transform: uppercase;
+  }
+
+  .frame {
+    width: 1920px; height: 1080px;
+    padding: 34px 48px 30px;
+    display: grid;
+    grid-template-rows: 92px 1fr 240px;
+    gap: 22px;
+  }
+
+  /* ---------- topo ---------- */
+  .topo { display: flex; align-items: center; gap: 30px; }
+  .marca {
+    font-size: 62px; line-height: 1;
+    letter-spacing: 0.02em;
+    transform: skewX(-8deg);
+    filter: drop-shadow(0 3px 0 var(--pink)) drop-shadow(0 -2px 0 rgba(124,255,79,0.6));
+  }
+  .casa {
+    font-weight: 700; font-size: 26px;
+    letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--nevoa);
+  }
+  .rodizio {
+    margin-left: auto;
+    font-weight: 700; font-size: 20px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--laser);
+    border: 2px solid var(--laser);
+    padding: 8px 20px;
+    transform: skewX(-8deg);
+    box-shadow: 0 0 18px rgba(124,255,79,0.35), inset 0 0 12px rgba(124,255,79,0.15);
+  }
+
+  /* ---------- palco ---------- */
+  .miolo {
+    display: grid;
+    grid-template-columns: 1230px 1fr;
+    gap: 36px;
+    min-height: 0;
+  }
+  .video {
+    position: relative;
+    background: #05020A;
+    border: 2px solid var(--pink);
+    box-shadow: 0 0 34px rgba(255,61,174,0.4), inset 0 0 60px rgba(255,61,174,0.08);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .video .verso {
+    font-weight: 600; font-size: 56px; line-height: 1.3;
+    text-align: center; padding: 0 90px;
+  }
+  .video .verso em { color: var(--pink); font-style: normal; text-shadow: 0 0 22px rgba(255,61,174,0.8); }
+  .video .yt {
+    position: absolute; right: 20px; bottom: 14px;
+    font-size: 16px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: rgba(201,186,214,0.5);
+  }
+
+  /* lateral: line-up */
+  .lineup {
+    display: flex; flex-direction: column;
+    min-height: 0;
+    background: linear-gradient(180deg, var(--roxo), rgba(43,17,64,0.35));
+    border: 1px solid rgba(255,61,174,0.35);
+    padding: 26px 30px 22px;
+  }
+  .lineup h2 {
+    font-family: "Anton", sans-serif;
+    font-size: 40px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--laser);
+    text-shadow: 0 0 20px rgba(124,255,79,0.5);
+    transform: skewX(-6deg);
+    margin-bottom: 20px;
+  }
+  .lineup ol { list-style: none; flex: 1; display: flex; flex-direction: column; gap: 22px; }
+  .lineup li { display: flex; align-items: center; gap: 18px; min-width: 0; }
+  .lineup .n {
+    font-family: "Anton", sans-serif;
+    font-size: 46px; line-height: 1;
+    color: var(--pink);
+    text-shadow: 0 0 16px rgba(255,61,174,0.7);
+    width: 56px; flex: none;
+    transform: skewX(-8deg);
+  }
+  .lineup .txt { flex: 1; min-width: 0; }
+  .lineup .quem {
+    font-family: "Anton", sans-serif;
+    font-size: 40px; line-height: 1.05;
+    letter-spacing: 0.02em;
+    background: linear-gradient(180deg, #FFF 0%, #C6CBDE 40%, #7C84A0 52%, #EEF1FF 60%, #A9B0C9 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lineup .que {
+    font-size: 19px; font-weight: 500; color: var(--nevoa);
+    margin-top: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lineup .mesa {
+    flex: none;
+    font-weight: 700; font-size: 19px; letter-spacing: 0.08em;
+    color: var(--laser);
+    border: 1px solid rgba(124,255,79,0.6);
+    padding: 5px 12px;
+    transform: skewX(-8deg);
+  }
+  .lineup .danca {
+    flex: none;
+    font-weight: 700; font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--breu); background: var(--pink);
+    padding: 5px 12px;
+    transform: skewX(-8deg);
+  }
+
+  /* ---------- rodapé: quem tá no mic + QR ---------- */
+  .rodape {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 36px;
+    align-items: stretch;
+  }
+  .agora {
+    display: flex; align-items: center; gap: 40px;
+    border-top: 2px solid var(--pink);
+    padding-top: 20px;
+    min-width: 0;
+  }
+  .agora .selo {
+    flex: none;
+    font-family: "Anton", sans-serif;
+    font-size: 30px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--breu);
+    background: linear-gradient(180deg, var(--laser), #4ADF1E);
+    padding: 12px 26px;
+    transform: skewX(-8deg);
+    box-shadow: 0 0 26px rgba(124,255,79,0.5);
+  }
+  .agora .quem { min-width: 0; flex: 1; }
+  .agora .nome {
+    font-size: 104px; line-height: 0.95;
+    transform: skewX(-6deg);
+    filter: drop-shadow(0 4px 0 var(--pink));
+    white-space: nowrap; overflow: hidden;
+  }
+  .agora .musica {
+    font-size: 26px; font-weight: 500; color: var(--nevoa);
+    margin-top: 8px;
+  }
+  .agora .mesa {
+    flex: none; text-align: center;
+    transform: skewX(-6deg);
+  }
+  .agora .mesa .rot { font-weight: 700; font-size: 18px; letter-spacing: 0.22em; color: var(--pink); }
+  .agora .mesa .num {
+    font-family: "Anton", sans-serif;
+    font-size: 110px; line-height: 0.95;
+    background: linear-gradient(180deg, #FFF, #8E93A6 55%, #F8F8FF);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  .qr-bloco {
+    display: flex; align-items: center; gap: 20px;
+    border: 2px solid var(--laser);
+    box-shadow: 0 0 24px rgba(124,255,79,0.3);
+    padding: 18px 24px;
+    background: rgba(43,17,64,0.6);
+  }
+  .qr-bloco .qr { background: #fff; padding: 8px; flex: none; }
+  .qr-bloco .qr svg { display: block; width: 108px; height: 108px; }
+  .qr-bloco .cta {
+    font-family: "Anton", sans-serif;
+    font-size: 30px; line-height: 1.1; text-transform: uppercase;
+    color: var(--laser);
+    text-shadow: 0 0 18px rgba(124,255,79,0.6);
+    transform: skewX(-6deg);
+  }
+  .qr-bloco .url {
+    font-weight: 700; font-size: 15px; letter-spacing: 0.02em;
+    color: #fff; margin-top: 8px;
+    font-family: "Chakra Petch", sans-serif;
+    text-transform: none; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header class="topo">
+    <span class="marca chrome">Boraoke</span>
+    <span class="casa">Boteco da Lu</span>
+    <span class="rodizio">Rodízio · 1 por pessoa</span>
+  </header>
+
+  <main class="miolo">
+    <div class="video">
+      <p class="verso">Quando eu digo que deixei de te amar<br>é porque eu <em>te amo</em></p>
+      <span class="yt">▶ YouTube</span>
+    </div>
+
+    <aside class="lineup">
+      <h2>Line-up</h2>
+      <ol>
+        <li>
+          <span class="n">2</span>
+          <div class="txt">
+            <p class="quem">Seu Marcos</p>
+            <p class="que">Garçom — Reginaldo Rossi</p>
+          </div>
+          <span class="mesa">M3</span>
+        </li>
+        <li>
+          <span class="n">3</span>
+          <div class="txt">
+            <p class="quem">Duda</p>
+            <p class="que">Exagerado — Cazuza</p>
+          </div>
+          <span class="mesa">M12</span>
+        </li>
+        <li>
+          <span class="n">4</span>
+          <div class="txt">
+            <p class="quem">Paty &amp; Leo</p>
+            <p class="que">Cheia de Manias — Raça Negra</p>
+          </div>
+          <span class="danca">dança</span>
+        </li>
+        <li>
+          <span class="n">5</span>
+          <div class="txt">
+            <p class="quem">Renato</p>
+            <p class="que">Anunciação — Alceu Valença</p>
+          </div>
+          <span class="mesa">M3</span>
+        </li>
+      </ol>
+    </aside>
+  </main>
+
+  <footer class="rodape">
+    <div class="agora">
+      <span class="selo">No mic</span>
+      <div class="quem">
+        <p class="nome chrome">Carla</p>
+        <p class="musica">Evidências — Chitãozinho &amp; Xororó</p>
+      </div>
+      <div class="mesa">
+        <p class="rot">MESA</p>
+        <p class="num">7</p>
+      </div>
+    </div>
+    <div class="qr-bloco">
+      <span class="qr" aria-hidden="true"><svg viewBox="0 0 21 21"><path fill="#120817" d="M0 0h7v7H0zM2 2h3v3H2zM14 0h7v7h-7zM16 2h3v3h-3zM0 14h7v7H0zM2 16h3v3H2zM9 0h1v2H9zM11 0h2v1h-2zM12 2h1v3h-1zM9 3h2v1H9zM9 5h1v2H9zM11 6h2v1h-2zM0 9h1v2H0zM2 9h2v1H2zM5 9h2v2H5zM3 11h1v2H3zM0 12h2v1H0zM5 12h1v2H5zM8 8h2v2H8zM11 8h1v2h-1zM13 9h2v1h-2zM16 8h1v2h-1zM18 9h3v1h-3zM8 11h1v3H8zM10 11h3v2h-3zM14 11h1v2h-1zM16 11h2v1h-2zM19 11h2v2h-2zM9 14h2v2H9zM12 14h1v1h-1zM14 14h3v3h-3zM18 14h1v2h-1zM20 14h1v3h-1zM9 17h1v2H9zM11 17h2v1h-2zM12 19h3v2h-3zM16 18h2v2h-2zM19 18h1v1h-1zM20 19h1v2h-1zM9 20h2v1H9z"/></svg></span>
+      <div>
+        <p class="cta">Cola no baile</p>
+        <p class="url">boraoke.com/boteco-da-lu</p>
+      </div>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

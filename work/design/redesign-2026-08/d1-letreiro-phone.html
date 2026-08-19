@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 1 «Letreiro» — Celular</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Asap:wght@400;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --verde-garrafa: #17452B;
+    --verde-sombra:  #0E2F1D;
+    --cal:           #F4EBD9;
+    --cal-suja:      #E4D8BE;
+    --amarelo:       #F2B705;
+    --vermelho:      #B33A2B;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--verde-garrafa);
+    background-image: radial-gradient(500px 400px at 15% 5%, rgba(244,235,217,0.06), transparent 60%);
+    color: var(--cal);
+    font-family: "Asap", sans-serif;
+    min-height: 100vh;
+    padding-bottom: 112px; /* espaço pro botão fixo */
+  }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 18px 12px;
+    border-bottom: 3px solid var(--cal);
+  }
+  .marca {
+    font-family: "Alfa Slab One", serif;
+    font-size: 24px;
+    color: var(--amarelo);
+    text-shadow: 2px 2px 0 var(--verde-sombra);
+  }
+  .voce {
+    font-family: "Oswald", sans-serif; font-weight: 600;
+    font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--verde-garrafa);
+    background: var(--cal);
+    padding: 6px 12px;
+  }
+
+  .casa {
+    padding: 14px 18px 0;
+    font-family: "Oswald", sans-serif;
+    font-size: 17px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--cal-suja);
+  }
+  .casa strong { color: var(--cal); }
+
+  /* aviso de vez — placa amarela */
+  .sua-vez {
+    margin: 14px 18px 20px;
+    background: var(--amarelo);
+    color: var(--verde-garrafa);
+    box-shadow: 5px 5px 0 var(--verde-sombra);
+    padding: 14px 16px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .sua-vez .num {
+    font-family: "Alfa Slab One", serif;
+    font-size: 44px; line-height: 1;
+    flex: none;
+  }
+  .sua-vez .txt { font-weight: 600; font-size: 16px; line-height: 1.3; }
+
+  h2.secao {
+    font-family: "Alfa Slab One", serif;
+    font-size: 22px;
+    color: var(--amarelo);
+    margin: 0 18px 10px;
+    text-shadow: 2px 2px 0 var(--verde-sombra);
+  }
+
+  /* pedir música */
+  .pedido {
+    margin: 0 18px 24px;
+    background: var(--verde-sombra);
+    border: 3px solid var(--cal);
+    padding: 16px 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .campo label {
+    display: block;
+    font-family: "Oswald", sans-serif;
+    font-size: 13px; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--cal-suja);
+    margin-bottom: 6px;
+  }
+  .campo input {
+    width: 100%;
+    min-height: 56px;
+    background: var(--cal);
+    border: 3px solid var(--verde-garrafa);
+    color: var(--verde-garrafa);
+    font-family: "Asap", sans-serif;
+    font-size: 17px; font-weight: 600;
+    padding: 0 14px;
+  }
+  .campo input::placeholder { color: #6E8377; font-weight: 400; }
+  .duplo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modo { display: flex; }
+  .modo button {
+    flex: 1; min-height: 56px;
+    font-family: "Oswald", sans-serif;
+    font-size: 16px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border: 3px solid var(--cal);
+    background: transparent; color: var(--cal);
+    cursor: pointer;
+  }
+  .modo button.ativo {
+    background: var(--cal); color: var(--verde-garrafa);
+  }
+  .dica { font-size: 13px; color: var(--cal-suja); }
+
+  /* fila */
+  .fila { list-style: none; margin: 0 18px; display: flex; flex-direction: column; gap: 12px; }
+  .fila li {
+    display: flex; align-items: center; gap: 12px;
+    border: 3px solid rgba(244,235,217,0.35);
+    padding: 12px 12px;
+    min-height: 64px;
+  }
+  .fila li.tocando {
+    border: 3px solid var(--amarelo);
+    background: var(--verde-sombra);
+  }
+  .fila li.eu {
+    border: 3px solid var(--cal);
+    background: var(--cal);
+    color: var(--verde-garrafa);
+    box-shadow: 5px 5px 0 var(--verde-sombra);
+  }
+  .fila .n {
+    font-family: "Alfa Slab One", serif;
+    font-size: 24px; width: 34px; flex: none; text-align: center;
+    color: var(--amarelo);
+  }
+  .fila li.eu .n { color: var(--vermelho); }
+  .fila .txt { flex: 1; min-width: 0; }
+  .fila .quem {
+    font-family: "Oswald", sans-serif;
+    font-weight: 700; font-size: 18px;
+    text-transform: uppercase; letter-spacing: 0.03em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fila .que {
+    font-size: 14px; color: var(--cal-suja); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fila li.eu .que { color: #365243; }
+  .fila .tag {
+    flex: none;
+    font-family: "Oswald", sans-serif;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 4px 8px;
+  }
+  .tag.mesa { color: var(--amarelo); border: 2px dashed var(--amarelo); }
+  .fila li.eu .tag.mesa { color: var(--vermelho); border-color: var(--vermelho); }
+  .tag.danca { background: var(--cal-suja); color: var(--verde-sombra); }
+  .tag.mic { background: var(--amarelo); color: var(--verde-garrafa); }
+
+  /* CTA fixo no polegar */
+  .rodape-fixo {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 14px 18px 22px;
+    background: linear-gradient(transparent, var(--verde-sombra) 35%);
+  }
+  .btn-fila {
+    width: 100%; min-height: 64px;
+    font-family: "Alfa Slab One", serif;
+    font-size: 22px;
+    background: var(--amarelo);
+    color: var(--verde-garrafa);
+    border: none;
+    box-shadow: 5px 5px 0 rgba(0,0,0,0.45);
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="marca">Boraoke</span>
+    <span class="voce">Você: Duda</span>
+  </header>
+
+  <p class="casa"><strong>Boteco da Lu</strong> · Mesa 12</p>
+
+  <div class="sua-vez">
+    <span class="num">3º</span>
+    <p class="txt">Sua vez tá chegando, Duda —<br>faltam <strong>2 músicas</strong> pra você.</p>
+  </div>
+
+  <h2 class="secao">Pedir uma música</h2>
+  <section class="pedido">
+    <div class="campo">
+      <label for="busca">Buscar no YouTube ou colar o link</label>
+      <input id="busca" type="text" placeholder="Ex.: Evidências karaokê">
+    </div>
+    <div class="duplo">
+      <div class="campo">
+        <label for="mesa">Mesa</label>
+        <input id="mesa" type="text" value="12">
+      </div>
+      <div class="campo">
+        <label>Modo</label>
+        <div class="modo">
+          <button type="button" class="ativo">Cantar</button>
+          <button type="button">Dançar</button>
+        </div>
+      </div>
+    </div>
+    <p class="dica">Vale link inteiro, encurtado ou de Shorts.</p>
+  </section>
+
+  <h2 class="secao">Fila de agora <span style="font-family:Asap;font-size:14px;color:var(--cal-suja);">· 6 na fila</span></h2>
+  <ol class="fila">
+    <li class="tocando">
+      <span class="n">♪</span>
+      <div class="txt">
+        <p class="quem">Carla</p>
+        <p class="que">Evidências — Chitãozinho &amp; Xororó</p>
+      </div>
+      <span class="tag mic">no palco</span>
+    </li>
+    <li>
+      <span class="n">2</span>
+      <div class="txt">
+        <p class="quem">Seu Marcos</p>
+        <p class="que">Garçom — Reginaldo Rossi</p>
+      </div>
+      <span class="tag mesa">M3</span>
+    </li>
+    <li class="eu">
+      <span class="n">3</span>
+      <div class="txt">
+        <p class="quem">Duda — você</p>
+        <p class="que">Exagerado — Cazuza</p>
+      </div>
+      <span class="tag mesa">M12</span>
+    </li>
+    <li>
+      <span class="n">4</span>
+      <div class="txt">
+        <p class="quem">Paty &amp; Leo</p>
+        <p class="que">Cheia de Manias — Raça Negra</p>
+      </div>
+      <span class="tag danca">dançar</span>
+    </li>
+    <li>
+      <span class="n">5</span>
+      <div class="txt">
+        <p class="quem">Renato</p>
+        <p class="que">Anunciação — Alceu Valença</p>
+      </div>
+      <span class="tag mesa">M3</span>
+    </li>
+  </ol>
+
+  <div class="rodape-fixo">
+    <button class="btn-fila" type="button">Entrar na fila</button>
+  </div>
+</body>
+</html>

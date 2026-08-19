@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 2 «Placar» — Celular</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800;900&family=Barlow:wght@400;500;600;700&family=Chivo+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --noite:    #0A1C36;
+    --noite-2:  #10294D;
+    --gelo:     #E9F1FC;
+    --ambar:    #FFB300;
+    --live:     #34D27B;
+    --cinza-az: #8CA3C3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--noite);
+    color: var(--gelo);
+    font-family: "Barlow", sans-serif;
+    min-height: 100vh;
+    padding-bottom: 110px;
+  }
+
+  header {
+    display: flex; align-items: stretch;
+    background: var(--noite-2);
+    border-bottom: 3px solid var(--ambar);
+    height: 56px;
+  }
+  .marca {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 24px; text-transform: uppercase;
+    color: var(--noite); background: var(--ambar);
+    display: flex; align-items: center;
+    padding: 0 16px 0 18px;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+    padding-right: 28px;
+  }
+  .casa {
+    display: flex; align-items: center;
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 700; font-size: 20px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 0 12px;
+  }
+  .voce {
+    margin-left: auto;
+    display: flex; align-items: center;
+    font-family: "Chivo Mono", monospace; font-size: 13px; font-weight: 700;
+    color: var(--cinza-az); padding: 0 16px;
+  }
+
+  /* placar da sua posição */
+  .placar {
+    display: flex; align-items: stretch;
+    background: var(--noite-2);
+    border-bottom: 1px solid #24406B;
+  }
+  .placar .pos {
+    flex: none; width: 118px;
+    background: var(--ambar); color: var(--noite);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 12px 0;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%);
+  }
+  .placar .pos .rot { font-family: "Chivo Mono", monospace; font-weight: 700; font-size: 12px; letter-spacing: 0.18em; }
+  .placar .pos .num { font-family: "Big Shoulders Display", sans-serif; font-weight: 900; font-size: 58px; line-height: 1; }
+  .placar .info { padding: 14px 16px; display: flex; flex-direction: column; justify-content: center; }
+  .placar .info .l1 { font-weight: 600; font-size: 16px; }
+  .placar .info .l1 strong { color: var(--ambar); }
+  .placar .info .l2 { font-family: "Chivo Mono", monospace; font-size: 12px; color: var(--cinza-az); margin-top: 4px; letter-spacing: 0.04em; }
+
+  h2.secao {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 24px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ambar);
+    padding: 22px 18px 10px;
+  }
+
+  /* pedir música */
+  .pedido {
+    margin: 0 18px;
+    background: var(--noite-2);
+    border: 1px solid #24406B;
+    border-top: 3px solid var(--ambar);
+    padding: 16px 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .campo label {
+    display: block;
+    font-family: "Chivo Mono", monospace;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--cinza-az); margin-bottom: 6px;
+  }
+  .campo input {
+    width: 100%; min-height: 54px;
+    background: var(--noite);
+    border: 1px solid #24406B;
+    color: var(--gelo);
+    font-family: "Barlow", sans-serif; font-size: 17px; font-weight: 500;
+    padding: 0 14px;
+  }
+  .campo input:focus { outline: none; border-color: var(--ambar); }
+  .campo input::placeholder { color: #5B729A; }
+  .duplo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modo { display: flex; }
+  .modo button {
+    flex: 1; min-height: 54px;
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 18px; letter-spacing: 0.06em; text-transform: uppercase;
+    border: 1px solid #24406B;
+    background: var(--noite); color: var(--cinza-az);
+    cursor: pointer;
+  }
+  .modo button.ativo { background: var(--ambar); border-color: var(--ambar); color: var(--noite); }
+
+  /* fila = tabela de rundown */
+  .fila { list-style: none; margin: 0 18px; border: 1px solid #24406B; }
+  .fila li {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 12px;
+    min-height: 64px;
+    border-bottom: 1px solid #24406B;
+    background: var(--noite-2);
+  }
+  .fila li:last-child { border-bottom: none; }
+  .fila li.tocando { border-left: 4px solid var(--live); }
+  .fila li.eu { background: #1B3A66; border-left: 4px solid var(--ambar); }
+  .fila .n {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 32px;
+    color: var(--ambar);
+    width: 36px; flex: none; text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .fila li.tocando .n { color: var(--live); font-size: 20px; }
+  .fila .txt { flex: 1; min-width: 0; }
+  .fila .quem {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 22px; line-height: 1;
+    text-transform: uppercase; letter-spacing: 0.02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fila .que {
+    font-size: 13px; color: var(--cinza-az); margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fila .tag {
+    flex: none;
+    font-family: "Chivo Mono", monospace;
+    font-weight: 700; font-size: 13px;
+    padding: 4px 8px;
+  }
+  .tag.mesa { background: #1B3A66; color: var(--gelo); }
+  .fila li.eu .tag.mesa { background: var(--ambar); color: var(--noite); }
+  .tag.aovivo { background: var(--live); color: var(--noite); text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; }
+  .tag.danca { border: 1px solid var(--live); color: var(--live); text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; }
+
+  /* CTA fixo */
+  .rodape-fixo {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 12px 18px 20px;
+    background: linear-gradient(transparent, var(--noite) 40%);
+  }
+  .btn-fila {
+    width: 100%; min-height: 62px;
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 26px; letter-spacing: 0.06em; text-transform: uppercase;
+    background: var(--ambar); color: var(--noite);
+    border: none; cursor: pointer;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="marca">Boraoke</span>
+    <span class="casa">Boteco da Lu</span>
+    <span class="voce">DUDA·M12</span>
+  </header>
+
+  <div class="placar">
+    <div class="pos">
+      <span class="rot">VOCÊ É</span>
+      <span class="num">3º</span>
+    </div>
+    <div class="info">
+      <p class="l1">Faltam <strong>2 músicas</strong> pra sua vez, Duda.</p>
+      <p class="l2">RODÍZIO 1/PESSOA · 6 NA FILA</p>
+    </div>
+  </div>
+
+  <h2 class="secao">Pedir música</h2>
+  <section class="pedido">
+    <div class="campo">
+      <label for="busca">Buscar no YouTube ou colar link</label>
+      <input id="busca" type="text" placeholder="Ex.: Evidências karaokê">
+    </div>
+    <div class="duplo">
+      <div class="campo">
+        <label for="mesa">Mesa</label>
+        <input id="mesa" type="text" value="12">
+      </div>
+      <div class="campo">
+        <label>Modo</label>
+        <div class="modo">
+          <button type="button" class="ativo">Cantar</button>
+          <button type="button">Dançar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <h2 class="secao">Rundown da noite</h2>
+  <ol class="fila">
+    <li class="tocando">
+      <span class="n">●</span>
+      <div class="txt">
+        <p class="quem">Carla</p>
+        <p class="que">Evidências — Chitãozinho &amp; Xororó</p>
+      </div>
+      <span class="tag aovivo">no ar</span>
+    </li>
+    <li>
+      <span class="n">2</span>
+      <div class="txt">
+        <p class="quem">Seu Marcos</p>
+        <p class="que">Garçom — Reginaldo Rossi</p>
+      </div>
+      <span class="tag mesa">M3</span>
+    </li>
+    <li class="eu">
+      <span class="n">3</span>
+      <div class="txt">
+        <p class="quem">Duda — você</p>
+        <p class="que">Exagerado — Cazuza</p>
+      </div>
+      <span class="tag mesa">M12</span>
+    </li>
+    <li>
+      <span class="n">4</span>
+      <div class="txt">
+        <p class="quem">Paty &amp; Leo</p>
+        <p class="que">Cheia de Manias — Raça Negra</p>
+      </div>
+      <span class="tag danca">dançar</span>
+    </li>
+    <li>
+      <span class="n">5</span>
+      <div class="txt">
+        <p class="quem">Renato</p>
+        <p class="que">Anunciação — Alceu Valença</p>
+      </div>
+      <span class="tag mesa">M3</span>
+    </li>
+  </ol>
+
+  <div class="rodape-fixo">
+    <button class="btn-fila" type="button">Entrar no placar</button>
+  </div>
+</body>
+</html>

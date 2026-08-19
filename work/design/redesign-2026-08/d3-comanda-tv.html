@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 3 «Comanda» — TV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shrikhand&family=Karla:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Direção 3 — COMANDA. Festa à luz do dia: papel quente, tinta índigo,
+     tangerina fluorescente; a fila é um bloco de fichas numeradas
+     (a comanda do pagode / a senha da festa). TV em fundo CLARO — aposta. */
+  :root {
+    --papel:        #FBF6EC;
+    --papel-sombra: #EFE6D3;
+    --tinta:        #2A2E6E;
+    --laranja:      #FF5A1F;
+    --verde:        #178F5A;
+    --rosa:         #E94F8A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: "Karla", sans-serif;
+    position: relative;
+  }
+  /* serpentinas diagonais */
+  body::before {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(115deg, transparent 0 6%, var(--rosa) 6% 6.6%, transparent 6.6% 100%),
+      linear-gradient(115deg, transparent 0 92%, var(--verde) 92% 92.6%, transparent 92.6% 100%);
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  .frame {
+    position: relative;
+    width: 1920px; height: 1080px;
+    padding: 36px 52px 34px;
+    display: grid;
+    grid-template-rows: 84px 1fr 236px;
+    gap: 24px;
+  }
+
+  /* ---------- topo ---------- */
+  .topo { display: flex; align-items: center; gap: 28px; }
+  .marca {
+    font-family: "Shrikhand", serif;
+    font-size: 46px;
+    color: var(--laranja);
+    text-shadow: 3px 3px 0 var(--tinta);
+    transform: rotate(-2deg);
+  }
+  .casa {
+    font-weight: 800; font-size: 30px;
+    letter-spacing: 0.02em;
+  }
+  .rodizio {
+    margin-left: auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 20px;
+    color: var(--papel);
+    background: var(--verde);
+    padding: 10px 20px;
+    border-radius: 999px;
+  }
+
+  /* ---------- miolo: vídeo + ficha gigante ---------- */
+  .miolo {
+    display: grid;
+    grid-template-columns: 1150px 1fr;
+    gap: 40px;
+    min-height: 0;
+  }
+  .video {
+    background: var(--tinta);
+    border: 4px solid var(--tinta);
+    border-radius: 18px;
+    box-shadow: 0 14px 0 var(--papel-sombra), 0 14px 0 4px var(--tinta);
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .video .verso {
+    font-weight: 800; font-size: 56px; line-height: 1.28;
+    text-align: center; padding: 0 90px;
+    color: var(--papel);
+  }
+  .video .verso em { color: #FFB48F; font-style: normal; }
+  .video .yt {
+    position: absolute; right: 22px; bottom: 16px;
+    font-family: "IBM Plex Mono", monospace; font-size: 17px;
+    color: rgba(251,246,236,0.55);
+  }
+
+  /* ficha "AGORA" — bilhete rasgado gigante */
+  .ficha-agora {
+    align-self: center;
+    background: var(--laranja);
+    color: var(--papel);
+    border-radius: 14px;
+    padding: 40px 44px 36px;
+    position: relative;
+    transform: rotate(1.6deg);
+    box-shadow: 10px 12px 0 var(--tinta);
+  }
+  /* furos de picote */
+  .ficha-agora::before, .ficha-agora::after {
+    content: "";
+    position: absolute; top: 0; bottom: 0; width: 0;
+    left: 0;
+    border-left: 4px dotted rgba(251,246,236,0.7);
+    margin-left: 22px;
+  }
+  .ficha-agora::after { left: auto; right: 0; border-left: none; border-right: 4px dotted rgba(251,246,236,0.7); margin-right: 22px; }
+  .ficha-agora .rot {
+    font-family: "Shrikhand", serif;
+    font-size: 40px;
+    transform: rotate(-2deg);
+    display: inline-block;
+    margin-bottom: 8px;
+    text-shadow: 3px 3px 0 var(--tinta);
+  }
+  .ficha-agora .nome {
+    font-weight: 800;
+    font-size: 96px; line-height: 0.95;
+    letter-spacing: -0.01em;
+  }
+  .ficha-agora .musica {
+    font-size: 30px; font-weight: 600;
+    margin-top: 14px;
+    color: #FFD9C4;
+  }
+  .ficha-agora .serial {
+    margin-top: 26px;
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    border-top: 3px dashed rgba(251,246,236,0.6);
+    padding-top: 18px;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 26px;
+  }
+  .ficha-agora .serial .mesa {
+    background: var(--papel); color: var(--laranja);
+    padding: 8px 18px; border-radius: 8px;
+    font-weight: 600; font-size: 30px;
+  }
+
+  /* ---------- rodapé: fichas da fila + QR ---------- */
+  .fichas {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0,1fr)) 330px;
+    gap: 24px;
+    align-items: stretch;
+  }
+  .ficha {
+    background: #FFFFFF;
+    border: 3px solid var(--tinta);
+    border-radius: 12px;
+    padding: 20px 22px 18px;
+    position: relative;
+    box-shadow: 6px 7px 0 var(--papel-sombra), 6px 7px 0 3px var(--tinta);
+  }
+  .ficha:nth-child(odd) { transform: rotate(-0.8deg); }
+  .ficha:nth-child(even) { transform: rotate(0.9deg); }
+  /* furo de argola */
+  .ficha .furo {
+    position: absolute; top: 14px; right: 14px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--papel);
+    border: 3px solid var(--tinta);
+  }
+  .ficha .n {
+    font-family: "Shrikhand", serif;
+    font-size: 40px; line-height: 1;
+    color: var(--laranja);
+  }
+  .ficha .quem {
+    font-weight: 800; font-size: 34px; line-height: 1.05;
+    margin-top: 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ficha .que {
+    font-size: 19px; font-weight: 600; color: #6A6D9C;
+    margin-top: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ficha .pé {
+    margin-top: 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 2px dashed var(--papel-sombra);
+    padding-top: 10px;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 17px;
+  }
+  .ficha .pé .mesa { color: var(--tinta); }
+  .ficha .pé .modo { color: var(--verde); }
+  .ficha .pé .modo.danca { color: var(--rosa); }
+
+  .qr-bloco {
+    background: var(--tinta);
+    color: var(--papel);
+    border-radius: 12px;
+    padding: 16px 22px;
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px;
+  }
+  .qr-bloco .qr { background: var(--papel); padding: 6px; border-radius: 8px; flex: none; }
+  .qr-bloco .qr svg { display: block; width: 84px; height: 84px; }
+  .qr-bloco .txt .cta {
+    font-family: "Shrikhand", serif;
+    font-size: 27px; line-height: 1.15;
+    color: #FFB48F;
+  }
+  .qr-bloco .txt { min-width: 0; }
+  .qr-bloco .txt .url {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 14px;
+    margin-top: 8px; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header class="topo">
+    <span class="marca">Boraoke</span>
+    <span class="casa">Festa da Bia — Salão 2</span>
+    <span class="rodizio">rodízio: 2 por mesa</span>
+  </header>
+
+  <main class="miolo">
+    <div class="video">
+      <p class="verso">Quando eu digo que deixei de te amar<br>é porque eu <em>te amo</em></p>
+      <span class="yt">▶ YouTube</span>
+    </div>
+
+    <aside class="ficha-agora">
+      <span class="rot">Agora!</span>
+      <p class="nome">Carla</p>
+      <p class="musica">Evidências — Chitãozinho &amp; Xororó</p>
+      <div class="serial">
+        <span>Nº 041</span>
+        <span class="mesa">MESA 7</span>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="fichas">
+    <div class="ficha">
+      <span class="furo"></span>
+      <span class="n">2º</span>
+      <p class="quem">Seu Marcos</p>
+      <p class="que">Garçom — Reginaldo Rossi</p>
+      <div class="pé"><span class="mesa">MESA 3</span><span class="modo">canta</span></div>
+    </div>
+    <div class="ficha">
+      <span class="furo"></span>
+      <span class="n">3º</span>
+      <p class="quem">Duda</p>
+      <p class="que">Exagerado — Cazuza</p>
+      <div class="pé"><span class="mesa">MESA 12</span><span class="modo">canta</span></div>
+    </div>
+    <div class="ficha">
+      <span class="furo"></span>
+      <span class="n">4º</span>
+      <p class="quem">Paty &amp; Leo</p>
+      <p class="que">Cheia de Manias — Raça Negra</p>
+      <div class="pé"><span class="mesa">MESA 5</span><span class="modo danca">dança</span></div>
+    </div>
+    <div class="ficha">
+      <span class="furo"></span>
+      <span class="n">5º</span>
+      <p class="quem">Renato</p>
+      <p class="que">Anunciação — Alceu Valença</p>
+      <div class="pé"><span class="mesa">MESA 3</span><span class="modo">canta</span></div>
+    </div>
+    <div class="qr-bloco">
+      <span class="qr" aria-hidden="true"><svg viewBox="0 0 21 21"><path fill="#2A2E6E" d="M0 0h7v7H0zM2 2h3v3H2zM14 0h7v7h-7zM16 2h3v3h-3zM0 14h7v7H0zM2 16h3v3H2zM9 0h1v2H9zM11 0h2v1h-2zM12 2h1v3h-1zM9 3h2v1H9zM9 5h1v2H9zM11 6h2v1h-2zM0 9h1v2H0zM2 9h2v1H2zM5 9h2v2H5zM3 11h1v2H3zM0 12h2v1H0zM5 12h1v2H5zM8 8h2v2H8zM11 8h1v2h-1zM13 9h2v1h-2zM16 8h1v2h-1zM18 9h3v1h-3zM8 11h1v3H8zM10 11h3v2h-3zM14 11h1v2h-1zM16 11h2v1h-2zM19 11h2v2h-2zM9 14h2v2H9zM12 14h1v1h-1zM14 14h3v3h-3zM18 14h1v2h-1zM20 14h1v3h-1zM9 17h1v2H9zM11 17h2v1h-2zM12 19h3v2h-3zM16 18h2v2h-2zM19 18h1v1h-1zM20 19h1v2h-1zM9 20h2v1H9z"/></svg></span>
+      <div class="txt">
+        <p class="cta">Pega sua ficha!</p>
+        <p class="url">boraoke.com/festa-da-bia</p>
+      </div>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

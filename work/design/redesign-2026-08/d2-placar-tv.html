@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boraoke — Direção 2 «Placar» — TV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800;900&family=Barlow:wght@400;500;600;700&family=Chivo+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* Direção 2 — PLACAR. A noite é transmissão: navy de estádio, âmbar de
+     placar de lâmpada, chyron de lower-third. Nada arredondado. */
+  :root {
+    --noite:    #0A1C36;
+    --noite-2:  #10294D;
+    --gelo:     #E9F1FC;
+    --ambar:    #FFB300;
+    --live:     #34D27B;
+    --cinza-az: #8CA3C3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    background: var(--noite);
+    color: var(--gelo);
+    font-family: "Barlow", sans-serif;
+  }
+  .frame {
+    width: 1920px; height: 1080px;
+    display: grid;
+    grid-template-columns: 1fr 460px;
+    grid-template-rows: 76px 1fr;
+  }
+
+  /* ---------- barra superior de transmissão ---------- */
+  .topo {
+    grid-column: 1 / -1;
+    display: flex; align-items: stretch;
+    background: var(--noite-2);
+    border-bottom: 3px solid var(--ambar);
+  }
+  .topo .bloco {
+    display: flex; align-items: center;
+    padding: 0 28px;
+  }
+  .marca {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 40px;
+    letter-spacing: 0.02em; text-transform: uppercase;
+    color: var(--noite);
+    background: var(--ambar);
+    padding: 0 26px;
+    display: flex; align-items: center;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+    padding-right: 48px;
+  }
+  .casa {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 700; font-size: 34px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .aovivo {
+    margin-left: auto;
+    gap: 12px;
+  }
+  .aovivo .dot { width: 14px; height: 14px; background: var(--live); }
+  .aovivo span {
+    font-family: "Chivo Mono", monospace;
+    font-weight: 700; font-size: 22px; letter-spacing: 0.14em;
+    color: var(--live);
+  }
+  .rodizio {
+    font-family: "Chivo Mono", monospace;
+    font-size: 19px; font-weight: 500; letter-spacing: 0.06em;
+    color: var(--cinza-az);
+    border-left: 1px solid #24406B;
+  }
+
+  /* ---------- palco: vídeo full-bleed + chyron ---------- */
+  .palco { position: relative; background: #04101F; overflow: hidden; }
+  .video {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(1000px 600px at 50% 30%, #10294D 0%, #04101F 70%);
+  }
+  .video .verso {
+    font-family: "Barlow", sans-serif;
+    font-weight: 700; font-size: 60px; line-height: 1.25;
+    text-align: center; padding: 0 120px; color: #fff;
+  }
+  .video .verso em { color: var(--ambar); font-style: normal; }
+  .video .yt {
+    position: absolute; top: 22px; right: 26px;
+    font-family: "Chivo Mono", monospace; font-size: 17px;
+    color: rgba(233,241,252,0.5); letter-spacing: 0.1em;
+  }
+
+  /* lower-third */
+  .chyron {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: stretch;
+    height: 168px;
+    background: linear-gradient(90deg, rgba(10,28,54,0.97) 0%, rgba(10,28,54,0.92) 70%, rgba(10,28,54,0.75) 100%);
+    border-top: 3px solid var(--ambar);
+  }
+  .chyron .rank {
+    flex: none; width: 190px;
+    background: var(--ambar); color: var(--noite);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 30px) 100%, 0 100%);
+    padding-right: 18px;
+  }
+  .chyron .rank .rot {
+    font-family: "Chivo Mono", monospace; font-weight: 700;
+    font-size: 18px; letter-spacing: 0.2em;
+  }
+  .chyron .rank .num {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 96px; line-height: 0.95;
+  }
+  .chyron .quem {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 40px; min-width: 0; flex: 1;
+  }
+  .chyron .nome {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 84px; line-height: 0.95;
+    text-transform: uppercase; letter-spacing: 0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .chyron .musica {
+    font-size: 30px; font-weight: 500; color: var(--cinza-az);
+    margin-top: 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .chyron .mesa {
+    flex: none;
+    display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+    padding: 0 44px 0 30px;
+    border-left: 1px solid #24406B;
+  }
+  .chyron .mesa .rot {
+    font-family: "Chivo Mono", monospace; font-weight: 700;
+    font-size: 18px; letter-spacing: 0.2em; color: var(--cinza-az);
+  }
+  .chyron .mesa .num {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 84px; line-height: 1; color: var(--ambar);
+  }
+
+  /* ---------- coluna direita: rundown ---------- */
+  .rundown {
+    background: var(--noite-2);
+    border-left: 1px solid #24406B;
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .rundown h2 {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 36px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ambar);
+    padding: 24px 30px 18px;
+    border-bottom: 3px solid var(--ambar);
+  }
+  .lista { list-style: none; flex: 1; display: flex; flex-direction: column; }
+  .lista li {
+    display: flex; align-items: center; gap: 20px;
+    padding: 22px 30px;
+    border-bottom: 1px solid #24406B;
+  }
+  .lista .n {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 900; font-size: 62px; line-height: 1;
+    color: var(--ambar);
+    width: 66px; flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .lista .txt { min-width: 0; flex: 1; }
+  .lista .quem {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 38px; line-height: 1.05;
+    text-transform: uppercase; letter-spacing: 0.02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lista .que {
+    font-size: 19px; color: var(--cinza-az); margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lista .mesa {
+    flex: none;
+    font-family: "Chivo Mono", monospace;
+    font-weight: 700; font-size: 21px;
+    color: var(--gelo);
+    background: #1B3A66;
+    padding: 6px 12px;
+  }
+  .lista .danca {
+    flex: none;
+    font-family: "Chivo Mono", monospace;
+    font-weight: 700; font-size: 15px; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--noite);
+    background: var(--live);
+    padding: 5px 10px;
+  }
+
+  /* QR de recrutamento no rodapé da coluna */
+  .recruta {
+    display: flex; align-items: center; gap: 20px;
+    padding: 24px 30px;
+    background: var(--noite);
+    border-top: 3px solid var(--ambar);
+  }
+  .recruta .qr { background: var(--gelo); padding: 7px; flex: none; }
+  .recruta .qr svg { display: block; width: 86px; height: 86px; }
+  .recruta .txt .cta {
+    font-family: "Big Shoulders Display", sans-serif;
+    font-weight: 800; font-size: 30px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .recruta .txt .cta em { color: var(--ambar); font-style: normal; }
+  .recruta .txt .url {
+    font-family: "Chivo Mono", monospace;
+    font-weight: 700; font-size: 16px; color: var(--ambar);
+    margin-top: 6px; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header class="topo">
+    <span class="marca">Boraoke</span>
+    <div class="bloco casa">Boteco da Lu</div>
+    <div class="bloco aovivo"><span class="dot"></span><span>AO VIVO</span></div>
+    <div class="bloco rodizio">RODÍZIO 1/PESSOA</div>
+  </header>
+
+  <main class="palco">
+    <div class="video">
+      <p class="verso">Quando eu digo que deixei de te amar<br>é porque eu <em>te amo</em></p>
+      <span class="yt">▶ YOUTUBE</span>
+    </div>
+    <div class="chyron">
+      <div class="rank">
+        <span class="rot">AGORA</span>
+        <span class="num">1</span>
+      </div>
+      <div class="quem">
+        <p class="nome">Carla</p>
+        <p class="musica">Evidências — Chitãozinho &amp; Xororó</p>
+      </div>
+      <div class="mesa">
+        <span class="rot">MESA</span>
+        <span class="num">7</span>
+      </div>
+    </div>
+  </main>
+
+  <aside class="rundown">
+    <h2>A seguir</h2>
+    <ol class="lista">
+      <li>
+        <span class="n">2</span>
+        <div class="txt">
+          <p class="quem">Seu Marcos</p>
+          <p class="que">Garçom — Reginaldo Rossi</p>
+        </div>
+        <span class="mesa">M3</span>
+      </li>
+      <li>
+        <span class="n">3</span>
+        <div class="txt">
+          <p class="quem">Duda</p>
+          <p class="que">Exagerado — Cazuza</p>
+        </div>
+        <span class="mesa">M12</span>
+      </li>
+      <li>
+        <span class="n">4</span>
+        <div class="txt">
+          <p class="quem">Paty &amp; Leo</p>
+          <p class="que">Cheia de Manias — Raça Negra</p>
+        </div>
+        <span class="danca">dançar</span>
+      </li>
+      <li>
+        <span class="n">5</span>
+        <div class="txt">
+          <p class="quem">Renato</p>
+          <p class="que">Anunciação — Alceu Valença</p>
+        </div>
+        <span class="mesa">M3</span>
+      </li>
+    </ol>
+    <div class="recruta">
+      <span class="qr" aria-hidden="true"><svg viewBox="0 0 21 21"><path fill="#0A1C36" d="M0 0h7v7H0zM2 2h3v3H2zM14 0h7v7h-7zM16 2h3v3h-3zM0 14h7v7H0zM2 16h3v3H2zM9 0h1v2H9zM11 0h2v1h-2zM12 2h1v3h-1zM9 3h2v1H9zM9 5h1v2H9zM11 6h2v1h-2zM0 9h1v2H0zM2 9h2v1H2zM5 9h2v2H5zM3 11h1v2H3zM0 12h2v1H0zM5 12h1v2H5zM8 8h2v2H8zM11 8h1v2h-1zM13 9h2v1h-2zM16 8h1v2h-1zM18 9h3v1h-3zM8 11h1v3H8zM10 11h3v2h-3zM14 11h1v2h-1zM16 11h2v1h-2zM19 11h2v2h-2zM9 14h2v2H9zM12 14h1v1h-1zM14 14h3v3h-3zM18 14h1v2h-1zM20 14h1v3h-1zM9 17h1v2H9zM11 17h2v1h-2zM12 19h3v2h-3zM16 18h2v2h-2zM19 18h1v1h-1zM20 19h1v2h-1zM9 20h2v1H9z"/></svg></span>
+      <div class="txt">
+        <p class="cta">Escaneou, <em>entrou no placar</em></p>
+        <p class="url">boraoke.com/boteco-da-lu</p>
+      </div>
+    </div>
+  </aside>
+</div>
+</body>
+</html>
