@@ -205,3 +205,50 @@ One caveat to record, since it is the load-bearing assumption: this correctness 
 7. **NIT.** Confirm the `results.length > 1` gate on the end-of-list message is deliberate.
 
 Items 1 and 2 block merge. Items 3–7 are the reviewer's recommendation and can be taken in this PR or filed, at the Ticket Manager's discretion. Re-verification of 1 and 2 required before I re-issue a verdict.
+
+---
+
+# Re-verification (round 2) — VERDICT: APPROVE
+
+**Reviewed at:** `15dd638` (3 commits after the `07793a6` HEAD of round 1: `5d8ce1c`, `d1f328a`, plus event-log auto-commits).
+**Merge base:** `93fc367` — the same commit `origin/main` pointed at during round 1, so the round-1 tsc baseline (2351) remains a valid apples-to-apples reference. `origin/main` has since advanced to `1d61dd3` (TICKET-78); `git merge-tree` against it reports **zero conflict markers**, and TICKET-78 touches no file in this diff.
+
+## Observed command output (re-run independently)
+
+| Gate | Result |
+|---|---|
+| `npm test` | **45 suites / 781 tests passed** (1.951s). +3 vs round 1, matching the 3 new unit tests. |
+| `npx tsc --noEmit` | **2430** vs **2351** at merge-base → delta **+79**, entirely TS2304 (+50) and TS2582 (+29). Every other error class is byte-identical to baseline (TS7006 20, TS2540 17, TS2345 5, TS2503 1, TS2353 1). **No new error classes.** Grepped the touched files for any non-jest-global error: **NONE**. Grepped all of `components/`, `lib/`, `app/`: **NONE**. |
+| `npm run build` | **Compiled successfully in 2.6s**, 33/33 static pages generated. |
+| `PORT=3191 npx playwright test` (full, foreground) | **90 passed, 0 failed (5.4m).** |
+
+The e2e run deserves emphasis: this time the whole suite went green with **no failures at all**, on a quieter machine and in 5.4m rather than 18.5m. That retroactively settles round 1's 7 failures as pure contention rather than flakes-of-convenience — the same suite, same specs, zero failures. All **10** search specs pass, including the 2 new ones.
+
+## Finding-by-finding
+
+**1. MEDIUM cache-key collision — FIXED, verified independently.** Marker is now uppercase `P:`. I re-ran my own forgery probe against the patched function rather than trusting the new test, sweeping cursor casings (`cauqaa`, `CAUQAA`, `CaUqAa`, `123456`, `_-=abc`, `A`, `z`) against four crafted-query shapes including whitespace-padded and case-flipped variants: **no forgery succeeds**. Page-1 key still byte-identical (`BR::foo bar`); the three page keys still distinct. The mechanism is now sound *by construction* rather than by luck — `normalized` is unconditionally lowercased, so the uppercase namespace is unreachable from the query side, and `PAGE_TOKEN_RE` still bars `:` from the token. The new unit test is a true regression guard: it uses a lowercase cursor (`cursor2`), which is exactly the case that WOULD have collided under the old code, so it fails against the pre-fix implementation. The code comment explicitly warns against "simplifying" it back to `p:` — good, that is the kind of change a future reader would otherwise make.
+
+**2. MEDIUM stale-cursor spend — FIXED, and better than I asked for.** `resultsQuery` is set in `runSearch` from the raw `q` and cleared on every reset path I could find (empty input, paste-link, sub-minimum length, 429, degraded, network error). `loadMore` re-derives the request via `augmentQuery(resultsQuery, resultsMode ?? modeRef.current)`, reproducing the exact query the cursor belongs to, and bails on empty. The dep array correctly swapped `input` → `resultsQuery`. The added `queryDirty` withdrawal is the belt-and-braces I suggested, and I like that it withdraws only the *fetch* tier while leaving the free local-reveal tier available — revealing already-paid-for rows costs nothing, so there was no reason to disable it. Even if a click somehow raced the re-render, `loadMore` no longer reads `input` at all, so the worst case is a coherent (correct query + correct cursor) deepening rather than a wasted daily search. The failure mode is now unreachable, not merely unlikely.
+
+**3. LOW legacy-entry falsehood — FIXED (the stronger option).** `certainlyExhausted = results.length > PAGE_SIZE` gates the definitive copy; a cursor-less short page falls back to the neutral `refineSearch`. Sound discriminator: the pre-83 page size was exactly 8, so no legacy entry can exceed the threshold. Accepted tradeoff, non-blocking: a *legitimate* post-83 search returning ≤8 rows also gets the neutral copy instead of "that's everything we found" — slightly less precise, but it errs toward never asserting a falsehood, which is the right direction.
+
+**4. LOW server-side cap — FIXED.** I verified the predicate `(pageNum === 1) !== (pageToken === "")` against its full truth table: `page=1`+no-cursor passes (the client's first request, which sends no `page` param at all), `page=2`+cursor passes (the client's deep request), `page=1`+deep-cursor is rejected, `page=2`+no-cursor is rejected. Both rejections 400 before any outbound call, pinned by two call-counting tests. The bypass I reported is closed and the server-side claim now matches reality. The daily search-spend counter was correctly recorded as a follow-up rather than scope-crept into this PR.
+
+**5. LOW focus ring — FIXED.** `position: "relative"` on the chip, plus an explicit painted outline driven by React focus state. Belt-and-braces again, and reasonable given the real radio is visually hidden.
+
+**6. NIT ~101 units — FIXED.**
+
+**7. NIT `results.length > 1` gate — confirmed deliberate and documented.** Accepted.
+
+**§4 closing recommendation — ADOPTED.** The "mode is already in the key" invariant is now written into `cacheKey()`'s own doc comment, cross-referencing `lib/search-query.ts`, with the explicit warning that it holds only while augmentation stays client-side and pre-request. That was the one piece of tribal knowledge that could have been silently broken by a future edit; it is now load-bearing documentation sitting on the function it constrains.
+
+## Residual notes (non-blocking, no action required)
+
+- During the ≤400ms debounce after an edit, `queryDirty` can briefly flip `capped` true and flash the "try other words" epilogue before `loading` hides it. Cosmetic, sub-400ms, self-correcting.
+- Scope re-confirmed at `15dd638`: the diff still touches no file outside the allowlist. `components/tv/**`, `app/(patron)/[room]/tv/page.tsx`, `app/page.tsx`, `app/page.module.css`, `app/globals.css`, `components/feedback/**` remain untouched; the `messages/*` diffs remain confined to the `Search` object.
+
+## Verdict
+
+**APPROVE.** Both blockers are fixed at the mechanism level rather than patched at the symptom, each carries a regression test that would fail against the pre-fix code, and I verified both independently rather than relying on the author's tests. All four gates are green, with a zero-failure full e2e run. The deviation on the cache key stands as originally argued and is now documented as an invariant.
+
+Merge decision remains the Tech Manager's.
