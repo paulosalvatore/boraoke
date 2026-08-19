@@ -50,6 +50,8 @@ interface YTPlayer {
   getPlayerState?(): number;
   seekTo?(seconds: number, allowSeekAhead: boolean): void;
   playVideo?(): void;
+  /** The API's own accessor for the iframe it swapped in (TICKET-82). */
+  getIframe?(): HTMLIFrameElement | null;
 }
 
 /** Minimal WakeLock typings — the lib.dom versions are still flaky across TS targets. */
@@ -513,8 +515,16 @@ export default function TvScreen({
       });
       // The API swapped `target` for its iframe during the constructor; record
       // whatever now occupies the host so the liveness guard above can tell a
-      // working player from an orphaned one.
-      playerNodeRef.current = host.firstElementChild;
+      // working player from an orphaned one. `getIframe()` is the API's own
+      // accessor and is the sturdier source; the host's first child is the
+      // fallback for an API build that doesn't expose it.
+      let node: Element | null = null;
+      try {
+        node = playerRef.current.getIframe?.() ?? null;
+      } catch {
+        // accessor unavailable on this API build — fall back below
+      }
+      playerNodeRef.current = node ?? host.firstElementChild;
     } catch {
       playerRef.current = null;
       playerNodeRef.current = null;
