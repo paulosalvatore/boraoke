@@ -204,7 +204,18 @@
     "rateLimited": "Too many searches — hang on a sec.",
     "youtubeLink": "YouTube link",
     "pastedLink": "Pasted link",
-    "degraded": "Search is down — paste a YouTube link"
+    "degraded": "Search is down — paste a YouTube link",
+    "modeLegend": "You want to",
+    "modeSing": "🎤 Sing",
+    "modeListen": "💃 Just vibe",
+    "modeHint": "Pick before searching — switching later won't redo the search.",
+    "resultsFor": "Results for: {mode}",
+    "modeChanged": "These results are for {mode}.",
+    "searchAgain": "Search again",
+    "loadMore": "Show more results",
+    "loadingMore": "Loading more…",
+    "noMoreResults": "That's everything we found.",
+    "refineSearch": "Not there? Try searching different words."
   },
   "Feedback": {
     "trigger": "Send feedback",

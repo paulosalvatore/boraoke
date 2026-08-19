@@ -1,6 +1,15 @@
 /**
  * YouTube Data API v3 search — server-side helper.
  *
+ * QUOTA MODEL (as of the 2026-06-01 Google change — TICKET-83/TICKET-85):
+ *   - `search.list` is capped at 100 CALLS PER DAY in its OWN bucket. It is no
+ *     longer "100 units out of 10,000". Caching cannot raise that ceiling; it
+ *     can only stop us re-spending against it.
+ *   - `videos.list` (and playlistItems/playlists/channels) cost 1 unit each
+ *     against a SEPARATE 10,000/day pool that boraoke barely touches.
+ * So a search costs "1 of 100 searches", and its duration lookup is effectively
+ * free. Every design choice below follows from that.
+ *
  * The API key is NEVER imported here; callers (the /api/search route) pass it in
  * after reading process.env server-side, so this module stays pure and testable
  * and no key ever reaches the client bundle.
@@ -43,11 +52,64 @@ export class YouTubeSearchError extends Error {
 const SEARCH_ENDPOINT = "https://www.googleapis.com/youtube/v3/search";
 const VIDEOS_ENDPOINT = "https://www.googleapis.com/youtube/v3/videos";
 
+/**
+ * One fetched page of search results, plus the token that reaches the NEXT
+ * Google page (absent when Google reports no further results) — TICKET-83.
+ */
+export interface SearchPage {
+  results: SearchResult[];
+  /** Google's `nextPageToken`, or undefined when this is the last page. */
+  nextPageToken?: string;
+}
+
 export const SEARCH_DEFAULTS = {
-  maxResults: 8,
+  /**
+   * TICKET-83 QUOTA DECISION — 8 → 50 (the API maximum).
+   *
+   * Under the post-2026-06-01 model this is not a tradeoff, it is simply right.
+   * `search.list` is billed PER CALL (1 of the platform's 100 daily searches),
+   * completely independent of `maxResults` (1..50). One call returning 50 rows
+   * therefore costs exactly what the old 8-row call cost — 1 of 100 — while
+   * giving the patron ~6 client-side pages instead of 8 rows and a dead end.
+   * Five calls of 10 rows would have cost 5 of 100 for fewer results.
+   *
+   * The companion `videos.list` (durations) accepts up to 50 ids in ONE request
+   * and bills 1 unit against the separate, near-untouched 10,000/day pool — so
+   * widening the page does not meaningfully change that side either.
+   *
+   * Tradeoff (payload): a mapped SearchResult is ~180 bytes of JSON, so 50 rows
+   * is ~9 KB uncompressed / ~2-3 KB gzipped — negligible on a phone, and it
+   * buys back up to five of the day's 100 searches. Thumbnails are fetched by
+   * the browser only for rendered rows, so the unrevealed tail costs no images.
+   */
+  maxResults: 50,
   regionCode: "BR",
   safeSearch: "moderate" as const,
 };
+
+/** Rows revealed per "load more" tap on the client (TICKET-83). */
+export const CLIENT_PAGE_SIZE = 8;
+
+/**
+ * HARD CAP on how many `search.list` CALLS a single query may ever spend
+ * (TICKET-83, revised for the post-2026-06-01 model).
+ *
+ * Page depth is a scarce daily budget, not a UX nicety: the whole platform gets
+ * 100 searches per day across every venue, and caching cannot raise that
+ * ceiling. So:
+ *   - Page 1 (50 rows, ~6 client-side pages) costs 1 of 100 and covers the
+ *     overwhelming majority of "I didn't find it" cases.
+ *   - ONE deep page is allowed — up to 100 rows total — because "people might
+ *     not find what they want on the first search" is a real, observed failure,
+ *     and it only fires on a deliberate tap after the patron has already looked
+ *     at 50 candidates.
+ *   - Page 3+ is refused. A patron who has rejected 100 karaoke videos is not
+ *     going to be rescued by another 50, and each further page is 1% of the
+ *     platform's entire day.
+ * NOTHING is ever prefetched: a page is fetched only after the patron asks for
+ * it, so we never spend a daily search on results nobody scrolls to.
+ */
+export const MAX_SEARCH_PAGES = 2;
 
 /**
  * Convert an ISO-8601 duration (e.g. "PT4M13S", "PT1H2M", "PT45S") to a
@@ -79,6 +141,7 @@ function pickThumbnail(thumbnails: Record<string, { url?: string }> | undefined)
 
 // Minimal shapes of the Google payloads we consume (not exhaustive).
 interface SearchListJson {
+  nextPageToken?: string;
   items?: Array<{
     id?: { videoId?: string };
     snippet?: {
@@ -143,15 +206,27 @@ function isQuotaError(status: number, body: unknown): boolean {
 }
 
 /**
- * Run a live search against the Data API. `key` is supplied by the route (read
+ * Run a live search against the Data API and return ONE page plus the token
+ * that reaches the next one (TICKET-83). `key` is supplied by the route (read
  * from env there). Throws YouTubeQuotaError on quota, YouTubeSearchError otherwise.
  * `fetchImpl` is injectable for tests; defaults to global fetch.
+ *
+ * QUOTA: one call here spends 1 of the platform's 100 DAILY SEARCHES (plus 1
+ * unit of the separate, ample metadata pool for durations), whether it is the
+ * first page or a deep page. Callers MUST consult the cache first
+ * (lib/search-cache.ts), whose key includes the pageToken, and MUST respect
+ * MAX_SEARCH_PAGES.
  */
-export async function searchYouTube(
+export async function searchYouTubePage(
   q: string,
   key: string,
-  opts: { maxResults?: number; regionCode?: string; fetchImpl?: typeof fetch } = {},
-): Promise<SearchResult[]> {
+  opts: {
+    maxResults?: number;
+    regionCode?: string;
+    pageToken?: string;
+    fetchImpl?: typeof fetch;
+  } = {},
+): Promise<SearchPage> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const maxResults = opts.maxResults ?? SEARCH_DEFAULTS.maxResults;
   const regionCode = opts.regionCode ?? SEARCH_DEFAULTS.regionCode;
@@ -170,6 +245,9 @@ export async function searchYouTube(
   searchUrl.searchParams.set("regionCode", regionCode);
   searchUrl.searchParams.set("maxResults", String(maxResults));
   searchUrl.searchParams.set("q", q);
+  // TICKET-83: opaque Google page cursor; omitted for the first page so the
+  // outgoing URL (and therefore existing behavior) is unchanged there.
+  if (opts.pageToken) searchUrl.searchParams.set("pageToken", opts.pageToken);
   searchUrl.searchParams.set("key", key);
 
   const searchRes = await fetchImpl(searchUrl.toString());
@@ -200,7 +278,22 @@ export async function searchYouTube(
     }
   }
 
-  return mapSearchResponse(searchJson, videosJson);
+  return {
+    results: mapSearchResponse(searchJson, videosJson),
+    nextPageToken: searchJson.nextPageToken || undefined,
+  };
+}
+
+/**
+ * Back-compat wrapper: the pre-TICKET-83 signature, returning just the first
+ * page's rows. Kept so callers that do not paginate stay unchanged.
+ */
+export async function searchYouTube(
+  q: string,
+  key: string,
+  opts: { maxResults?: number; regionCode?: string; fetchImpl?: typeof fetch } = {},
+): Promise<SearchResult[]> {
+  return (await searchYouTubePage(q, key, opts)).results;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +304,7 @@ export async function searchYouTube(
 // ---------------------------------------------------------------------------
 
 interface CacheEntry {
-  results: SearchResult[];
+  page: SearchPage;
   expires: number;
 }
 
@@ -223,12 +316,20 @@ const queryCache = new Map<string, CacheEntry>();
  * Normalized, region-scoped cache key: trim + lowercase + collapse internal
  * whitespace runs to a single space (TICKET-55 — "foo  bar" and "foo bar" are
  * the same search, so they must share one cross-instance cache entry).
+ *
+ * TICKET-83: a `pageToken` is folded in so each Google page of the SAME query
+ * gets its own entry — paging forward then back is served from cache and burns
+ * ZERO quota. The first page (no token) produces the byte-identical key it did
+ * before this ticket, so pre-existing cache entries are not orphaned.
  */
-export function cacheKey(q: string, regionCode: string): string {
-  return `${regionCode}::${q.trim().toLowerCase().replace(/\s+/g, " ")}`;
+export function cacheKey(q: string, regionCode: string, pageToken = ""): string {
+  const normalized = q.trim().toLowerCase().replace(/\s+/g, " ");
+  const page = pageToken ? `p:${pageToken}::` : "";
+  return `${regionCode}::${page}${normalized}`;
 }
 
-export function getCached(key: string, now = Date.now()): SearchResult[] | null {
+/** Read a cached PAGE (results + nextPageToken) from the per-instance LRU. */
+export function getCachedPage(key: string, now = Date.now()): SearchPage | null {
   const hit = queryCache.get(key);
   if (!hit) return null;
   if (hit.expires <= now) {
@@ -238,11 +339,26 @@ export function getCached(key: string, now = Date.now()): SearchResult[] | null 
   // LRU touch — re-insert to move to the end.
   queryCache.delete(key);
   queryCache.set(key, hit);
-  return hit.results;
+  return hit.page;
 }
 
+/** Write a PAGE into the per-instance LRU. */
+export function setCachedPage(key: string, page: SearchPage, now = Date.now()): void {
+  queryCache.set(key, { page, expires: now + CACHE_TTL_MS });
+  evictCacheOverflow();
+}
+
+/** Back-compat: results-only read (drops any nextPageToken). */
+export function getCached(key: string, now = Date.now()): SearchResult[] | null {
+  return getCachedPage(key, now)?.results ?? null;
+}
+
+/** Back-compat: results-only write. */
 export function setCached(key: string, results: SearchResult[], now = Date.now()): void {
-  queryCache.set(key, { results, expires: now + CACHE_TTL_MS });
+  setCachedPage(key, { results }, now);
+}
+
+function evictCacheOverflow(): void {
   while (queryCache.size > CACHE_MAX) {
     const oldest = queryCache.keys().next().value;
     if (oldest === undefined) break;
