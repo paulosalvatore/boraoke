@@ -1,1 +1,2 @@
 {"v": "1", "ts": "2026-08-19T11:13:16Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-78", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/78-client-ip-trusted-proxy", "short_sha": "6613d79", "message_slug": "TICKET-78: trust edge-set x-real-ip for rate-limit IP bucket, not client"}}
+{"v": "1", "ts": "2026-08-19T11:21:25Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-78", "pr": null, "event": "worktree_removed", "payload": {"branch": "ticket/78-client-ip-trusted-proxy"}}
