@@ -753,7 +753,12 @@ test.describe("/tv", () => {
 
     // Part 1 of the fix, asserted directly: the embed is built without
     // YouTube's own fullscreen control, so this state is unreachable via the UI.
-    expect((await fullscreenSnapshot(page)).vars).toMatchObject({ fs: 0 });
+    // SOFT deliberately — a hard assert here would abort the test before the
+    // behavioural check below, and the behavioural check is the one that
+    // encodes the actual defect. Both are symptoms of the same missing fix and
+    // both should be reported in a single run (same posture as TICKET-82's
+    // empty-then-refill test).
+    expect.soft((await fullscreenSnapshot(page)).vars).toMatchObject({ fs: 0 });
 
     // Part 2, asserted behaviourally: force the bad state anyway (a stale
     // embed, a double-click, a browser that ignores `fs`) and require the
