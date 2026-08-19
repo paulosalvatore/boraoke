@@ -228,16 +228,33 @@ function loginKey(ip: string): string {
 }
 
 /**
- * Best-effort client IP: first hop of x-forwarded-for (set by the platform
- * proxy on Vercel), x-real-ip fallback, then a shared "unknown" bucket.
+ * Best-effort client IP used as a rate-limit bucket key.
+ *
+ * Trust boundary (TICKET-78): the first hop of `x-forwarded-for` is
+ * client-suppliable — an attacker can set it directly and rotate the claimed
+ * IP per request to spread a failed-login / submit flood across many buckets.
+ * We therefore trust the edge-set `x-real-ip` FIRST: on Vercel that header is
+ * written by the platform edge to the true client IP and overwrites any value
+ * the client sends, so it is not client-controllable. `x-forwarded-for`'s first
+ * hop is used only as a fallback for deploy targets / local dev that don't set
+ * `x-real-ip`. For a non-Vercel deployment behind a different trusted proxy,
+ * `TRUSTED_CLIENT_IP_HEADER` names the single header whose value the edge is
+ * known to set, and it takes precedence over both.
  */
 export function clientIpFrom(req: NextRequest): string {
+  const trustedHeader = process.env.TRUSTED_CLIENT_IP_HEADER?.trim().toLowerCase();
+  if (trustedHeader) {
+    const configured = req.headers.get(trustedHeader)?.trim();
+    if (configured) return configured;
+  }
+  const realIp = req.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
   const xff = req.headers.get("x-forwarded-for");
   if (xff) {
     const first = xff.split(",")[0]?.trim();
     if (first) return first;
   }
-  return req.headers.get("x-real-ip")?.trim() || "unknown";
+  return "unknown";
 }
 
 /** True when this IP has exhausted its failure budget for the current window. */

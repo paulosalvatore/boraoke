@@ -18,7 +18,9 @@ import {
   registerLoginFailure,
   resetLoginThrottle,
   _clearLoginThrottle,
+  clientIpFrom,
 } from "@/lib/host-auth";
+import type { NextRequest } from "next/server";
 import { createRoom, hashHostCode } from "@/lib/rooms";
 
 /** Create a room in tests, asserting the ROOM_MAX ceiling didn't reject it. */
@@ -200,5 +202,61 @@ describe("login throttle helpers (security M-1)", () => {
     for (let i = 0; i < 1000; i++) await registerLoginFailure(`flood-${i}`);
     for (let i = 0; i < 9; i++) await registerLoginFailure("first-ip");
     expect(await isLoginThrottled("first-ip")).toBe(false);
+  });
+});
+
+describe("clientIpFrom — trusted-proxy IP derivation (TICKET-78)", () => {
+  function reqWith(headers: Record<string, string>): NextRequest {
+    return new Request("http://localhost/api/host/login", {
+      headers,
+    }) as unknown as NextRequest;
+  }
+
+  it("trusts the edge-set x-real-ip over a forged x-forwarded-for", () => {
+    // Vercel writes x-real-ip at its edge; an attacker can only forge XFF.
+    // The bucket key must come from the trustworthy header, so the forged
+    // XFF value must NOT be able to rotate the client off its real bucket.
+    const ip = clientIpFrom(
+      reqWith({
+        "x-real-ip": "203.0.113.10",
+        "x-forwarded-for": "1.1.1.1, 203.0.113.10",
+      }),
+    );
+    expect(ip).toBe("203.0.113.10");
+  });
+
+  it("returns the SAME bucket regardless of the forged x-forwarded-for value", () => {
+    const real = { "x-real-ip": "203.0.113.10" };
+    const a = clientIpFrom(reqWith({ ...real, "x-forwarded-for": "9.9.9.9" }));
+    const b = clientIpFrom(reqWith({ ...real, "x-forwarded-for": "8.8.8.8" }));
+    const c = clientIpFrom(reqWith({ ...real, "x-forwarded-for": "7.7.7.7" }));
+    // A rotating XFF can no longer spread one client across many buckets.
+    expect(new Set([a, b, c])).toEqual(new Set(["203.0.113.10"]));
+  });
+
+  it("falls back to the first x-forwarded-for hop when x-real-ip is absent (dev / non-Vercel)", () => {
+    const ip = clientIpFrom(reqWith({ "x-forwarded-for": "198.51.100.9, 10.0.0.1" }));
+    expect(ip).toBe("198.51.100.9");
+  });
+
+  it("uses TRUSTED_CLIENT_IP_HEADER when configured, over x-real-ip and XFF", () => {
+    process.env.TRUSTED_CLIENT_IP_HEADER = "x-real-ip"; // default already; assert override path
+    const ip = clientIpFrom(
+      reqWith({ "x-real-ip": "203.0.113.20", "x-forwarded-for": "1.2.3.4" }),
+    );
+    expect(ip).toBe("203.0.113.20");
+    process.env.TRUSTED_CLIENT_IP_HEADER = "cf-connecting-ip";
+    const cf = clientIpFrom(
+      reqWith({
+        "cf-connecting-ip": "203.0.113.30",
+        "x-real-ip": "203.0.113.20",
+        "x-forwarded-for": "1.2.3.4",
+      }),
+    );
+    expect(cf).toBe("203.0.113.30");
+  });
+
+  it("returns a shared 'unknown' bucket when no IP header is present", () => {
+    expect(clientIpFrom(reqWith({}))).toBe("unknown");
   });
 });
