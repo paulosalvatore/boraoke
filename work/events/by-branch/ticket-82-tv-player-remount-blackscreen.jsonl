@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-19T10:53:19Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-82", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/82-tv-player-remount-blackscreen", "short_sha": "06eb0cf", "message_slug": "fix(tv): keep the YouTube player mounted across queue updates (TICKET-82"}}
