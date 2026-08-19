@@ -1,0 +1,118 @@
+[
+  {
+    "step": "A1-playing",
+    "fullscreenElement": null,
+    "fullscreenElementBox": null,
+    "isZeroBox": false,
+    "iframePresent": true,
+    "iframeInstance": "1",
+    "iframeSameNodeAsTracked": true,
+    "tvIdleVisible": false,
+    "tvIdleBox": null,
+    "ytPlaying": true,
+    "ytStopped": 0,
+    "ytCreated": 1,
+    "ytDestroyed": 0,
+    "ytLoaded": []
+  },
+  {
+    "step": "A2-fullscreen-playing",
+    "fullscreenElement": "HTML",
+    "fullscreenElementBox": {
+      "width": 1920,
+      "height": 1080
+    },
+    "isZeroBox": false,
+    "iframePresent": true,
+    "iframeInstance": "1",
+    "iframeSameNodeAsTracked": true,
+    "tvIdleVisible": false,
+    "tvIdleBox": null,
+    "ytPlaying": true,
+    "ytStopped": 0,
+    "ytCreated": 1,
+    "ytDestroyed": 0,
+    "ytLoaded": []
+  },
+  {
+    "step": "A3-fullscreen-idle (MONEY SHOT)",
+    "fullscreenElement": "HTML",
+    "fullscreenElementBox": {
+      "width": 1920,
+      "height": 1080
+    },
+    "isZeroBox": false,
+    "iframePresent": true,
+    "iframeInstance": "1",
+    "iframeSameNodeAsTracked": true,
+    "tvIdleVisible": true,
+    "tvIdleBox": {
+      "width": 1804.8125,
+      "height": 886.609375
+    },
+    "ytPlaying": false,
+    "ytStopped": 1,
+    "ytCreated": 1,
+    "ytDestroyed": 0,
+    "ytLoaded": []
+  },
+  {
+    "step": "A4-fullscreen-refilled",
+    "fullscreenElement": "HTML",
+    "fullscreenElementBox": {
+      "width": 1920,
+      "height": 1080
+    },
+    "isZeroBox": false,
+    "iframePresent": true,
+    "iframeInstance": "1",
+    "iframeSameNodeAsTracked": true,
+    "tvIdleVisible": false,
+    "tvIdleBox": null,
+    "ytPlaying": true,
+    "ytStopped": 1,
+    "ytCreated": 1,
+    "ytDestroyed": 0,
+    "ytLoaded": [
+      "oHg5SJYRHA0"
+    ]
+  },
+  {
+    "step": "B1-iframe-fullscreen",
+    "fullscreenElement": "IFRAME[data-yt-instance=1]",
+    "fullscreenElementBox": {
+      "width": 1920,
+      "height": 1080
+    },
+    "isZeroBox": false,
+    "iframePresent": true,
+    "iframeInstance": "1",
+    "iframeSameNodeAsTracked": true,
+    "tvIdleVisible": false,
+    "tvIdleBox": null,
+    "ytPlaying": true,
+    "ytStopped": 0,
+    "ytCreated": 1,
+    "ytDestroyed": 0,
+    "ytLoaded": []
+  },
+  {
+    "step": "B2-iframe-fullscreen-idle (MONEY SHOT)",
+    "fullscreenElement": null,
+    "fullscreenElementBox": null,
+    "isZeroBox": false,
+    "iframePresent": true,
+    "iframeInstance": "1",
+    "iframeSameNodeAsTracked": true,
+    "tvIdleVisible": true,
+    "tvIdleBox": {
+      "width": 1804.8125,
+      "height": 886.609375
+    },
+    "ytPlaying": false,
+    "ytStopped": 1,
+    "ytCreated": 1,
+    "ytDestroyed": 0,
+    "ytLoaded": []
+  }
+]
