@@ -144,6 +144,46 @@ describe("POST /api/t — rate limiting (security M1)", () => {
     expect(over.status).toBe(204);
   });
 
+  it("buckets under x-real-ip, not a forged x-forwarded-for (TICKET-86 spoof close)", async () => {
+    // Both headers present: x-real-ip is the edge-set, trustworthy value;
+    // x-forwarded-for is attacker-suppliable. A caller rotating a forged XFF
+    // per request while keeping the same real IP must still trip the SAME IP
+    // bucket — proving the bucket key comes from x-real-ip, not the spoofable
+    // XFF first hop.
+    const edgeIp = "198.51.100.9";
+    for (let i = 0; i < BEACON_RATE_IP_MAX; i += 1) {
+      const res = await POST(
+        beacon(
+          { event: "patron_joined", roomId: "r", sessionKey: `spoof-${i}` },
+          { "x-real-ip": edgeIp, "x-forwarded-for": `203.0.113.${i % 255}` },
+        ),
+      );
+      expect(res.status).toBe(202);
+    }
+    const over = await POST(
+      beacon(
+        { event: "patron_joined", roomId: "r", sessionKey: "spoof-x" },
+        { "x-real-ip": edgeIp, "x-forwarded-for": "10.0.0.1" },
+      ),
+    );
+    expect(over.status).toBe(204); // silent drop — the shared IP bucket tripped
+  });
+
+  it("a header-less request keeps today's fail-open IP-bucket-not-applied behaviour (TICKET-86 sentinel seam)", async () => {
+    // No x-real-ip / x-forwarded-for at all → clientIpFrom returns "unknown",
+    // which the route maps back to "" so the IP bucket does not apply (only
+    // the session bucket does). A caller rotating session keys with no
+    // headers set is therefore IP-unlimited, unchanged from before this
+    // ticket — pinned explicitly so a future change to the sentinel mapping
+    // is a deliberate, reviewed decision.
+    for (let i = 0; i < BEACON_RATE_IP_MAX + 5; i += 1) {
+      const res = await POST(
+        beacon({ event: "patron_joined", roomId: "r", sessionKey: `noheader-${i}` }),
+      );
+      expect(res.status).toBe(202);
+    }
+  });
+
   it("a different session key is unaffected by another's trip", async () => {
     for (let i = 0; i < BEACON_RATE_SESSION_MAX + 1; i += 1) {
       await POST(beacon({ event: "patron_joined", roomId: "r", uuid: UUID }));
