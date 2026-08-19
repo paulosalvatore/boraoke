@@ -148,6 +148,59 @@ export default function TvScreen({
   /** Length of the TV "get to the mic" no-show call window (spec §no-shows). */
   const MIC_CALL_SECONDS = 30;
 
+  /**
+   * TICKET-89 — leave fullscreen if, and only if, the fullscreen element is the
+   * player itself.
+   *
+   * TICKET-82 parks the player by putting `display: none` on `.main`, and its
+   * review predicted (N4) that this would make a fullscreen player "drop out of
+   * fullscreen". Measured against real Chromium — headless and headed — that is
+   * NOT what happens, and the truth is worse: `display: none` on the fullscreen
+   * element, or on any ANCESTOR of it, does not exit fullscreen at all. The
+   * element just collapses to a 0x0 box, so the screen stays fullscreen and
+   * paints nothing. (Evidence: work/evidence/TICKET-89/fullscreen-probe-*.json,
+   * probes A and B.)
+   *
+   * That only bites when the IFRAME is the fullscreen element, i.e. the venue
+   * used YouTube's own fullscreen button — and then the TV shows a black screen
+   * for the entire gap between singers, with the recruitment QR unreachable
+   * behind it. `fs: 0` below removes that button so the state is unreachable
+   * through the UI; this is the belt for anything that still gets there (a
+   * double-click, a browser that ignores `fs`, a player created before this
+   * shipped).
+   *
+   * Exiting is deliberate rather than clever: `exitFullscreen()` requires no
+   * user gesture, whereas RE-entering fullscreen does — and a re-entry fix
+   * cannot even be validated in our harness, which grants `requestFullscreen()`
+   * on a never-clicked page (activation-probe-headed.json, H0). A kiosk fix
+   * that silently no-ops in the field is worse than no fix.
+   *
+   * The app's OWN affordance fullscreens `document.documentElement`, which is
+   * completely immune to a descendant being hidden (probe D) — so the venue's
+   * supported path keeps fullscreen across the idle gap AND shows the idle
+   * poster in it. `host.contains()` is what distinguishes the two: it is true
+   * for our player's iframe and false for documentElement, so this never
+   * cancels the venue's own fullscreen.
+   */
+  const exitFullscreenIfPlayerIsFullscreen = useCallback((host: HTMLElement) => {
+    if (typeof document === "undefined") return;
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element;
+      webkitExitFullscreen?: () => void;
+    };
+    const fsEl = document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+    if (!fsEl || !host.contains(fsEl)) return;
+    try {
+      if (document.exitFullscreen) {
+        void document.exitFullscreen().catch(() => {});
+      } else {
+        doc.webkitExitFullscreen?.();
+      }
+    } catch {
+      // nothing to exit / already leaving — never break the TV over chrome
+    }
+  }, []);
+
   // Query suffix so every queue call targets this room (absent = default room).
   const roomQuery = roomId ? `?room=${encodeURIComponent(roomId)}` : "";
 
@@ -444,12 +497,21 @@ export default function TvScreen({
     if (!nowVideoId) {
       if (playerRef.current) {
         try {
+          // Load-bearing for silence, not a formality: hiding an element does
+          // NOT pause media inside it (TICKET-89 probe G, real Chromium). The
+          // parked player is quiet only because of this call.
           playerRef.current.stopVideo();
         } catch {
           // wedged player with an empty queue — nothing to watch
         }
       }
       currentVideoIdRef.current = null;
+      // TICKET-89: the idle transition is about to put `display: none` on this
+      // host's ancestor. If the player is the fullscreen element that would
+      // leave the TV in a 0x0 black fullscreen for the whole gap — see the
+      // helper's comment. Runs once per idle transition (the queue write is
+      // if-changed, so a static empty queue does not re-fire this effect).
+      exitFullscreenIfPlayerIsFullscreen(host);
       return;
     }
 
@@ -488,6 +550,14 @@ export default function TvScreen({
           controls: 1,
           rel: 0,
           playsinline: 1,
+          // TICKET-89: no YouTube fullscreen button. Its fullscreen makes the
+          // IFRAME the fullscreen element, and the iframe sits inside `.main`,
+          // which the idle transition hides — leaving the TV in a 0x0 black
+          // fullscreen (measured; see exitFullscreenIfPlayerIsFullscreen). The
+          // screen's own affordance fullscreens documentElement instead, which
+          // survives the idle gap AND still shows the recruitment poster, so
+          // this removes a strictly worse control rather than a capability.
+          fs: 0,
         },
         events: {
           onReady: (e) => {
@@ -541,7 +611,14 @@ export default function TvScreen({
         setPlayerEpoch((n) => n + 1);
       }, POLL_INTERVAL);
     }
-  }, [ytReady, queue, advance, skipUnplayable, playerEpoch]);
+  }, [
+    ytReady,
+    queue,
+    advance,
+    skipUnplayable,
+    playerEpoch,
+    exitFullscreenIfPlayerIsFullscreen,
+  ]);
 
   // ---- TICKET-41b: stall watchdog — when a video SHOULD be playing, poll
   // getCurrentTime(); no progress over the window walks the escalation ladder
