@@ -76,23 +76,6 @@ export function normalizeLocale(value: unknown): Locale {
 }
 
 /**
- * The one-line script that makes `<html lang>` agree with the copy actually
- * rendered on a page (TICKET-75).
- *
- * The root layout sets `lang` from the REQUEST locale, but a surface may
- * deliberately render a DIFFERENT locale — the venue TV always follows the
- * ROOM's language, never a patron cookie. Such a surface emits this inline so
- * the served document reports the language a reader/auto-translator/crawler
- * actually sees. It is single-sourced here (rather than inlined at the call
- * site) so the escaping lives in one place and stays unit-testable: the value is
- * run through {@link normalizeLocale} and JSON-encoded, so only a member of the
- * fixed {@link LOCALES} set can ever reach the document.
- */
-export function documentLangScript(locale: unknown): string {
-  return `document.documentElement.lang=${JSON.stringify(normalizeLocale(locale))};`;
-}
-
-/**
  * Best-effort match of an `Accept-Language` header to a supported locale.
  * Handles quality values (`q=`), exact tags (`pt-BR`), and primary-subtag
  * fallback (`pt` → `pt-BR`, `en-GB` → `en`). Returns null when nothing matches
