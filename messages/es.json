@@ -205,6 +205,7 @@
     "youtubeLink": "Link de YouTube",
     "pastedLink": "Link pegado",
     "degraded": "La búsqueda no está disponible — pega un enlace de YouTube",
+    "dailyLimit": "Alcanzamos el límite de búsquedas de hoy — pega un enlace de YouTube",
     "modeLegend": "Quieres",
     "modeSing": "🎤 Cantar",
     "modeListen": "💃 Solo disfrutar",

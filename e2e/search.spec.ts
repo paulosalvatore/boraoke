@@ -411,3 +411,96 @@ test("a cursor-less short page does not claim the results are exhausted", async 
   await expect(page.getByTestId("search-no-more")).toContainText(/outras palavras/i);
   await expect(page.getByTestId("search-no-more")).not.toContainText(/tudo que a gente achou/i);
 });
+
+/**
+ * TICKET-87 — the platform's DAILY `search.list` budget is spent.
+ *
+ * This is a different condition from "search is down": it is expected, it is
+ * platform-wide, and it clears at midnight Pacific. The two acceptance points
+ * are that the patron is told the truth (not left with a spinner or a silent
+ * no-op) and that the paste-a-YouTube-link path — which costs zero search
+ * calls — keeps working end to end, so a drained budget never blocks the actual
+ * job of queueing a song.
+ */
+test("daily search budget spent: honest copy + paste-link still queues a song", async ({ page }) => {
+  await page.route("**/api/search**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ degraded: true, reason: "daily-limit", results: [] }),
+    });
+  });
+
+  await joinAs(page, "BudgetUser");
+
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("alguma musica");
+
+  // The daily-limit copy, NOT the generic "search is down" line.
+  const notice = page.getByTestId("search-degraded");
+  await expect(notice).toBeVisible({ timeout: 5000 });
+  await expect(notice).toContainText(/limite de buscas de hoje/i);
+  await expect(notice).not.toContainText(/Busca indisponível/i);
+
+  // No spinner left running and no results pretending to be there.
+  await expect(page.getByRole("button", { name: /Evidências/i })).toHaveCount(0);
+
+  // The whole point: pasting a link still resolves and still queues.
+  await input.fill("https://youtu.be/dQw4w9WgXcQ");
+  await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 5000 });
+  const cta = page.getByRole("button", { name: /adicionar à fila/i });
+  await expect(cta).toBeEnabled();
+  await cta.click();
+  await expect(page.getByText(/música na fila/i)).toBeVisible({ timeout: 5000 });
+});
+
+/**
+ * TICKET-87 — hitting the budget on "load more" must not be a silent no-op.
+ * The rows already fetched stay (they cost nothing), the button retires so the
+ * patron is not left tapping a dead control, and the reason is stated.
+ */
+test("budget spent mid-session retires load-more instead of failing silently", async ({ page }) => {
+  const pageOne = Array.from({ length: 12 }, (_, i) => ({
+    videoId: `b1vid${i}`,
+    title: `Budget Song ${i}`,
+    channelTitle: "Ch",
+    duration: "3:00",
+    thumbnailUrl: "https://i.ytimg.com/vi/x/mqdefault.jpg",
+  }));
+
+  await page.route("**/api/search**", async (route) => {
+    const pageToken = new URL(route.request().url()).searchParams.get("pageToken");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      // The first page succeeded; by the time a deep page is asked for, the
+      // platform's daily budget is gone.
+      body: JSON.stringify(
+        pageToken
+          ? { degraded: true, reason: "daily-limit", results: [] }
+          : { results: pageOne, nextPageToken: "CURSOR_2" },
+      ),
+    });
+  });
+
+  await joinAs(page, "BudgetMoreUser");
+  await page.getByLabel(/Buscar música/i).fill("evidencias");
+  await expect(page.getByRole("button", { name: /Budget Song 0/i })).toBeVisible({ timeout: 5000 });
+
+  const loadMore = page.getByTestId("search-load-more");
+  // Reveal the already-fetched rows for free (8 shown of 12), then the next tap
+  // is the one that needs a real page.
+  await loadMore.click();
+  await expect(page.getByRole("button", { name: /Budget Song 11/i })).toBeVisible();
+  await loadMore.click();
+
+  // Told plainly, and the dead button is gone.
+  const notice = page.getByTestId("search-degraded");
+  await expect(notice).toBeVisible({ timeout: 5000 });
+  await expect(notice).toContainText(/limite de buscas de hoje/i);
+  await expect(loadMore).toHaveCount(0);
+
+  // The rows we already paid for are still on screen and still selectable.
+  await page.getByRole("button", { name: /Budget Song 3/i }).click();
+  await expect(page.getByText(/Selecionada: b1vid3/)).toBeVisible();
+});

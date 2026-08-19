@@ -205,6 +205,7 @@
     "youtubeLink": "YouTube link",
     "pastedLink": "Pasted link",
     "degraded": "Search is down — paste a YouTube link",
+    "dailyLimit": "Today's search limit is reached — paste a YouTube link",
     "modeLegend": "You want to",
     "modeSing": "🎤 Sing",
     "modeListen": "💃 Just vibe",
