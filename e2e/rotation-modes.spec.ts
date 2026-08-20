@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { warmModerationRoutes } from "./helpers";
 
 /**
  * E2E (TICKET-10): the host switches the venue rotation mode on the admin page
@@ -13,6 +14,27 @@ import { test, expect, type Page } from "@playwright/test";
 
 async function warmUp(page: Page) {
   // Compile every route + module the flow touches, once, before seeding.
+  //
+  // TICKET-88 — the confirmed root cause of this spec's ~1-in-3 flake. This
+  // warm-up compiled the LOGIN-GATE half of `/[room]/admin` only: it logs in
+  // with a deliberately bogus token ("x"), so `page.goto("/default/admin")`
+  // below renders the unauthenticated gate, which never mounts the authed
+  // dashboard's 3s poll of `/api/host/pending`. That route therefore stayed
+  // UNCOMPILED until the test's own `goto(/<roomId>/admin)` — i.e. AFTER the
+  // room was created and the queue seeded — and its first compile re-evaluated
+  // the in-memory store module, wiping both.
+  //
+  // Measured directly (work/reports/dev/TICKET-88-report.md): seed 3 entries →
+  // room record 200 / queue length 3; issue the first `GET /api/host/pending` →
+  // room record 404 / queue length 0; the follow-up `POST /api/host/mode` then
+  // 401s, the success toast never renders, and the spec fails. In a full-suite
+  // run host-controls/moderation happen to compile that route earlier, which is
+  // why the failure surfaced intermittently rather than every time — this spec
+  // was relying on ANOTHER FILE's warm-up, not on its own.
+  //
+  // Warming the authed host-console routes here (before any seeding) is the
+  // TICKET-65 pattern applied to the right routes: compile first, seed after.
+  await warmModerationRoutes(page.request);
   await page.request.post("/api/rooms", { data: { name: "warmup" } });
   await page.request.post("/api/host/login?room=default", { data: { token: "x" } });
   await page.request.post("/api/host/mode?room=default", { data: { mode: "full-karaoke" } });

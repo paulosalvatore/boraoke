@@ -82,6 +82,15 @@ export async function advanceOnce(
 /**
  * Warm-compile the TICKET-44 moderation/pending routes (shared deflake helper).
  *
+ * NAME CAVEAT (TICKET-88): this helper is misnamed by history — it is not only
+ * for moderation specs. `/api/host/pending` is polled by EVERY authenticated
+ * host console (AdminRoom mounts a 3s poll of `/api/host/session`,
+ * `/api/queue` AND `/api/host/pending`), so any spec that seeds state and then
+ * lands on an AUTHED `/[room]/admin` needs this warm-up, moderation or not.
+ * The name is left alone deliberately: three specs already import it, and
+ * renaming would churn them for no behavioural gain. Read it as "warm the
+ * authed host-console + moderation routes".
+ *
  * WHY: under `next dev` with the in-memory store, a route's FIRST compilation
  * re-evaluates the shared store/rooms modules and resets their singletons —
  * wiping any state seeded before that compile (the documented memory-driver
@@ -96,6 +105,13 @@ export async function advanceOnce(
  * route warms). All calls are fire-to-compile — responses are irrelevant.
  */
 export async function warmModerationRoutes(request: APIRequestContext) {
+  // TICKET-88: the authed console's other two polled endpoints. `/api/queue` is
+  // warmed by essentially every spec already and `/api/host/session` happens to
+  // be compiled by AdminRoom's unauthenticated login gate — but "happens to be"
+  // is exactly the accidental coupling that made rotation-modes fragile, so
+  // both are warmed explicitly here rather than left to a caller's side effects.
+  await request.get("/api/host/session");
+  await request.get("/api/queue");
   await request.get("/api/host/pending");
   await request.post("/api/host/pending/approve", { data: { pendingId: "warmup" } });
   await request.post("/api/host/pending/reject", { data: { pendingId: "warmup" } });
