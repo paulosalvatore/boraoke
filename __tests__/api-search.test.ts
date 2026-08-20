@@ -5,6 +5,7 @@
  */
 import { GET } from "@/app/api/search/route";
 import { _resetCache, _resetRateLimit, RATE_LIMIT } from "@/lib/youtube-search";
+import { _resetSearchBudget } from "@/lib/search-budget";
 import type { NextRequest } from "next/server";
 
 const KEY_BACKUP = process.env.YOUTUBE_API_KEY;
@@ -34,6 +35,11 @@ function errJson(status: number, body: unknown): Response {
 beforeEach(() => {
   _resetCache();
   _resetRateLimit();
+  // TICKET-87: the daily search budget is module-level state shared by every
+  // test in this file. Without this reset the ~dozens of live-path searches
+  // below would accumulate against one day's 90 and the later ones would
+  // degrade for the wrong reason.
+  _resetSearchBudget();
   delete process.env.YOUTUBE_API_KEY;
 });
 afterAll(() => {

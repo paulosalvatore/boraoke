@@ -8,6 +8,7 @@ import {
   YouTubeQuotaError,
 } from "@/lib/youtube-search";
 import { getCachedSearchPage, setCachedSearchPage } from "@/lib/search-cache";
+import { reserveSearchCall } from "@/lib/search-budget";
 import { track } from "@/lib/telemetry";
 import { getTranslations } from "next-intl/server";
 
@@ -19,7 +20,7 @@ import { getTranslations } from "next-intl/server";
  *
  * Response contract (all non-throwing so the client fails soft to paste-link):
  *   200 { results: SearchResult[], nextPageToken?: string }  — success
- *   200 { degraded: true, reason, results: [] }        — no key / quota / upstream error
+ *   200 { degraded: true, reason, results: [] }        — no key / quota / daily-limit / upstream error
  *   400 { error }                                      — bad query/uuid/pageToken, or page past the depth cap
  *   429 { error }                                      — per-uuid OR per-IP rate limit exceeded
  *
@@ -147,6 +148,39 @@ export async function GET(req: NextRequest) {
       results: cached.results,
       nextPageToken: cached.nextPageToken,
       cached: true,
+    });
+  }
+
+  // ── TICKET-87: platform-wide DAILY spend ceiling ──────────────────────────
+  // Everything above this line is free; from here on we are about to spend one
+  // of the platform's 100 daily `search.list` calls (its own hard cap since
+  // 2026-06-01). The per-uuid/per-IP window above bounds one actor's RATE; it
+  // does not bound the platform's daily TOTAL, so at the per-IP ceiling a single
+  // client could drain the whole day in ~35s and kill search for every venue.
+  //
+  // The reservation is atomic and cross-instance (Upstash Lua EVAL), is taken
+  // BEFORE the outbound call so a concurrent burst cannot all pass a check and
+  // then all spend, and is NEVER refunded on failure (a refund-on-error path is
+  // an attacker-triggerable free credit — see lib/search-budget.ts).
+  //
+  // Placed AFTER the cache read on purpose: a cache hit issues no `search.list`
+  // call, so it must not consume budget. That also means cached/popular queries
+  // keep working normally once the budget is spent.
+  //
+  // At cap (or when the configured counter store is unreachable — fail-closed,
+  // argued in lib/search-budget.ts) we degrade exactly like the other quota
+  // paths: HTTP 200, `degraded: true`, empty results, and the paste-a-YouTube-
+  // link flow (which costs zero `search.list`) keeps working. The reason is the
+  // single value "daily-limit" for BOTH denial causes, so the response body
+  // cannot be used to probe whether our Redis is down, and it never leaks how
+  // much budget remains (that would tell an attacker exactly how far a drain has
+  // progressed) — remaining budget is server-log-only.
+  const reservation = await reserveSearchCall();
+  if (!reservation.ok) {
+    return NextResponse.json({
+      degraded: true,
+      reason: "daily-limit",
+      results: [],
     });
   }
 

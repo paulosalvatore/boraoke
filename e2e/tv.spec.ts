@@ -382,16 +382,30 @@ test.describe("/tv", () => {
         __ytLoaded: string[];
         __ytDestroyed: number;
         __ytClock: number;
+        // TICKET-89 additions — audio state + the playerVars actually used.
+        __ytPlaying: boolean;
+        __ytStopped: number;
+        __ytVars: Record<string, number | string>;
         YT: unknown;
       };
       w.__ytCreated = 0;
       w.__ytLoaded = [];
       w.__ytDestroyed = 0;
       w.__ytClock = 0;
+      w.__ytPlaying = false;
+      w.__ytStopped = 0;
+      w.__ytVars = {};
       class FakePlayer {
         events: { onReady?: Handler; onStateChange?: Handler; onError?: Handler };
         node: HTMLIFrameElement;
-        constructor(el: HTMLElement, opts: { videoId?: string; events?: FakePlayer["events"] }) {
+        constructor(
+          el: HTMLElement,
+          opts: {
+            videoId?: string;
+            playerVars?: Record<string, number | string>;
+            events?: FakePlayer["events"];
+          }
+        ) {
           this.events = opts.events ?? {};
           w.__ytCreated += 1;
           // The real API swaps the passed element for an <iframe> it owns.
@@ -402,19 +416,34 @@ test.describe("/tv", () => {
           iframe.setAttribute("data-yt-instance", String(w.__ytCreated));
           el.parentNode!.replaceChild(iframe, el);
           this.node = iframe;
+          // TICKET-89: record the playerVars the component asked for, so a test
+          // can assert the embed is built without YouTube's own fullscreen
+          // control (`fs: 0`) rather than trusting the source.
+          w.__ytVars = { ...(opts.playerVars ?? {}) };
           setTimeout(() => this.events.onReady?.({ data: -1, target: this }), 0);
         }
         loadVideoById(id: string) {
           // A player whose iframe has left the document can never show video —
           // record the load as dead so a test can tell "loaded" from "played".
           w.__ytLoaded.push(this.node.isConnected ? id : `ORPHANED:${id}`);
+          w.__ytPlaying = true; // a load autoplays — sound is ON from here
         }
-        stopVideo() {}
+        stopVideo() {
+          // TICKET-89: the ONLY thing that actually silences the parked player.
+          // Hiding an element does NOT pause media inside it (proved in real
+          // Chromium — work/evidence/TICKET-89/fullscreen-probe-*.json, probe
+          // G), so an idle screen is silent purely because this is called.
+          w.__ytStopped += 1;
+          w.__ytPlaying = false;
+        }
         destroy() {
           w.__ytDestroyed += 1;
+          w.__ytPlaying = false;
           this.node.remove();
         }
-        playVideo() {}
+        playVideo() {
+          w.__ytPlaying = true;
+        }
         seekTo() {}
         getPlayerState() {
           return 1; // PLAYING — keep the stall ladder quiet
@@ -574,6 +603,195 @@ test.describe("/tv", () => {
     const after = await playerSnapshot(page);
     expect(after.sameNode).toBe(true);
     expect(after.created).toBe(1);
+    expect(after.loaded).toEqual(["oHg5SJYRHA0"]);
+
+    await drainQueue(page.request, room);
+  });
+
+  /**
+   * ---- TICKET-89: fullscreen across the idle gap -------------------------
+   *
+   * TICKET-82 parks the player with `display: none` on `.main` while the queue
+   * is empty, and its review recorded (N4) that this would make a fullscreen
+   * player "drop out of fullscreen". Real Chromium — headless AND headed — says
+   * otherwise, and the truth is worse than the assumption:
+   *
+   *   `display: none` on the fullscreen element, or on ANY ANCESTOR of it,
+   *   does NOT exit fullscreen. The element simply collapses to a 0x0 box.
+   *
+   * So a venue that used YouTube's own fullscreen button (which makes the
+   * IFRAME the fullscreen element, and the iframe lives inside `.main`) does
+   * not fall back to the windowed idle poster when the show runs dry — it sits
+   * in fullscreen rendering NOTHING: a black screen for the whole gap between
+   * singers, with the recruitment QR unreachable behind it. That is a kiosk
+   * defect, not a cosmetic annoyance.
+   *
+   * Evidence: work/evidence/TICKET-89/fullscreen-probe-{chromium,headed}.json,
+   * probes A (element itself) and B (ancestor) — `exited: false`, box 0x0.
+   *
+   * The fix has two parts, neither of which requests fullscreen programmatically
+   * (the harness grants `requestFullscreen()` on a never-clicked page — see
+   * activation-probe-headed.json H0 — so a gesture-dependent fix could not be
+   * validated here, and would fail silently on a real kiosk):
+   *
+   *   1. `fs: 0` — the embed is built WITHOUT YouTube's own fullscreen control,
+   *      so the iframe cannot become the fullscreen element through the UI.
+   *      The app's own affordance fullscreens `document.documentElement`, which
+   *      probe D proves is completely immune to a descendant being hidden.
+   *   2. A defensive exit: if the fullscreen element is nevertheless inside the
+   *      player host when the queue empties, leave fullscreen deliberately.
+   *      `exitFullscreen()` needs no user gesture, so this always works, and it
+   *      turns the black-limbo state into a visible idle poster.
+   */
+  const fullscreenSnapshot = (page: Page) =>
+    page.evaluate(() => {
+      const fs = document.fullscreenElement;
+      const rect = fs?.getBoundingClientRect();
+      const w = window as unknown as { __ytPlaying: boolean; __ytStopped: number; __ytVars: Record<string, unknown> };
+      return {
+        // "HTML" = documentElement (the app's own affordance), "IFRAME" = the
+        // YouTube embed itself (YouTube's own control), null = not fullscreen.
+        kind: fs === null ? null : fs === document.documentElement ? "HTML" : fs.tagName,
+        // A fullscreen element with a 0x0 box is the black-screen state.
+        box: rect ? { w: Math.round(rect.width), h: Math.round(rect.height) } : null,
+        playing: w.__ytPlaying,
+        stopped: w.__ytStopped,
+        vars: w.__ytVars,
+      };
+    });
+
+  test("the venue's fullscreen survives the queue emptying and refilling (TICKET-89)", async ({ page }) => {
+    // THE acceptance criterion, on the affordance the app actually ships: the
+    // bar hits "Tela cheia" (or F), which fullscreens documentElement.
+    await stubYouTubeReplacingNode(page);
+
+    const room = upnextRoom("t89-survives");
+    await drainQueue(page.request, room);
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Song A", nickname: "Ana", table: "1", mode: "sing" });
+    await page.goto(`/${room}/tv`);
+
+    await expect(page.locator(`iframe[${YT_MARK}]`)).toHaveCount(1, { timeout: 15_000 });
+    await trackPlayerNode(page);
+
+    // Enter fullscreen exactly the way the chrome button does.
+    await page.evaluate(() => document.documentElement.requestFullscreen());
+    await expect
+      .poll(async () => (await fullscreenSnapshot(page)).kind, { timeout: 10_000 })
+      .toBe("HTML");
+
+    // The show runs dry.
+    await drainQueue(page.request, room);
+    await expect(page.getByTestId("tv-idle")).toBeVisible({ timeout: 15_000 });
+
+    const idle = await fullscreenSnapshot(page);
+    // Still fullscreen — the whole point of this ticket.
+    expect(idle.kind).toBe("HTML");
+    // And genuinely PAINTING, not a collapsed 0x0 black screen.
+    expect(idle.box!.w).toBeGreaterThan(0);
+    expect(idle.box!.h).toBeGreaterThan(0);
+    // The recruitment poster is visible IN fullscreen, which is what idle is for.
+    await expect(page.getByTestId("tv-idle")).toBeVisible();
+
+    // A patron adds a song — fullscreen must carry straight through.
+    await seedRoom(page, room, { videoId: "oHg5SJYRHA0", title: "Song B", nickname: "Bruno", table: "2", mode: "sing" });
+    await expect(page.getByTestId("tv-hero")).toHaveText("Song B", { timeout: 15_000 });
+
+    const after = await fullscreenSnapshot(page);
+    expect(after.kind).toBe("HTML");
+    // Same player throughout (the TICKET-82 contract, re-asserted here).
+    expect((await playerSnapshot(page)).sameNode).toBe(true);
+    await expect(page.locator(`iframe[${YT_MARK}]`)).toBeVisible();
+
+    await drainQueue(page.request, room);
+  });
+
+  test("an idle screen is SILENT — the player is stopped, not merely hidden (TICKET-89)", async ({ page }) => {
+    // Hiding an element does not pause media inside it (probe G, real Chromium:
+    // `HIDING DOES NOT STOP AUDIO`). A parked-but-present player would keep the
+    // venue's speakers going over an empty room, which is far worse than losing
+    // fullscreen — so the explicit `stopVideo()` is asserted, not assumed.
+    await stubYouTubeReplacingNode(page);
+
+    const room = upnextRoom("t89-silence");
+    await drainQueue(page.request, room);
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Song A", nickname: "Ana", table: "1", mode: "sing" });
+    await page.goto(`/${room}/tv`);
+
+    await expect(page.locator(`iframe[${YT_MARK}]`)).toHaveCount(1, { timeout: 15_000 });
+    await expect.poll(async () => (await fullscreenSnapshot(page)).playing, { timeout: 10_000 }).toBe(true);
+
+    // Fullscreen it first — the parked-while-fullscreen case is the one where a
+    // "keep it visible so fullscreen survives" fix would leak sound.
+    await page.evaluate(() => document.documentElement.requestFullscreen());
+
+    await drainQueue(page.request, room);
+    await expect(page.getByTestId("tv-idle")).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(1000);
+
+    const idle = await fullscreenSnapshot(page);
+    expect(idle.playing).toBe(false); // NO audio while idle
+    expect(idle.stopped).toBeGreaterThanOrEqual(1); // and it was silenced explicitly
+    // Still the same live player — silenced, not destroyed (TICKET-82).
+    expect((await playerSnapshot(page)).destroyed).toBe(0);
+
+    await drainQueue(page.request, room);
+  });
+
+  test("a YouTube-fullscreened player never leaves a black 0x0 fullscreen while idle (TICKET-89)", async ({ page }) => {
+    // The negative-controlled test. Revert the fix and this FAILS with
+    // `kind: "IFRAME", box: {w:0,h:0}` — the black screen described above.
+    await stubYouTubeReplacingNode(page);
+
+    const room = upnextRoom("t89-blackfs");
+    await drainQueue(page.request, room);
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Song A", nickname: "Ana", table: "1", mode: "sing" });
+    await page.goto(`/${room}/tv`);
+
+    const frame = page.locator(`iframe[${YT_MARK}]`);
+    await expect(frame).toHaveCount(1, { timeout: 15_000 });
+    await trackPlayerNode(page);
+
+    // Part 1 of the fix, asserted directly: the embed is built without
+    // YouTube's own fullscreen control, so this state is unreachable via the UI.
+    // SOFT deliberately — a hard assert here would abort the test before the
+    // behavioural check below, and the behavioural check is the one that
+    // encodes the actual defect. Both are symptoms of the same missing fix and
+    // both should be reported in a single run (same posture as TICKET-82's
+    // empty-then-refill test).
+    expect.soft((await fullscreenSnapshot(page)).vars).toMatchObject({ fs: 0 });
+
+    // Part 2, asserted behaviourally: force the bad state anyway (a stale
+    // embed, a double-click, a browser that ignores `fs`) and require the
+    // component to leave it rather than sit in a black fullscreen.
+    await frame.evaluate((el) => el.requestFullscreen());
+    await expect
+      .poll(async () => (await fullscreenSnapshot(page)).kind, { timeout: 10_000 })
+      .toBe("IFRAME");
+
+    // The show runs dry — the exact moment `.mainHidden` lands on the ancestor.
+    await drainQueue(page.request, room);
+    await expect(page.getByTestId("tv-idle")).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(1000);
+
+    const idle = await fullscreenSnapshot(page);
+    // The forbidden state: still fullscreen on an element that paints nothing.
+    const blackFullscreen =
+      idle.kind !== null && idle.box !== null && idle.box.w === 0 && idle.box.h === 0;
+    expect(blackFullscreen).toBe(false);
+    // The idle poster is on screen and has real size — the venue sees the QR.
+    const posterBox = await page.getByTestId("tv-idle").boundingBox();
+    expect(posterBox!.width).toBeGreaterThan(0);
+    expect(posterBox!.height).toBeGreaterThan(0);
+    // Silent throughout (the same trap as the test above).
+    expect(idle.playing).toBe(false);
+    // And TICKET-82 is intact: the player was parked, never destroyed.
+    expect((await playerSnapshot(page)).destroyed).toBe(0);
+
+    // Refill still works — no black screen on the way back either.
+    await seedRoom(page, room, { videoId: "oHg5SJYRHA0", title: "Song B", nickname: "Bruno", table: "2", mode: "sing" });
+    await expect(page.getByTestId("tv-hero")).toHaveText("Song B", { timeout: 15_000 });
+    const after = await playerSnapshot(page);
+    expect(after.sameNode).toBe(true);
     expect(after.loaded).toEqual(["oHg5SJYRHA0"]);
 
     await drainQueue(page.request, room);
