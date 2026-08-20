@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { warmModerationRoutes } from "./helpers";
 
 /**
  * TICKET-20 — Render + link test suite. The TL explicitly distrusts prior
@@ -28,6 +29,15 @@ async function warmUp(page: Page) {
   await req.post("/api/host/login", { data: { token: DEV_TOKEN } });
   await req.get("/api/host/session");
   await req.get("/api/queue");
+  // TICKET-88: `/api/host/pending` is polled by the AUTHED host console, and its
+  // first compile resets the in-memory store singleton. This file survived that
+  // only by accident — the DEV_TOKEN login above is a VALID default-room login,
+  // so the `/default/admin` goto below lands on the authed dashboard and
+  // compiles the route as a side effect. That is a silent dependency on one
+  // token line staying valid; the same latent gap failed rotation-modes 3/3 in
+  // isolation. Warm it explicitly (before any seeding) so the guarantee is
+  // stated rather than inherited.
+  await warmModerationRoutes(req);
   await page.goto("/");
   await page.goto("/new");
   await page.goto("/default");
