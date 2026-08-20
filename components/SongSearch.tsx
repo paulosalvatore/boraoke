@@ -88,6 +88,26 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [degraded, setDegraded] = useState(false);
+  /**
+   * TICKET-87: which degraded copy to show. The platform's daily `search.list`
+   * budget being spent is a DIFFERENT thing from "search is down" — it is
+   * expected, temporary, and resets at midnight Pacific — so it gets its own
+   * honest message instead of a generic outage line. Every other degraded
+   * reason keeps the pre-existing copy. Either way the paste-a-YouTube-link
+   * input above stays fully functional (it costs no search call).
+   */
+  const [dailyLimited, setDailyLimited] = useState(false);
+
+  /**
+   * Leave the degraded state entirely (TICKET-87). Both flags must clear
+   * together — a stale `dailyLimited` would otherwise mislabel the NEXT
+   * degraded response as "today's budget is spent". State setters are stable,
+   * so this callback never changes identity.
+   */
+  const clearDegraded = useCallback(() => {
+    setDegraded(false);
+    setDailyLimited(false);
+  }, []);
   const [rateLimitMsg, setRateLimitMsg] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** Which mode chip has keyboard focus (the real radio is visually hidden). */
@@ -117,7 +137,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       const seq = ++seqRef.current;
       const searchMode = modeRef.current;
       setLoading(true);
-      setDegraded(false);
+      clearDegraded();
       setRateLimitMsg("");
       try {
         // Mode-aware augmentation (TICKET-40): sing → append "karaoke", others → raw.
@@ -144,6 +164,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           setResults([]);
           setResultsMode(null);
           setResultsQuery("");
+          setDailyLimited(data.reason === "daily-limit");
           setDegraded(true);
           return;
         }
@@ -153,10 +174,12 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         setResultsQuery(q);
       } catch {
         if (seq !== seqRef.current) return;
-        // Network error → fail soft to the paste-link fallback.
+        // Network error → fail soft to the paste-link fallback. This is a real
+        // outage, not the daily budget, so it keeps the generic copy.
         setResults([]);
         setResultsMode(null);
         setResultsQuery("");
+        setDailyLimited(false);
         setDegraded(true);
       } finally {
         if (seq === seqRef.current) setLoading(false);
@@ -206,6 +229,17 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       const res = await fetch(`/api/search?${params.toString()}`);
       if (seq !== seqRef.current) return; // a newer search superseded this page
       const data = await res.json().catch(() => ({}));
+      // TICKET-87: the platform's daily search budget is spent. Silently
+      // swallowing this would leave the patron tapping "load more" forever with
+      // nothing happening. Keep the rows already on screen (they cost nothing),
+      // retire the load-more button by dropping the cursor so there is nothing
+      // left to tap, and say plainly why. The paste-a-link input is unaffected.
+      if (data.degraded && data.reason === "daily-limit") {
+        setNextPageToken("");
+        setDailyLimited(true);
+        setDegraded(true);
+        return;
+      }
       if (!res.ok || data.degraded || !Array.isArray(data.results)) return;
       setResults((prev) => {
         // Defensive de-dup: Google can repeat an id across page boundaries.
@@ -237,7 +271,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       setNextPageToken("");
       setPagesFetched(1);
       setLoading(false);
-      setDegraded(false);
+      clearDegraded();
       setRateLimitMsg("");
       clearSelection();
       return;
@@ -248,7 +282,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     if (pastedId) {
       seqRef.current++; // cancel any in-flight search
       setLoading(false);
-      setDegraded(false);
+      clearDegraded();
       setRateLimitMsg("");
       // A pasted link is a single, mode-irrelevant row: no pagination, and no
       // "results are for another mode" notice (TICKET-83).
@@ -282,7 +316,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       setNextPageToken("");
       setPagesFetched(1);
       setLoading(false);
-      setDegraded(false);
+      clearDegraded();
       clearSelection();
       return;
     }
@@ -439,7 +473,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           role="status"
           style={{ marginTop: "0.6rem", fontSize: "0.85rem", color: "var(--text-muted)" }}
         >
-          {t("degraded")}
+          {dailyLimited ? t("dailyLimit") : t("degraded")}
         </p>
       )}
 

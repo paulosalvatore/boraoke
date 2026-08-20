@@ -33,6 +33,7 @@ import {
 } from "@/lib/youtube-search";
 import { getCachedSearchPage, setCachedSearchPage } from "@/lib/search-cache";
 import type { NextRequest } from "next/server";
+import { _resetSearchBudget } from "@/lib/search-budget";
 
 const KEY_BACKUP = process.env.YOUTUBE_API_KEY;
 
@@ -74,6 +75,9 @@ function okJson(body: unknown): Response {
 beforeEach(() => {
   _resetCache();
   _resetRateLimit();
+  // TICKET-87: the daily search budget is module-level state shared across this
+  // whole file; reset it so accumulated spend can't degrade a later test.
+  _resetSearchBudget();
   delete process.env.YOUTUBE_API_KEY;
   process.env.STORE_DRIVER = "memory";
 });
