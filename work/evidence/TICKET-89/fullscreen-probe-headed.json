@@ -1,0 +1,101 @@
+{
+  "A_hide_the_fullscreen_element_itself": {
+    "fullscreenBefore": "target",
+    "fullscreenAfter": "target",
+    "exited": false,
+    "events": [
+      "target"
+    ],
+    "fullscreenElementBox": {
+      "w": 0,
+      "h": 0,
+      "display": "none",
+      "visibility": "visible"
+    }
+  },
+  "B_hide_an_ANCESTOR_of_the_fullscreen_element": {
+    "fullscreenBefore": "target",
+    "fullscreenAfter": "target",
+    "exited": false,
+    "events": [
+      "target"
+    ],
+    "fullscreenElementBox": {
+      "w": 0,
+      "h": 0,
+      "display": "block",
+      "visibility": "visible"
+    }
+  },
+  "C_hide_a_DESCENDANT_of_the_fullscreen_element": {
+    "fullscreenBefore": "target",
+    "fullscreenAfter": "target",
+    "exited": false,
+    "events": [
+      "target"
+    ],
+    "fullscreenElementBox": {
+      "w": 900,
+      "h": 600,
+      "display": "block",
+      "visibility": "visible"
+    }
+  },
+  "D_documentElement_fullscreen__hide_a_descendant": {
+    "fullscreenBefore": "HTML",
+    "fullscreenAfter": "HTML",
+    "exited": false,
+    "events": [
+      "HTML"
+    ],
+    "fullscreenElementBox": {
+      "w": 900,
+      "h": 38,
+      "display": "block",
+      "visibility": "visible"
+    }
+  },
+  "E_visibilityHidden_on_an_ANCESTOR": {
+    "fullscreenBefore": "target",
+    "fullscreenAfter": "target",
+    "exited": false,
+    "events": [
+      "target"
+    ],
+    "fullscreenElementBox": {
+      "w": 900,
+      "h": 600,
+      "display": "block",
+      "visibility": "hidden"
+    }
+  },
+  "F_requestFullscreen_without_user_gesture": {
+    "resolved": true,
+    "fullscreenElement": "target"
+  },
+  "G_hidden_media_keeps_playing": {
+    "whileVisible": {
+      "paused": false,
+      "muted": false,
+      "volume": 1,
+      "currentTime": 0
+    },
+    "afterAncestorDisplayNone": {
+      "paused": false,
+      "muted": false,
+      "volume": 1,
+      "currentTime": 0.081
+    },
+    "afterAncestorVisibilityHidden": {
+      "paused": false,
+      "muted": false,
+      "volume": 1,
+      "currentTime": 0.206
+    },
+    "verdict": "HIDING DOES NOT STOP AUDIO — silence must be explicit (stopVideo/mute)"
+  },
+  "_meta": {
+    "mode": "headed",
+    "ranAt": "2026-08-19T15:59:35.687Z"
+  }
+}

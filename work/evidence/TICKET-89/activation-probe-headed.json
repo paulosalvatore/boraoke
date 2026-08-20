@@ -1,0 +1,24 @@
+{
+  "H0_never_clicked": {
+    "resolved": true,
+    "fullscreenElement": "anc",
+    "interpretation": "AUTOMATION BYPASSES ACTIVATION — this harness cannot measure gesture policy"
+  },
+  "H1_sticky_activation_only": {
+    "resolved": true,
+    "fullscreenElement": "anc"
+  },
+  "H2_precondition": "frame",
+  "H2_escalate_to_documentElement_no_new_gesture": {
+    "resolved": true,
+    "fullscreenElement": "HTML"
+  },
+  "H3_escalate_from_setTimeout": {
+    "resolved": true,
+    "fullscreenElement": "HTML"
+  },
+  "_meta": {
+    "mode": "headed",
+    "ranAt": "2026-08-19T16:02:08.537Z"
+  }
+}
