@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-08-20T13:30:44Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-88", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/88-rotation-modes-e2e-flake", "short_sha": "2f8d89b", "message_slug": "TICKET-88: warm the authed host-console routes before seeding (rotation-"}}
