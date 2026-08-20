@@ -1,0 +1,80 @@
+=== A__none ===
+$ curl -s -L "http://127.0.0.1:3196/"
+GET /  Cookie:none  Accept-Language:none
+observed: lang="pt-BR"
+
+=== A__es ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" "http://127.0.0.1:3196/"
+GET /  Cookie:es  Accept-Language:none
+observed: lang="es"
+
+=== A__en_al ===
+$ curl -s -L -H "Accept-Language: en-US,en;q=0.9" "http://127.0.0.1:3196/"
+GET /  Cookie:none  Accept-Language:en-US,en;q=0.9
+observed: lang="en"
+
+=== A__es_cookie_en_al ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" -H "Accept-Language: en-US,en;q=0.9" "http://127.0.0.1:3196/"
+GET /  Cookie:es  Accept-Language:en-US,en;q=0.9
+observed: lang="es"
+
+=== A_new_none ===
+$ curl -s -L "http://127.0.0.1:3196/new"
+GET /new  Cookie:none  Accept-Language:none
+observed: lang="pt-BR"
+
+=== A_new_es ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" "http://127.0.0.1:3196/new"
+GET /new  Cookie:es  Accept-Language:none
+observed: lang="es"
+
+=== A_new_en_al ===
+$ curl -s -L -H "Accept-Language: en-US,en;q=0.9" "http://127.0.0.1:3196/new"
+GET /new  Cookie:none  Accept-Language:en-US,en;q=0.9
+observed: lang="en"
+
+=== A_new_es_cookie_en_al ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" -H "Accept-Language: en-US,en;q=0.9" "http://127.0.0.1:3196/new"
+GET /new  Cookie:es  Accept-Language:en-US,en;q=0.9
+observed: lang="es"
+
+=== A_admin_none ===
+$ curl -s -L "http://127.0.0.1:3196/admin"
+GET /admin  Cookie:none  Accept-Language:none
+observed: lang="pt-BR"
+
+=== A_admin_es ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" "http://127.0.0.1:3196/admin"
+GET /admin  Cookie:es  Accept-Language:none
+observed: lang="es"
+
+=== A_admin_en_al ===
+$ curl -s -L -H "Accept-Language: en-US,en;q=0.9" "http://127.0.0.1:3196/admin"
+GET /admin  Cookie:none  Accept-Language:en-US,en;q=0.9
+observed: lang="en"
+
+=== A_admin_es_cookie_en_al ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" -H "Accept-Language: en-US,en;q=0.9" "http://127.0.0.1:3196/admin"
+GET /admin  Cookie:es  Accept-Language:en-US,en;q=0.9
+observed: lang="es"
+
+=== A_admin_analytics_none ===
+$ curl -s -L "http://127.0.0.1:3196/admin/analytics"
+GET /admin/analytics  Cookie:none  Accept-Language:none
+observed: lang="pt-BR"
+
+=== A_admin_analytics_es ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" "http://127.0.0.1:3196/admin/analytics"
+GET /admin/analytics  Cookie:es  Accept-Language:none
+observed: lang="es"
+
+=== A_admin_analytics_en_al ===
+$ curl -s -L -H "Accept-Language: en-US,en;q=0.9" "http://127.0.0.1:3196/admin/analytics"
+GET /admin/analytics  Cookie:none  Accept-Language:en-US,en;q=0.9
+observed: lang="en"
+
+=== A_admin_analytics_es_cookie_en_al ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" -H "Accept-Language: en-US,en;q=0.9" "http://127.0.0.1:3196/admin/analytics"
+GET /admin/analytics  Cookie:es  Accept-Language:en-US,en;q=0.9
+observed: lang="es"
+

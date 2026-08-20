@@ -1,0 +1,58 @@
+room check before B:
+{"room":{"id":"some-venue","name":"Some Venue","createdAt":"2026-08-20T12:14:59.414Z","settings":{"mode":"full-karaoke","language":"en"}}}
+=== B_tv_es_cookie ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" "http://127.0.0.1:3196/some-venue/tv"
+GET /some-venue/tv  Cookie:es  Accept-Language:none
+observed lang: lang="en"
+observed copy signal: en
+
+=== B_tv_es_al ===
+$ curl -s -L -H "Accept-Language: es-ES" "http://127.0.0.1:3196/some-venue/tv"
+GET /some-venue/tv  Cookie:none  Accept-Language:es-ES
+observed lang: lang="en"
+observed copy signal: en
+
+=== B_tv_none ===
+$ curl -s -L "http://127.0.0.1:3196/some-venue/tv"
+GET /some-venue/tv  Cookie:none  Accept-Language:none
+observed lang: lang="en"
+observed copy signal: en
+
+room check after B:
+{"room":{"id":"some-venue","name":"Some Venue","createdAt":"2026-08-20T12:14:59.414Z","settings":{"mode":"full-karaoke","language":"en"}}}
+=== C_default_tv_es ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" "http://127.0.0.1:3196/default/tv"
+GET /default/tv  Cookie:es  Accept-Language:none
+observed lang: lang="pt-BR"
+observed copy signal: pt-BR
+
+room check before D:
+{"room":{"id":"some-venue","name":"Some Venue","createdAt":"2026-08-20T12:14:59.414Z","settings":{"mode":"full-karaoke","language":"en"}}}
+=== D_room_es_cookie ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" "http://127.0.0.1:3196/some-venue"
+GET /some-venue  Cookie:es  Accept-Language:none
+observed lang: lang="es"
+observed copy signal: es
+
+=== D_room_al_only ===
+$ curl -s -L -H "Accept-Language: es-ES" "http://127.0.0.1:3196/some-venue"
+GET /some-venue  Cookie:none  Accept-Language:es-ES
+observed lang: lang="en"
+observed copy signal: en
+
+=== D_room_none ===
+$ curl -s -L "http://127.0.0.1:3196/some-venue"
+GET /some-venue  Cookie:none  Accept-Language:none
+observed lang: lang="en"
+observed copy signal: en
+
+room check after D:
+{"room":{"id":"some-venue","name":"Some Venue","createdAt":"2026-08-20T12:14:59.414Z","settings":{"mode":"full-karaoke","language":"en"}}}
+=== E_room_admin_es ===
+$ curl -s -L -H "Cookie: NEXT_LOCALE=es" "http://127.0.0.1:3196/some-venue/admin"
+GET /some-venue/admin  Cookie:es  Accept-Language:none
+observed lang: lang="es"
+observed copy signal: es
+
+room check after E:
+{"room":{"id":"some-venue","name":"Some Venue","createdAt":"2026-08-20T12:14:59.414Z","settings":{"mode":"full-karaoke","language":"en"}}}

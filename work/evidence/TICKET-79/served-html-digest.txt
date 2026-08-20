@@ -1,0 +1,31 @@
+# Served-HTML digest — one line per captured response body
+
+The raw bodies (~1.1 MB of dev-mode HTML) are NOT committed; regenerate them with `run_checks.sh` / `run_checks_bcde.sh` in this directory. What matters is distilled below: the served `<html>` tag and the count of the removed TICKET-75 inline script (zero everywhere).
+
+CAVEAT on the third column: it reports the FIRST localized UI string found anywhere in the body, which on the TV bodies is a shared-chrome string rather than the TV's own copy — so read it as a rough smoke signal only. The rigorous per-case copy-vs-lang assertions (the TV's own `Scan to join the queue` / `Escaneia para entrar na fila` / `Escanea para entrar a la fila`) are in `app-tester-report.md`, which confirmed agreement in all 24 responses.
+
+BODY                                       SERVED lang      FIRST L10N STRING               documentElement.lang COUNT
+body_A__en_al.html                         en               Create a room                      0
+body_A__es.html                            es               Escanea para entrar a la fila      0
+body_A__es_cookie_en_al.html               es               Escanea para entrar a la fila      0
+body_A__none.html                          pt-BR            Criar sala                         0
+body_A_admin_analytics_en_al.html          en               Create a room                      0
+body_A_admin_analytics_es.html             es               Escanea para entrar a la fila      0
+body_A_admin_analytics_es_cookie_en_al.html es               Escanea para entrar a la fila      0
+body_A_admin_analytics_none.html           pt-BR            Criar sala                         0
+body_A_admin_en_al.html                    en               Create a room                      0
+body_A_admin_es.html                       es               Escanea para entrar a la fila      0
+body_A_admin_es_cookie_en_al.html          es               Escanea para entrar a la fila      0
+body_A_admin_none.html                     pt-BR            Criar sala                         0
+body_A_new_en_al.html                      en               Create a room                      0
+body_A_new_es.html                         es               Escanea para entrar a la fila      0
+body_A_new_es_cookie_en_al.html            es               Escanea para entrar a la fila      0
+body_A_new_none.html                       pt-BR            Criar sala                         0
+body_B_tv_es_al.html                       en               Create a room                      0
+body_B_tv_es_cookie.html                   en               Create a room                      0
+body_B_tv_none.html                        en               Create a room                      0
+body_C_default_tv_es.html                  pt-BR            Criar sala                         0
+body_D_room_al_only.html                   en               Create a room                      0
+body_D_room_es_cookie.html                 es               Escanea para entrar a la fila      0
+body_D_room_none.html                      en               Create a room                      0
+body_E_room_admin_es.html                  es               Escanea para entrar a la fila      0
