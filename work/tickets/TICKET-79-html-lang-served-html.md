@@ -42,3 +42,18 @@ both the TV route and the patron room route, with no reliance on a post-hydratio
 
 Re-litigating TICKET-75's cookie-vs-room-language precedence rules (an explicit patron cookie still
 wins) — this ticket is only about where and how `<html lang>` gets set.
+
+---
+
+## Resolution (2026-08-19, branch `ticket/79-html-lang-served`)
+
+Fixed at the source rather than in the DOM: the next-intl **request locale** — the single value `app/layout.tsx` renders as `<html lang>` — is now route-aware, so the correct value is in the server-rendered response and no client-side correction exists.
+
+- `middleware.ts` (new) forwards the pathname as `x-boraoke-pathname`. This is the only supported way to get a pathname into a server component; a root layout gets no `params` and renders before its children. It is **not** an i18n routing middleware — rooms stay `/<room>`, locale stays in the cookie.
+- `i18n/route-locale.ts` (new) purely classifies that pathname into the three chains; `i18n/resolve-request-locale.ts` (new) applies them; `i18n/request.ts` calls it.
+- The TICKET-75 inline script and the now-dead `documentLangScript` helper are removed.
+- `app/layout.tsx` is unchanged, so the TICKET-74 `generateMetadata` / `viewport` re-exports are untouched.
+
+Precedence preserved, not flattened: `/<room>/tv` = room → pt-BR; `/<room>` = cookie → room → Accept-Language → pt-BR; everything else = cookie → Accept-Language → pt-BR.
+
+See `work/reports/dev/TICKET-79-html-lang-served.md` for the full rationale and `work/evidence/TICKET-79/` for the served-HTML evidence.

@@ -1,0 +1,20 @@
+[
+  {
+    "label": "G_tv_es_cookie_jsdisabled",
+    "path": "/some-venue/tv",
+    "cookieVal": "es",
+    "lang": "en",
+    "hasScanEn": true,
+    "hasEscaneiaPt": false,
+    "hasEscaneaEs": false
+  },
+  {
+    "label": "G_tv_none_jsdisabled",
+    "path": "/some-venue/tv",
+    "cookieVal": null,
+    "lang": "en",
+    "hasScanEn": true,
+    "hasEscaneiaPt": false,
+    "hasEscaneaEs": false
+  }
+]

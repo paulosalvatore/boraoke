@@ -1,0 +1,165 @@
+/**
+ * TICKET-79 — pathname → locale-chain classification.
+ *
+ * `i18n/route-locale.ts` is the pure half of the served-`<html lang>` fix: it
+ * decides WHICH of the three precedence chains a request gets, from nothing but
+ * the pathname the middleware forwards. It must stay edge/client-safe, so it
+ * mirrors `lib/rooms`'s room-id vocabulary instead of importing it — the last
+ * describe block is the drift guard on that mirror.
+ */
+import {
+  classifyLocaleRoute,
+  MIDDLEWARE_MATCHER,
+  PATHNAME_HEADER,
+  RESERVED_FIRST_SEGMENTS,
+} from "@/i18n/route-locale";
+import { isValidRoomId, RESERVED_ROOM_IDS } from "@/lib/rooms";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+describe("classifyLocaleRoute (TICKET-79)", () => {
+  it("classifies the venue TV as room-locale", () => {
+    expect(classifyLocaleRoute("/bar-do-ze/tv")).toEqual({
+      kind: "tv",
+      room: "bar-do-ze",
+    });
+  });
+
+  it("keeps the legacy default room's TV on the room chain", () => {
+    // `/default` has no record, so `getRoomLanguage` reads pt-BR — which is
+    // exactly what TICKET-75's script put there. Classifying it as `app` would
+    // hand the shared screen a patron's cookie locale instead.
+    expect(classifyLocaleRoute("/default/tv")).toEqual({
+      kind: "tv",
+      room: "default",
+    });
+  });
+
+  it("classifies the patron room page as the full room chain", () => {
+    expect(classifyLocaleRoute("/bar-do-ze")).toEqual({
+      kind: "room",
+      room: "bar-do-ze",
+    });
+  });
+
+  it.each([
+    ["/", "landing"],
+    ["/new", "create-room"],
+    ["/admin", "global admin"],
+    ["/admin/analytics", "admin analytics"],
+    ["/tv", "legacy TV redirect"],
+    ["/default", "legacy global room (no record)"],
+    ["/api/queue", "API route"],
+  ])("classifies %s as app-wide (%s)", (path) => {
+    expect(classifyLocaleRoute(path)).toEqual({ kind: "app" });
+  });
+
+  it("leaves the host console on the app-wide chain, unlike the TV", () => {
+    // The admin console is a personal device: it keeps following the host's own
+    // cookie. Only the SHARED screen is pinned to the room.
+    expect(classifyLocaleRoute("/bar-do-ze/admin")).toEqual({ kind: "app" });
+  });
+
+  it("is total — a missing or malformed path degrades to app-wide", () => {
+    for (const input of [null, undefined, "", "///", "/a/b/c", "/BAR/tv", "/b@d/tv"]) {
+      expect(classifyLocaleRoute(input)).toEqual({ kind: "app" });
+    }
+  });
+
+  it("ignores a query string or hash on the forwarded value", () => {
+    expect(classifyLocaleRoute("/bar-do-ze/tv?debug=1")).toEqual({
+      kind: "tv",
+      room: "bar-do-ze",
+    });
+    expect(classifyLocaleRoute("/bar-do-ze#top")).toEqual({
+      kind: "room",
+      room: "bar-do-ze",
+    });
+  });
+
+  it("uses an app-specific header name", () => {
+    expect(PATHNAME_HEADER).toBe("x-boraoke-pathname");
+  });
+});
+
+describe("the mirrored room vocabulary does not drift from lib/rooms", () => {
+  it("accepts exactly the ids lib/rooms considers valid", () => {
+    const valid = ["a", "bar-do-ze", "sala1", "x".repeat(64)];
+    const invalid = ["", "BAR", "bar_do_ze", "bar do ze", "x".repeat(65), "acentuação"];
+    for (const id of valid) {
+      expect(isValidRoomId(id)).toBe(true);
+      expect(classifyLocaleRoute(`/${id}/tv`)).toEqual({ kind: "tv", room: id });
+    }
+    for (const id of invalid) {
+      expect(isValidRoomId(id)).toBe(false);
+      expect(classifyLocaleRoute(`/${id}/tv`)).toEqual({ kind: "app" });
+    }
+  });
+
+  it("treats every RESERVED_ROOM_ID as a static route, not a venue", () => {
+    for (const id of RESERVED_ROOM_IDS) {
+      expect(classifyLocaleRoute(`/${id}`)).toEqual({ kind: "app" });
+    }
+  });
+
+  it("mirrors the reserved set EXACTLY, in both directions", () => {
+    // One-directional coverage would miss the worse failure: an entry added here
+    // but NOT reserved in lib/rooms silently demotes a real, mintable venue slug
+    // to a static route, and no "every reserved id is app" test would notice.
+    expect([...RESERVED_FIRST_SEGMENTS].sort()).toEqual([...RESERVED_ROOM_IDS].sort());
+  });
+});
+
+describe("the middleware matcher does not exclude real room slugs", () => {
+  const matches = (path: string) => new RegExp(`^${MIDDLEWARE_MATCHER}$`).test(path);
+
+  it("is duplicated verbatim in middleware.ts (the inline-literal drift guard)", () => {
+    // `middleware.ts` cannot import MIDDLEWARE_MATCHER: Next statically analyses
+    // `export const config` at build time and rejects identifiers it cannot
+    // resolve, so `matcher: [MIDDLEWARE_MATCHER]` fails the BUILD (it compiled
+    // fine locally against a warm .next and broke CI — that is why this guard
+    // exists). The literal therefore lives inline there and the reasoning lives
+    // here; this test is what keeps the two copies equal.
+    const source = readFileSync(join(__dirname, "..", "middleware.ts"), "utf8");
+    const inline = /matcher:\s*\[\s*("(?:[^"\\]|\\.)*")\s*\]/.exec(source);
+    expect(inline).not.toBeNull();
+    // JSON.parse resolves the source-level backslash escapes to the real string.
+    expect(JSON.parse(inline![1])).toBe(MIDDLEWARE_MATCHER);
+  });
+
+  it("runs on room routes whose slug merely STARTS with an excluded word", () => {
+    // Regression guard. An unanchored `api` exclusion also excluded `/api-bar`
+    // and `/apiacas` — both perfectly mintable venue slugs ("API Bar",
+    // "Apiacás") — which silently opted those rooms out of the entire fix and
+    // served them the pre-TICKET-79 wrong `lang`. Likewise an unescaped
+    // `favicon.ico` excluded `/favicon-ico`, since `.` matches any character.
+    for (const path of [
+      "/api-bar",
+      "/api-bar/tv",
+      "/apiacas/tv",
+      "/favicon-ico",
+      "/favicon-ico/tv",
+    ]) {
+      expect(matches(path)).toBe(true);
+    }
+  });
+
+  it("still skips the routes that render no document", () => {
+    for (const path of [
+      "/api/rooms",
+      "/api/queue/advance",
+      "/_next/static/chunk.js",
+      "/_next/image",
+      "/favicon.ico",
+      "/icon.png",
+    ]) {
+      expect(matches(path)).toBe(false);
+    }
+  });
+
+  it("runs on every document route the fix cares about", () => {
+    for (const path of ["/", "/new", "/admin", "/admin/analytics", "/bar-do-ze", "/bar-do-ze/tv"]) {
+      expect(matches(path)).toBe(true);
+    }
+  });
+});

@@ -1,21 +1,24 @@
 /**
- * TICKET-75 — `<html lang>` / content agreement on the venue TV route.
+ * TICKET-75 → TICKET-79 — `<html lang>` / content agreement, now SERVER-SIDE.
  *
- * The root layout sets `<html lang>` from the REQUEST locale (NEXT_LOCALE cookie
- * / Accept-Language), but `/[room]/tv` deliberately renders ROOM-locale messages
- * (a venue screen cannot follow 40 patrons' phones). That served pages as e.g.
- * `lang="es"` with 100% pt-BR copy — broken for screen readers, browser
- * auto-translate and SEO.
+ * The root layout sets `<html lang>` from the next-intl REQUEST locale, but
+ * `/[room]/tv` deliberately renders ROOM-locale messages (a venue screen cannot
+ * follow 40 patrons' phones). That served pages as e.g. `lang="es"` with 100%
+ * pt-BR copy — broken for screen readers, browser auto-translate and SEO.
  *
- * The route now emits `documentLangScript(locale)` from the SAME resolved room
- * locale it hands to the message provider, so the two cannot disagree. These
- * tests pin the helper's contract and the room-locale resolution that feeds it;
- * the App Tester gate confirms the attribute end-to-end in a real browser (the
- * page component itself is JSX, which this ts-jest/node project does not
- * transform).
+ * TICKET-75 could not touch the root layout, so it patched the attribute from an
+ * inline post-hydration script (`documentLangScript`). That left the SERVED HTML
+ * wrong with JS disabled. TICKET-79 replaces it: `resolveRequestLocale` applies
+ * the TV route's room chain inside the request config, upstream of the layout,
+ * so the attribute is right in the response itself and the script is gone.
+ *
+ * These tests keep every TICKET-75 scenario — seeded language, legacy room, host
+ * override, unknown room — and re-point them at the server-side resolver. The
+ * end-to-end proof over raw HTTP lives in `e2e/served-lang.spec.ts`.
  */
-import { documentLangScript, LOCALES } from "@/i18n/locales";
-import { createRoom, getRoomLanguage, setRoomLanguage } from "@/lib/rooms";
+import { resolveRequestLocale } from "@/i18n/resolve-request-locale";
+import { LOCALES } from "@/i18n/locales";
+import { createRoom, setRoomLanguage } from "@/lib/rooms";
 
 async function roomWith(name: string, language?: "pt-BR" | "en" | "es") {
   const created = await createRoom(name, undefined, language);
@@ -23,69 +26,56 @@ async function roomWith(name: string, language?: "pt-BR" | "en" | "es") {
   return created.room.id;
 }
 
-describe("documentLangScript (TICKET-75)", () => {
-  it.each(LOCALES)("emits the assignment for %s", (locale) => {
-    expect(documentLangScript(locale)).toBe(
-      `document.documentElement.lang="${locale}";`,
-    );
+/** The resolution a request for `/<room>/tv` gets, given a patron's context. */
+function tvLocale(
+  room: string,
+  ctx: { cookie?: string; acceptLanguage?: string } = {},
+) {
+  return resolveRequestLocale({
+    pathname: `/${room}/tv`,
+    cookie: ctx.cookie ?? null,
+    acceptLanguage: ctx.acceptLanguage ?? null,
+  });
+}
+
+describe("the TV's served lang follows the ROOM locale (TICKET-75 / TICKET-79)", () => {
+  it.each(LOCALES)("a room seeded with %s serves that lang", async (locale) => {
+    const id = await roomWith(`Bar Lang ${locale}`, locale);
+    await expect(tvLocale(id)).resolves.toBe(locale);
   });
 
-  it("falls back to pt-BR for an absent/unsupported value", () => {
-    for (const bogus of [undefined, null, "", "de", "en-US", "pt", 42]) {
-      expect(documentLangScript(bogus)).toBe(
-        'document.documentElement.lang="pt-BR";',
-      );
-    }
-  });
-
-  it("cannot inject script from a hostile value (fixed enum + JSON encoding)", () => {
-    const hostile = '";</script><script>alert(1)//';
-    const out = documentLangScript(hostile);
-    expect(out).toBe('document.documentElement.lang="pt-BR";');
-    expect(out).not.toContain("</script>");
-    expect(out).not.toContain("alert");
-  });
-});
-
-describe("the TV's lang follows the ROOM locale (TICKET-75)", () => {
-  it.each(["pt-BR", "en", "es"] as const)(
-    "a room seeded with %s renders that lang",
-    async (locale) => {
-      const id = await roomWith(`Bar Lang ${locale}`, locale);
-      // Exactly what the page does: one resolved locale feeds BOTH the message
-      // provider and the document language.
-      const resolved = await getRoomLanguage(id);
-      expect(resolved).toBe(locale);
-      expect(documentLangScript(resolved)).toBe(
-        `document.documentElement.lang="${locale}";`,
-      );
-    },
-  );
-
-  it("a legacy room with no stored language renders lang=pt-BR", async () => {
+  it("a legacy room with no stored language serves lang=pt-BR", async () => {
     const id = await roomWith("Bar Lang Legado");
-    const resolved = await getRoomLanguage(id);
-    expect(resolved).toBe("pt-BR");
-    expect(documentLangScript(resolved)).toBe(
-      'document.documentElement.lang="pt-BR";',
-    );
+    await expect(tvLocale(id)).resolves.toBe("pt-BR");
   });
 
   it("follows the host's manual override, not the seeded value", async () => {
     const id = await roomWith("Bar Lang Override", "en");
     await setRoomLanguage(id, "es");
-    const resolved = await getRoomLanguage(id);
-    expect(resolved).toBe("es");
-    expect(documentLangScript(resolved)).toBe(
-      'document.documentElement.lang="es";',
-    );
+    await expect(tvLocale(id)).resolves.toBe("es");
   });
 
   it("an unknown room id resolves to pt-BR without throwing", async () => {
-    const resolved = await getRoomLanguage("no-such-room-at-all");
-    expect(resolved).toBe("pt-BR");
-    expect(documentLangScript(resolved)).toBe(
-      'document.documentElement.lang="pt-BR";',
-    );
+    await expect(tvLocale("no-such-room-at-all")).resolves.toBe("pt-BR");
+  });
+
+  it("NEVER follows a patron cookie — the whole point of the route", async () => {
+    const id = await roomWith("Bar Lang Cookie", "pt-BR");
+    for (const cookie of LOCALES) {
+      await expect(tvLocale(id, { cookie })).resolves.toBe("pt-BR");
+    }
+  });
+
+  it("NEVER follows Accept-Language either", async () => {
+    const id = await roomWith("Bar Lang Header", "en");
+    await expect(
+      tvLocale(id, { acceptLanguage: "es-ES,es;q=0.9,pt-BR;q=0.8" }),
+    ).resolves.toBe("en");
+  });
+
+  it("the legacy /default room's screen stays pt-BR under any patron context", async () => {
+    await expect(
+      tvLocale("default", { cookie: "es", acceptLanguage: "en-US,en;q=0.9" }),
+    ).resolves.toBe("pt-BR");
   });
 });
