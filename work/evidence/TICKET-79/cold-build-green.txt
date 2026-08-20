@@ -1,0 +1,71 @@
+
+> boraoke@0.1.0 build
+> next build
+
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /Users/paulosalvatore/Documents/GitHub/boraoke/package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/ticket-79/package-lock.json
+
+   ▲ Next.js 15.5.20
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 4.1s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/33) ...
+   Generating static pages (8/33) 
+   Generating static pages (16/33) 
+   Generating static pages (24/33) 
+ ✓ Generating static pages (33/33)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ƒ /                                    4.49 kB         122 kB
+├ ƒ /_not-found                            998 B         103 kB
+├ ƒ /[room]                              8.04 kB         126 kB
+├ ƒ /[room]/admin                        5.39 kB         129 kB
+├ ƒ /[room]/tv                           5.27 kB         128 kB
+├ ƒ /admin                                 180 B         103 kB
+├ ƒ /admin/analytics                     2.32 kB         105 kB
+├ ƒ /api/feedback                          180 B         103 kB
+├ ƒ /api/host/analytics                    180 B         103 kB
+├ ƒ /api/host/language                     180 B         103 kB
+├ ƒ /api/host/login                        180 B         103 kB
+├ ƒ /api/host/mode                         180 B         103 kB
+├ ƒ /api/host/moderation                   180 B         103 kB
+├ ƒ /api/host/pause                        180 B         103 kB
+├ ƒ /api/host/pending                      180 B         103 kB
+├ ƒ /api/host/pending/approve              180 B         103 kB
+├ ƒ /api/host/pending/reject               180 B         103 kB
+├ ƒ /api/host/remove                       180 B         103 kB
+├ ƒ /api/host/reorder                      180 B         103 kB
+├ ƒ /api/host/session                      180 B         103 kB
+├ ƒ /api/host/skip                         180 B         103 kB
+├ ƒ /api/identity                          180 B         103 kB
+├ ƒ /api/queue                             180 B         103 kB
+├ ƒ /api/queue/advance                     180 B         103 kB
+├ ƒ /api/queue/pending                     180 B         103 kB
+├ ƒ /api/rooms                             180 B         103 kB
+├ ƒ /api/search                            180 B         103 kB
+├ ƒ /api/t                                 180 B         103 kB
+├ ○ /apple-icon.png                          0 B            0 B
+├ ○ /icon.png                                0 B            0 B
+├ ƒ /new                                  3.5 kB         130 kB
+├ ○ /robots.txt                            180 B         103 kB
+├ ○ /sitemap.xml                           180 B         103 kB
+└ ƒ /tv                                    180 B         103 kB
++ First Load JS shared by all             102 kB
+  ├ chunks/255-3981a3d1f3561bd8.js       46.3 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)          1.95 kB
+
+
+ƒ Middleware                             33.9 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

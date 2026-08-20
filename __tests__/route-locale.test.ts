@@ -14,6 +14,8 @@ import {
   RESERVED_FIRST_SEGMENTS,
 } from "@/i18n/route-locale";
 import { isValidRoomId, RESERVED_ROOM_IDS } from "@/lib/rooms";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 describe("classifyLocaleRoute (TICKET-79)", () => {
   it("classifies the venue TV as room-locale", () => {
@@ -110,6 +112,20 @@ describe("the mirrored room vocabulary does not drift from lib/rooms", () => {
 
 describe("the middleware matcher does not exclude real room slugs", () => {
   const matches = (path: string) => new RegExp(`^${MIDDLEWARE_MATCHER}$`).test(path);
+
+  it("is duplicated verbatim in middleware.ts (the inline-literal drift guard)", () => {
+    // `middleware.ts` cannot import MIDDLEWARE_MATCHER: Next statically analyses
+    // `export const config` at build time and rejects identifiers it cannot
+    // resolve, so `matcher: [MIDDLEWARE_MATCHER]` fails the BUILD (it compiled
+    // fine locally against a warm .next and broke CI — that is why this guard
+    // exists). The literal therefore lives inline there and the reasoning lives
+    // here; this test is what keeps the two copies equal.
+    const source = readFileSync(join(__dirname, "..", "middleware.ts"), "utf8");
+    const inline = /matcher:\s*\[\s*("(?:[^"\\]|\\.)*")\s*\]/.exec(source);
+    expect(inline).not.toBeNull();
+    // JSON.parse resolves the source-level backslash escapes to the real string.
+    expect(JSON.parse(inline![1])).toBe(MIDDLEWARE_MATCHER);
+  });
 
   it("runs on room routes whose slug merely STARTS with an excluded word", () => {
     // Regression guard. An unanchored `api` exclusion also excluded `/api-bar`

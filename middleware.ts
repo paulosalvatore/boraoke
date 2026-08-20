@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { MIDDLEWARE_MATCHER, PATHNAME_HEADER } from "@/i18n/route-locale";
+import { PATHNAME_HEADER } from "@/i18n/route-locale";
 
 /**
  * Pathname-forwarding middleware (TICKET-79).
@@ -30,9 +30,24 @@ export function middleware(request: NextRequest) {
 export const config = {
   /**
    * Document routes only. API routes, Next's build output, and static assets do
-   * not render `<html>`, so they carry none of this cost. The pattern lives in
-   * `i18n/route-locale.ts` next to the classification it feeds — see the comment
-   * there for why each exclusion is anchored the way it is.
+   * not render `<html>`, so they carry none of this cost.
+   *
+   * THIS LITERAL MUST STAY INLINE — do not refactor it into a named constant,
+   * however much it wants to be single-sourced with the classification it feeds.
+   * Next.js statically analyses `export const config` at build time and cannot
+   * resolve identifiers, so `matcher: [SOME_CONSTANT]` fails the build outright:
+   *
+   *     ⨯ Next.js can't recognize the exported `config` field in route
+   *       "/middleware": Unknown identifier "MIDDLEWARE_MATCHER" at
+   *       "config.matcher[0]".
+   *
+   * That is exactly what happened here: the constant read better, compiled fine
+   * locally against a warm `.next`, and broke CI. The duplication below is the
+   * price of that constraint, and it is held in sync by an explicit drift guard
+   * (`__tests__/route-locale.test.ts`) which parses THIS file's source and
+   * asserts the literal equals `MIDDLEWARE_MATCHER` in `i18n/route-locale.ts`,
+   * where the reasoning for each anchored exclusion lives. Change one and the
+   * test fails until you change the other.
    */
-  matcher: [MIDDLEWARE_MATCHER],
+  matcher: ["/((?!api/|_next/static|_next/image|favicon\\.ico|.*\\.[\\w]+$).*)"],
 };

@@ -60,8 +60,16 @@ export const RESERVED_FIRST_SEGMENTS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The middleware's `matcher` pattern — document routes only, single-sourced here
- * beside the classification it feeds so the two cannot drift.
+ * The middleware's `matcher` pattern — document routes only.
+ *
+ * `middleware.ts` CANNOT import this: Next.js statically analyses
+ * `export const config` at build time and rejects any identifier it cannot
+ * resolve (`Unknown identifier "MIDDLEWARE_MATCHER" at "config.matcher[0]"`),
+ * so the pattern is duplicated as an inline literal there. This copy is the
+ * documented one — it carries the reasoning below and is what the tests assert
+ * against — and `__tests__/route-locale.test.ts` parses `middleware.ts` and
+ * fails if the two ever disagree. Keep the reasoning here; keep the literal
+ * there; let the drift guard keep them equal.
  *
  * Every exclusion is anchored deliberately, because a room slug is
  * `[a-z0-9-]{1,64}` and therefore collides with careless prefixes:
