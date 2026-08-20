@@ -7,7 +7,12 @@
  * mirrors `lib/rooms`'s room-id vocabulary instead of importing it — the last
  * describe block is the drift guard on that mirror.
  */
-import { classifyLocaleRoute, PATHNAME_HEADER } from "@/i18n/route-locale";
+import {
+  classifyLocaleRoute,
+  MIDDLEWARE_MATCHER,
+  PATHNAME_HEADER,
+  RESERVED_FIRST_SEGMENTS,
+} from "@/i18n/route-locale";
 import { isValidRoomId, RESERVED_ROOM_IDS } from "@/lib/rooms";
 
 describe("classifyLocaleRoute (TICKET-79)", () => {
@@ -92,6 +97,53 @@ describe("the mirrored room vocabulary does not drift from lib/rooms", () => {
   it("treats every RESERVED_ROOM_ID as a static route, not a venue", () => {
     for (const id of RESERVED_ROOM_IDS) {
       expect(classifyLocaleRoute(`/${id}`)).toEqual({ kind: "app" });
+    }
+  });
+
+  it("mirrors the reserved set EXACTLY, in both directions", () => {
+    // One-directional coverage would miss the worse failure: an entry added here
+    // but NOT reserved in lib/rooms silently demotes a real, mintable venue slug
+    // to a static route, and no "every reserved id is app" test would notice.
+    expect([...RESERVED_FIRST_SEGMENTS].sort()).toEqual([...RESERVED_ROOM_IDS].sort());
+  });
+});
+
+describe("the middleware matcher does not exclude real room slugs", () => {
+  const matches = (path: string) => new RegExp(`^${MIDDLEWARE_MATCHER}$`).test(path);
+
+  it("runs on room routes whose slug merely STARTS with an excluded word", () => {
+    // Regression guard. An unanchored `api` exclusion also excluded `/api-bar`
+    // and `/apiacas` — both perfectly mintable venue slugs ("API Bar",
+    // "Apiacás") — which silently opted those rooms out of the entire fix and
+    // served them the pre-TICKET-79 wrong `lang`. Likewise an unescaped
+    // `favicon.ico` excluded `/favicon-ico`, since `.` matches any character.
+    for (const path of [
+      "/api-bar",
+      "/api-bar/tv",
+      "/apiacas/tv",
+      "/favicon-ico",
+      "/favicon-ico/tv",
+    ]) {
+      expect(matches(path)).toBe(true);
+    }
+  });
+
+  it("still skips the routes that render no document", () => {
+    for (const path of [
+      "/api/rooms",
+      "/api/queue/advance",
+      "/_next/static/chunk.js",
+      "/_next/image",
+      "/favicon.ico",
+      "/icon.png",
+    ]) {
+      expect(matches(path)).toBe(false);
+    }
+  });
+
+  it("runs on every document route the fix cares about", () => {
+    for (const path of ["/", "/new", "/admin", "/admin/analytics", "/bar-do-ze", "/bar-do-ze/tv"]) {
+      expect(matches(path)).toBe(true);
     }
   });
 });

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { PATHNAME_HEADER } from "@/i18n/route-locale";
+import { MIDDLEWARE_MATCHER, PATHNAME_HEADER } from "@/i18n/route-locale";
 
 /**
  * Pathname-forwarding middleware (TICKET-79).
@@ -30,7 +30,9 @@ export function middleware(request: NextRequest) {
 export const config = {
   /**
    * Document routes only. API routes, Next's build output, and static assets do
-   * not render `<html>`, so they carry none of this cost.
+   * not render `<html>`, so they carry none of this cost. The pattern lives in
+   * `i18n/route-locale.ts` next to the classification it feeds — see the comment
+   * there for why each exclusion is anchored the way it is.
    */
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)"],
+  matcher: [MIDDLEWARE_MATCHER],
 };

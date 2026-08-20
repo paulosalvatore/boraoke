@@ -51,13 +51,34 @@ const ROOM_ID_RE = /^[a-z0-9-]{1,64}$/;
  * inherit a patron's cookie. (`getRoomLanguage` returns pt-BR for a room with no
  * record, which is precisely the behavior TICKET-75's script produced there.)
  */
-const RESERVED_FIRST_SEGMENTS: ReadonlySet<string> = new Set([
+export const RESERVED_FIRST_SEGMENTS: ReadonlySet<string> = new Set([
   "new",
   "api",
   "tv",
   "admin",
   "default",
 ]);
+
+/**
+ * The middleware's `matcher` pattern — document routes only, single-sourced here
+ * beside the classification it feeds so the two cannot drift.
+ *
+ * Every exclusion is anchored deliberately, because a room slug is
+ * `[a-z0-9-]{1,64}` and therefore collides with careless prefixes:
+ *
+ * - `api/` keeps its trailing slash. A bare `api` prefix would also exclude
+ *   `/api-bar`, `/apiacas`, … — real, mintable venue slugs ("API Bar",
+ *   "Apiacás") — which would silently opt those rooms out of the whole fix and
+ *   serve them the pre-TICKET-79 wrong `lang`.
+ * - `favicon\.ico` escapes its dot. Unescaped, `.` matches any character, so
+ *   `/favicon-ico` (a venue named "Favicon Ico") would be excluded too.
+ * - `_next/*` needs no such care — `_` cannot appear in a room slug.
+ *
+ * The final alternative drops anything with a file extension (static assets);
+ * a room slug cannot contain `.`, so it is safe as written.
+ */
+export const MIDDLEWARE_MATCHER =
+  "/((?!api/|_next/static|_next/image|favicon\\.ico|.*\\.[\\w]+$).*)";
 
 /**
  * How a route wants its locale resolved.
