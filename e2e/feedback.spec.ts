@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { warmFeedbackRoute } from "./helpers";
 
 /**
  * E2E: the feedback widget (TICKET-11).
@@ -6,6 +7,13 @@ import { test, expect } from "@playwright/test";
  *  - A patron can submit sentiment-only feedback in 2 taps (open + tap a face)
  *    and see the confirmation promise.
  */
+
+// TICKET-94: warm the route the widget submits to BEFORE any assertion. Its
+// first compile under `next dev` otherwise lands inside the 5s confirmation
+// timeout below and fails a working product path.
+test.beforeEach(async ({ request }) => {
+  await warmFeedbackRoute(request);
+});
 
 test("feedback button is present on the patron page and submits in 2 taps", async ({ page }) => {
   await page.goto("/default");

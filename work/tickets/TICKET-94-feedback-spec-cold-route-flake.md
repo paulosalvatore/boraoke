@@ -62,3 +62,55 @@ Follow the TICKET-88 standard exactly, and do not invent a parallel mechanism:
 
 Whether any other route is in the same never-warmed-by-anyone position — `grep` each `app/api/*`
 route against `e2e/` — so this class is closed by enumeration rather than one instance at a time.
+
+---
+
+# RESOLVED — 2026-09-01, with the class closed by enumeration
+
+## The fix
+
+- `warmFeedbackRoute()` added to `e2e/helpers.ts`, called from a `beforeEach` in `feedback.spec.ts`
+  before any assertion. The body is **invalid on purpose**: `/api/feedback` rejects an unknown
+  `sentiment` with a 400 *before writing anything*, so the route compiles without planting a junk
+  record in the feedback store — the same fire-to-compile posture as the dummy ids in
+  `warmModerationRoutes`.
+- **No timeout was changed**, per the TICKET-88 standard.
+
+## The class was closed by enumeration, not one instance at a time
+
+The ticket asked for every `app/api/*` route to be checked against `e2e/`. Doing that found **two**
+routes referenced by no spec at all:
+
+| Route | Reached from | Status |
+|---|---|---|
+| `/api/feedback` | `components/feedback/FeedbackSheet.tsx` | the observed flake — fixed here |
+| `/api/host/language` | `app/(patron)/[room]/admin/AdminRoom.tsx` | **same latent shape, found by the sweep** |
+
+`/api/host/language` is POSTed by the admin language select and no spec compiles it, so the first
+console test to touch that control would have hit exactly this failure. It is now warmed in
+`warmModerationRoutes` alongside the other console routes — fixed *before* it ever cost anyone a
+debugging session. Every other route is referenced by at least one spec.
+
+## Proven by negative control, not by "it passes now"
+
+Passing in isolation was always true and proves nothing. The reproduction condition is a **cold
+`.next`**:
+
+- Warm **disabled** + cold `.next` → **FAILS** with the exact reported error,
+  `expect(locator).toBeVisible() failed` on the confirmation copy.
+- Warm **enabled** + cold `.next` → **passes**.
+
+That is the flake reproduced on demand and then closed, rather than inferred.
+
+## Gate
+
+- Jest **52 suites / 918 passed**.
+- Playwright, the six specs that use the modified `warmModerationRoutes` plus `feedback.spec.ts`:
+  **50 tests passed** (`moderation`, `host-controls`, `rotation-modes`, `feedback`, `contrast`,
+  `render-and-links`, `feedback-widget-safe-area`).
+- **The full 106-test suite was deliberately NOT run**: host load average was 19.5 from other work
+  on this machine, and a full run under that load is both slow and prone to producing environment
+  failures that read as product failures — precisely the misattribution this ticket is about. The
+  change is additive (one extra fire-to-compile POST in a shared helper, one `beforeEach`), and
+  every spec touching the modified helper was run. Stated here rather than implied, so nobody reads
+  this as a full-suite green.

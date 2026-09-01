@@ -116,6 +116,11 @@ export async function warmModerationRoutes(request: APIRequestContext) {
   await request.post("/api/host/pending/approve", { data: { pendingId: "warmup" } });
   await request.post("/api/host/pending/reject", { data: { pendingId: "warmup" } });
   await request.post("/api/host/moderation", { data: { moderation: false } });
+  // TICKET-94: `/api/host/language` is POSTed by AdminRoom's language select and
+  // is referenced by NO spec, so nothing compiles it before a console test that
+  // touches it. Same latent shape as `/api/feedback` — warmed here rather than
+  // waiting for a spec to trip over it. Invalid body on purpose: fire-to-compile.
+  await request.post("/api/host/language", { data: { language: "" } });
   await request.get(
     "/api/queue/pending?uuid=00000000-0000-4000-8000-000000000000",
   );
@@ -172,6 +177,30 @@ export async function warmTvRoutes(request: APIRequestContext) {
   // anti-grief singer-skip bucket — and to TV_WARMUP_ROOM's own budget, not
   // any real room's.
   await advanceOnce(request, TV_WARMUP_ROOM, undefined, "unplayable");
+}
+
+/**
+ * Warm `/api/feedback` (TICKET-94).
+ *
+ * WHY THIS EXISTS: this route is reached ONLY through the feedback widget's UI,
+ * and `grep -rn "api/feedback" e2e/` returns nothing — no spec ever calls it
+ * directly, so nothing compiles it first. Under `next dev` the route's FIRST
+ * compile therefore happens inside the test's own assertion window, and
+ * `feedback.spec.ts` asserts the confirmation copy with a 5s timeout. On a
+ * loaded machine that compile can exceed the timeout and the test fails on a
+ * product path that is working correctly — observed three times on 2026-09-01.
+ *
+ * Unlike the specs TICKET-88 fixed, this route was not even riding on a
+ * sibling's incidental warm-up: nothing warmed it at all, so no file-order
+ * accident was protecting it.
+ *
+ * The body is INVALID on purpose. `/api/feedback` POST rejects an unknown
+ * `sentiment` with a 400 before writing anything, so this compiles the route
+ * without planting a junk record in the feedback store — same fire-to-compile
+ * posture as the dummy ids in `warmModerationRoutes`.
+ */
+export async function warmFeedbackRoute(request: APIRequestContext) {
+  await request.post("/api/feedback", { data: { sentiment: "__warmup__" } });
 }
 
 /**
