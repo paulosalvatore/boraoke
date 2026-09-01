@@ -1,2 +1,1 @@
-{"v": "1", "ts": "2026-09-01T19:11:10Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-96", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/96-nits", "short_sha": "2128f41", "message_slug": "fix(jest): stop scanning .worktrees, and close the TICKET-96 review nits"}}
-{"v": "1", "ts": "2026-09-01T19:12:10Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-96", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/96-nits", "short_sha": "8d7381d", "message_slug": "fix(jest): anchor the .worktrees ignore to rootDir"}}
+{"v": "1", "ts": "2026-09-01T19:12:37Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-96", "pr": null, "event": "worktree_removed", "payload": {"branch": "ticket/96-nits"}}

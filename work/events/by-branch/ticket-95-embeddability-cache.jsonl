@@ -1,1 +1,2 @@
 {"v": "1", "ts": "2026-09-01T17:37:31Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-95", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/95-embeddability-cache", "short_sha": "f691c98", "message_slug": "TICKET-95: cross-instance cache for the embeddability pre-check, tighten"}}
+{"v": "1", "ts": "2026-09-01T19:07:51Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-95", "pr": null, "event": "worktree_removed", "payload": {"branch": "ticket/95-embeddability-cache"}}
