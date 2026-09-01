@@ -151,3 +151,53 @@ and it would have caught this exact defect the day the dependency was added. Not
 *parse-level* breakage only — runtime API gaps (a missing `Intl` feature, an unsupported CSS
 property) still need a real or emulated device, so this complements TICKET-99 rather than replacing
 it.
+
+---
+
+# FIX MERGED (PR #76) — BUT NOT YET IN PRODUCTION
+
+**Status 2026-09-01 evening: fix merged and verified locally; production still serves the broken bundle.**
+
+## What is fixed and proven
+
+- `transpilePackages` for the next-intl stack and `uuid`; explicit `browserslist` (`chrome >= 68`).
+- `scripts/check-bundle-es-target.mjs` parses every emitted chunk at ES2019, wired into `npm run build`.
+- **All 47 chunks parse at ES2019**, where two did not before.
+- Negative control: dropping the real pre-fix production chunk into the build makes the gate exit 1.
+  Empty-scan guard also exits 1, so it cannot report a false OK by scanning nothing.
+- The gate found a **second** offender (`uuid`) that manual analysis had missed.
+- Jest 52 suites / 918 passed; rotation-engine 59; Playwright 106/106.
+
+## The deploy is blocked, and this must not be mistaken for "shipped"
+
+```
+Resource is limited - try again in 24 hours
+(more than 100, code: "api-deployments-free-per-day")
+```
+
+boraoke's Vercel account hit the **free-tier cap of 100 deployments/day**. Production therefore
+still serves the OLD bundle — verified directly: `https://boraoke.com/default/tv` still references
+`955-fa0cb7013a87d4cd.js`, the exact chunk that fails to parse below ES2022.
+
+**Promoting the existing preview does not work around it.** The fix branch's preview build
+(`boraoke-1xv6pscxu`) contains the corrected code, but `vercel promote` on a non-production
+deployment triggers a **new production build**, which hits the same cap.
+
+**So: an LG TV still cannot run boraoke right now.** The fix exists, is verified, and is one deploy
+away — but "merged" is not "live", and the TL's TV will behave exactly as it did on 2026-08-27
+until that deploy happens.
+
+## Why the cap was reached
+
+Every push to a PR branch triggers a preview build. Today saw six PRs with multiple pushes each,
+plus subagent pushes — enough to exhaust a 100/day allowance on its own. This is a cost of the
+current process, not a one-off accident, and it will recur on any similarly busy day.
+
+## Options for the Tech Lead
+
+1. **Wait for the window to clear (~24h)** and deploy then. Free. This is what was chosen the last
+   time the cap was hit (2026-08-08, recorded on the board).
+2. **Upgrade to Vercel Pro.** Removes the cap and unblocks immediately, but it is money and
+   therefore his call.
+
+Either way the deploy itself is a single command; nothing else is blocking it.
