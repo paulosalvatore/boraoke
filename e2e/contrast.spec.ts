@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
+import { warmModerationRoutes, warmTvRoutes } from "./helpers";
 
 /**
  * TICKET-60 — Computed-style contrast assertions.
@@ -222,9 +223,8 @@ test.describe("contrast math sanity (proves the function before it's trusted)", 
   });
 });
 
-// ─── App fixtures (mirrors render-and-links.spec.ts's warm-up/seed helpers;
-//     duplicated intentionally — this file inlines its own since we may not
-//     edit e2e/helpers.ts, which a sibling ticket owns) ───────────────────
+// ─── App fixtures (seed helpers inlined; route warm-up reuses the shared
+//     helpers in e2e/helpers.ts — see warmUp below) ──────────────────────
 
 const DEV_TOKEN = "cantai-dev-host";
 const YT_ID = "dQw4w9WgXcQ";
@@ -235,6 +235,22 @@ const uuid = () =>
 
 async function warmUp(page: Page) {
   const req = page.request;
+
+  // TICKET-92 — same latent warm-up gap TICKET-88 root-caused and fixed for
+  // rotation-modes/render-and-links: under `next dev` a route's FIRST compile
+  // re-evaluates the in-memory store module and resets its singleton, wiping
+  // any state seeded before that compile. This spec seeds queue state and then
+  // lands on an AUTHED `/[room]/admin` (mounts the 3s poll of
+  // `/api/host/pending`) and on the patron room (polls `/api/queue/pending`) —
+  // neither of which the goto's below compile. It also seeds then loads `/tv`.
+  // Those routes stayed cold here and were only warmed by file-sort accident
+  // (a sibling spec compiling them earlier), which is exactly the fragile
+  // coupling TICKET-88 removed. Warm them explicitly through the shared helpers
+  // BEFORE any seeding — never rely on file order or a sibling's side effects.
+  // No timeout is inflated as a substitute (TICKET-88 standard).
+  await warmModerationRoutes(req);
+  await warmTvRoutes(req);
+
   await req.post("/api/rooms", { data: { name: "warmup-contrast" } });
   await req.post("/api/host/login", { data: { token: DEV_TOKEN } });
   await req.get("/api/host/session");
