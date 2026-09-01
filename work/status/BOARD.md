@@ -263,6 +263,8 @@ Full sweep of the TL prompt archive + code + backlog. Detail: `work/planning/bor
 
 ## Notes
 
+- **2026-09-01 — `secret-scan.sh` flags `cantai-dev-host` in `work/evidence/TICKET-89/`. It is a FALSE POSITIVE; do not "rotate" it.** The string is the **dev fallback host token**, hardcoded deliberately across the e2e suite (`e2e/helpers.ts:26` and four specs) and exported from `lib/host-auth.ts:78`. It cannot authenticate against production: `resolveRoomToken` returns the fallback only when `process.env.NODE_ENV !== "production"` (`lib/host-auth.ts:131`), and production with `HOST_TOKEN` unset returns `null` — host controls **lock**, they do not fall back (`:132`, documented at `:16`). `HOST_TOKEN` **is** set in Vercel Production (verified 2026-09-01). This repo is public, so the check was worth making rather than assuming; recorded here so the next agent does not re-investigate, and so nobody "fixes" it by changing a constant the whole e2e suite depends on.
+
 - ~~Branch protection on `main`: SKIPPED — GitHub Free + private repo (403); gates are process-enforced (D-011).~~ **OBSOLETE on both clauses, corrected 2026-08-06.** The repo is **public**, not private, and the protection API returns **404 (not protected)**, not 403 — neither predicate holds. **DECIDED 2026-08-06 (interactive, TL present): leave `main` unprotected — TICKET-59 closed WON'T-DO.** Accepted risk, recorded plainly: there is no protection and no rulesets, so a fresh 0-behind worktree can push straight to `main` and auto-deploy live boraoke.com; the near-miss heartbeat #32 found was stopped by a stale branch (non-fast-forward), not by a safety net. Gates remain process-enforced (D-011) with deliberately no server-side backstop.
 
 ## Tickets
