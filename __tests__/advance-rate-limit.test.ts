@@ -1,6 +1,7 @@
 /**
- * TICKET-45 — per-room advance rate limiter: unit tests for the dual-bucket
- * (per-room) sliding window, plus a route-level check that an over-limit advance
+ * TICKET-45 — per-room advance rate limiter: unit tests for the three-bucket
+ * (per-room) sliding window — singer-skip, unplayable, and the TICKET-96 total
+ * bucket charged by every advance — plus a route-level check that an over-limit advance
  * gets a 429 and never reaches the store.
  */
 import { NextRequest } from "next/server";
@@ -8,6 +9,7 @@ import {
   advanceRateLimitOk,
   ADVANCE_RATE_ROOM_MAX,
   ADVANCE_RATE_UNPLAYABLE_ROOM_MAX,
+  ADVANCE_RATE_TOTAL_ROOM_MAX,
   ADVANCE_RATE_WINDOW_MS,
   _resetAdvanceRateLimit,
 } from "@/lib/advance-rate-limit";
@@ -117,7 +119,7 @@ describe("advanceRateLimitOk (unit)", () => {
       const unplayable = i % 2 === 0;
       if (advanceRateLimitOk("roomA", { unplayable }, NOW + i)) successes++;
     }
-    expect(successes).toBe(40);
+    expect(successes).toBe(ADVANCE_RATE_TOTAL_ROOM_MAX);
   });
 
   it("legacy 2-arg call (roomId, now) still charges the singer-skip bucket", () => {
