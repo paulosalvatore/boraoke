@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-01T15:48:52Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "ticket-92-contrast-deflake", "short_sha": "6b8242e", "message_slug": "TICKET-92: deflake contrast.spec.ts — warm authed/pending/tv routes via "}}
