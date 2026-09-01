@@ -12,7 +12,13 @@ const config: Config = {
   // are pure infrastructure noise, but they read exactly like real breakage —
   // and the passing-test COUNT still goes up, so a run that only checks "Tests:"
   // looks greener than green while 16 suites are failing.
-  testPathIgnorePatterns: ["/node_modules/", "/.worktrees/"],
+  // Anchored to <rootDir> ON PURPOSE. A bare "/.worktrees/" also matches when the
+  // run is started FROM inside a worktree (rootDir is then the worktree itself and
+  // every test path contains /.worktrees/), which ignores the entire suite and
+  // reports a cheerful "No tests found" — worse than the problem it fixes, since
+  // that is where every agent actually runs. Anchoring means: ignore worktrees
+  // nested BELOW this rootDir, never the rootDir we are running in.
+  testPathIgnorePatterns: ["/node_modules/", "<rootDir>/.worktrees/"],
   modulePathIgnorePatterns: ["<rootDir>/.worktrees/"],
   // TICKET-56 FU-7, fixed at the class level rather than per call site:
   // several tests spy on `console.warn` and restore it as the LAST statement
