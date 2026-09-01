@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-01T19:40:35Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-98", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/98-es-target", "short_sha": "bd5ab81", "message_slug": "TICKET-98: downlevel dependency syntax so the app can boot on a TV, and "}}
