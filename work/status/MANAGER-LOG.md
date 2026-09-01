@@ -1,5 +1,21 @@
 # boraoke — Manager Log
 
+## 2026-09-01 (late night) — ⏸️ TICKET-99 runtime half STARTED then HELD under a fleet-wide load throttle; feasibility still genuinely undecided
+
+**Written for a stranger.** `main` at `a576af0`, clean. Two worktrees, both intentional: `.worktrees/t101-landing` (PR #79, held for the TL) and `.worktrees/t99-runtime` (branch `ticket/99-runtime-check`, checkpointed at `08d38df`, clean and pushed). No open PR from this work.
+
+**Why this was started.** Production is now verified fixed, but "boraoke works down to Chrome 68" is proven only by **static** analysis — the bundle parses at ES2019 and the `/tv` CSS uses nothing past 68. It has never been **executed** on an old browser, and neither static check can see an API that exists but *behaves* differently on old Chromium. That is the runtime half of TICKET-99.
+
+**Feasibility was probed before any agent was spent, and it looked good.** Chromium snapshot **rev 561733 (~Chrome 68 — exactly our declared floor)** returns 200 for **Mac x86_64**, and Rosetta 2 is installed and running on this arm64 host. `Mac_Arm` has **no** old snapshots (404), so x86_64-under-Rosetta is the only path — worth recording so nobody re-hunts for an arm64 build. Available rungs if a ladder is wanted: `856583` (~87), `911515` (~94).
+
+**What is actually established on disk** (see `work/reports/TICKET-99-runtime-checkpoint.md` on the branch): the snapshot downloads and unzips to a valid x86_64 Mach-O that clears quarantine; the real `/tv` selectors to assert on are `data-testid="tv-root"` and `tv-chrome` (always present) with `tv-idle` vs `tv-hero` depending on queue state — so the harness can assert genuine render rather than a guessed selector; and the negative-control base commit is **`58b44f8`** (immediately pre-PR-76, the unparseable-on-Chrome-68 build).
+
+**The open question, stated honestly as undecided.** The launch probe **did not settle feasibility**. Old Chromium stayed alive but never bound the CDP port and never forked a GPU/renderer child over ~2 minutes, with zero log output. That is ambiguous between a genuine macOS 26.5 incompatibility and simple host contention — the box was at load ~79–98 on **10 cores** at the time. **No verdict was recorded in either direction**, which is the correct outcome: a guessed "infeasible" would have killed a viable approach, and a guessed "works" would have been the exact false-green this ticket exists to prevent. The resume step is the cheap one — re-run the standalone launch probe on a quiet host *before* writing any harness code.
+
+**Held, not abandoned.** A fleet-wide throttle landed mid-flight (host at ~8–10x cores; other tabs were running a Docker VM at 89%, concurrent `npm ci`/`npm install`, and a Playwright suite — **boraoke itself was contributing nothing**, its heavy phase had not started). The Dev was told to kill everything, checkpoint to disk, commit and push, and open no PR. Verified independently afterwards: zero Chromium, zero dev servers, zero test runners, ports free, worktree clean and pushed.
+
+**One piece of stray state cleaned up.** A throwaway detached-HEAD worktree at the scratchpad path (pre-fix commit `58b44f8`) had been registered against boraoke's git. Removed with a plain `git worktree remove` — **no `--force`** — after confirming it held zero tracked changes and zero commits. That order matters: forcing a worktree removal without checking destroyed a reviewer's uncommitted report earlier today.
+
 ## 2026-09-01 (late night, post-compaction) — 🟢 DEPLOY VERIFIED AGAINST PRODUCTION: the TV fix is LIVE, and "merged" was not taken as evidence
 
 **Written for a stranger.** HEAD `main` at `edff5a2`, clean. One deliberate worktree (`.worktrees/t101-landing`, PR #79 held). Zero product code changed by this entry.
