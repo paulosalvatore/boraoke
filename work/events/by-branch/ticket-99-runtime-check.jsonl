@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-01T23:51:52Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-99", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/99-runtime-check", "short_sha": "8f69ab9", "message_slug": "TICKET-99: runtime checkpoint — launch probe inconclusive, paused for fl"}}
