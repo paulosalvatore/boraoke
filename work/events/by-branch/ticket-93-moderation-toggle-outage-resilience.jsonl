@@ -1,1 +1,2 @@
 {"v": "1", "ts": "2026-09-01T17:15:24Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-93", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/93-moderation-toggle-outage-resilience", "short_sha": "4787aca", "message_slug": "TICKET-93: a Redis outage during the moderation drain must not strand pa"}}
+{"v": "1", "ts": "2026-09-01T17:16:02Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-93", "pr": null, "event": "worktree_removed", "payload": {"branch": "ticket/93-moderation-toggle-outage-resilience"}}
