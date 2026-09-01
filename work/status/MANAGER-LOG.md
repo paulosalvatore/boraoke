@@ -1,5 +1,23 @@
 # boraoke — Manager Log
 
+## 2026-09-01 (late night) — 🟢 PR #77 MERGED — the second failure mode closed and gated; TICKET-99's no-browser half delivered
+
+**Written for a stranger.** HEAD `main` at `4092d49`+events, clean, zero open PRs, zero worktrees.
+
+**What #77 closes.** PR #76 fixed the *parse* floor and declared `chrome >= 68`, but the CSS did not honour that declaration: the TV stylesheet alone carried **10 flex-`gap` rules** (Chrome 84) and **2 `inset` shorthands** (87). This matters because **CSS fails silently** — an unsupported property is dropped, never thrown — so after #76 an old webOS set would have *booted* and then rendered with its spacing collapsed, reporting nothing. That is a worse failure to diagnose than the original, because it looks like a design bug rather than a compatibility one, and it would very likely have been reported as a regression on the TL's next retest.
+
+**The fix, and the trap that shaped it.** `tv.module.css` now uses `> * + *` sibling margins instead of flex `gap`, and longhand `top/right/bottom/left` instead of `inset`. It is a **removal, not a progressive enhancement**, and that is deliberate: **`@supports (gap: 1px)` reports TRUE on old Chrome**, because *grid* gap shipped in 66 while *flex* gap only arrived in 84 — so the obvious `@supports` guard passes exactly where it is needed and the fallback never applies. The same fact is why `scripts/check-css-target.mjs` detects flex gap **per rule** (a block that is both `display:flex` and has `gap`) rather than by property name, which cannot tell the safe grid case from the unsafe flex one. Both facts are written into the file header so a later "improvement" does not quietly undo it.
+
+**The gate, and why it is scoped strict/advisory.** `check-css-target.mjs` **fails the build** for the TV surface (`tv.module.css`, `globals.css`) and **reports** phone/desktop surfaces as advisory. That split is precisely what allowed the television to be fixed today **without waiting on the product decision** about which TVs boraoke supports — a decision that is the Tech Lead's and is still open. If that decision later says "support old TVs everywhere", promoting `app/page.module.css`, `LanguageSwitcher` and `FeedbackWidget` into the strict list is a one-line change; the advisory output already names them. It also refuses to pass an **empty scan**, so a zero result can never mean zero files scanned.
+
+**Verified by measurement, not inspection.** Adjacent up-next rail cards sit **29px** apart at a 1920 viewport against `gap: 1.5vw` = **28.8px** — the sibling margins reproduce the original spacing exactly, so this is a compatibility change at **zero visual cost** on modern browsers. The gate fails on the pre-fix file and passes after. Playwright **106/106** including the TV layout specs at 1920x1080 and 1440x900; Jest **52 suites / 918 passed**; build green with both gates wired into `npm run build`.
+
+**Where TICKET-99 now stands.** Its **no-browser half is delivered**: two build gates (ES parse + CSS features) that catch the exact classes that broke the TL's night, needing no TV, no emulator and no device farm. What remains is the **runtime** half — a pinned-**Chromium** check for API/behaviour gaps that neither gate can see, since parse-level and property-level checks say nothing about an API that exists but behaves differently. Recorded on that ticket: **never build it on WebKit** — a WebKit probe loaded both the landing page and `/tv` cleanly with zero errors, including under a webOS user-agent, so it would have produced a permanent false green on the very defect we were hunting.
+
+**Scoped honestly, and stated so it is not mistaken for more than it is.** #77 fixes the surface a television actually renders (`/[room]/tv`). A TV pointed at the **landing page** would still lose its spacing below Chrome 84. That is correct scoping rather than an oversight, and it is now part of the which-TVs decision bundled for the TL.
+
+**Still open, neither closable from this tab:** #76 and #77 **deploy when the Vercel daily window resets** (the TL chose to wait rather than upgrade) — the closing check is to confirm the *live served* chunk parses clean at the target, not merely that main is green; and the TL's **LG model / webOS version**, which decides whether these two fixes are the complete explanation of 2026-08-27.
+
 ## 2026-09-01 (night) — 🔴 THE TL'S REAL TEST CAPTURED, ROOT-CAUSED AND FIXED IN ONE PASS — PR #76 merged (deploy blocked on quota); four tickets filed; a second, quieter failure mode found
 
 **Written for a stranger.** This entry covers the pivot that made everything above it secondary. HEAD `main` at the TICKET-101 docs commit, clean, zero open PRs, zero worktrees.
