@@ -16,7 +16,7 @@ import { POST as REJECT_POST } from "@/app/api/host/pending/reject/route";
 import { store } from "@/lib/store";
 import { pendingStore } from "@/lib/pending-store";
 import { telemetryStore } from "@/lib/telemetry-store";
-import { createRoom } from "@/lib/rooms";
+import { createRoom, setRoomModeration } from "@/lib/rooms";
 import { issueSession, hostCookieName } from "@/lib/host-auth";
 
 const VIDEO = "dQw4w9WgXcQ";
@@ -257,6 +257,49 @@ describe("moderation ON → OFF auto-rejects stranded pending (TICKET-49)", () =
     const room = await freshRoom("Turn On Bar");
     await telemetryStore.clear();
     expect((await setModeration(room, true)).status).toBe(200); // OFF → ON
+    await flush();
+    expect((await lastModerationChange(room))?.rejectedPending).toBe(0);
+  });
+
+  it("an OFF → OFF write DRAINS strays left by a failed transition (FU-1b self-heal)", async () => {
+    // The scenario this exists for: moderation was flipped ON → OFF, but the
+    // bulk-reject could not flip everything (a Redis outage — the store degrades
+    // to 0 flipped instead of throwing, so the toggle still commits and the host
+    // gets a 200). Moderation is now OFF with pending entries stranded behind it.
+    // An edge-keyed drain would never fire again: the toggle is already off, so
+    // there is no second ON → OFF edge. The host's natural retry must heal it.
+    const room = await freshRoom("Self Heal Bar");
+    await setModeration(room, true);
+    await QUEUE_POST(submit(room, UUID_A, { title: "Stranded" }));
+    expect(await pendingStore.countRoom(room)).toBe(1);
+
+    // Force moderation OFF WITHOUT going through the route, reproducing the
+    // post-outage state: flag off, entry still pending.
+    await setRoomModeration(room, false);
+    expect(await pendingStore.countRoom(room)).toBe(1);
+
+    await telemetryStore.clear();
+    // The retry: an OFF → OFF write, which used to be a no-op.
+    expect((await setModeration(room, false)).status).toBe(200);
+    expect(await pendingStore.countRoom(room)).toBe(0);
+
+    // The patron is released rather than left on "aguardando aprovação" forever.
+    const a = await (await PENDING_GET(patronPendingGet(room, UUID_A))).json();
+    expect(a.items[0].status).toBe("rejected");
+    // Nothing was auto-approved into the live queue by the heal.
+    expect((await (await QUEUE_GET(queueGet(room))).json()).items).toHaveLength(0);
+
+    await flush();
+    expect((await lastModerationChange(room))?.rejectedPending).toBe(1);
+  });
+
+  it("an OFF → OFF write with nothing stranded stays a clean no-op", async () => {
+    // The normal case for the same code path: with moderation already off there
+    // are no pending entries, so the extra room-scoped call flips nothing.
+    const room = await freshRoom("Already Off Bar");
+    await telemetryStore.clear();
+    expect((await setModeration(room, false)).status).toBe(200);
+    expect(await pendingStore.countRoom(room)).toBe(0);
     await flush();
     expect((await lastModerationChange(room))?.rejectedPending).toBe(0);
   });

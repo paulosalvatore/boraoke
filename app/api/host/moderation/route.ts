@@ -42,13 +42,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  // On the ON → OFF transition ONLY, auto-reject every still-pending entry so no
-  // patron is stranded on "aguardando aprovação" forever with the host's approve/
-  // reject UI now gone (TICKET-49). No-op toggles and OFF → ON reject nothing.
+  // Whenever moderation is written OFF, auto-reject every still-pending entry so
+  // no patron is stranded on "aguardando aprovação" forever with the host's
+  // approve/reject UI now gone (TICKET-49). Turning moderation ON rejects
+  // nothing.
+  //
+  // This keys on the TARGET STATE, not on the ON → OFF edge, and that is
+  // deliberate. With moderation already off there should be no pending entries
+  // at all, so the normal OFF → OFF case is an idempotent no-op costing one
+  // room-scoped call. The case it exists for is the abnormal one: if the drain
+  // ever fails to flip everything (a Redis outage during the transition — the
+  // store degrades to 0 flipped rather than throwing), an edge-keyed drain would
+  // never run again, because the toggle is already off and there is no second
+  // ON → OFF edge to catch. Keying on the target state makes the host's next OFF
+  // write — including the retry they will naturally attempt — self-heal the
+  // strays.
   const rejectedPending =
-    before === true && raw === false
-      ? await pendingStore.rejectAllPending(roomId)
-      : 0;
+    raw === false ? await pendingStore.rejectAllPending(roomId) : 0;
 
   // Telemetry: a new host_action variant (new prop VALUE, NOT a new event type).
   void track("host_action", {

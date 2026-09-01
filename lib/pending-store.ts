@@ -388,7 +388,28 @@ export class UpstashPendingStore implements PendingStore {
         "[pending-store] bulk-reject EVAL failed — falling back to the NON-ATOMIC loop (lost-update window reopened)",
         err,
       );
-      return this.rejectAllPendingUnsafeFallback(roomId);
+      try {
+        return await this.rejectAllPendingUnsafeFallback(roomId);
+      } catch (fallbackErr) {
+        // FU-1b: the fallback issues its own Redis commands, so a FULL outage
+        // (as opposed to an EVAL-specific blip) throws here too. Letting that
+        // propagate 500s the moderation route *after* `setRoomModeration` has
+        // already committed the toggle — the host sees a failure for a change
+        // that applied, and their natural retry is now an OFF -> OFF no-op that
+        // rejects nothing, stranding every pending patron on
+        // "aguardando aprovacao" forever. That is precisely the TICKET-49 bug
+        // this call exists to prevent, reintroduced through the error path.
+        //
+        // So: never throw. Report 0 flipped, loudly. Correctness is restored by
+        // the caller draining on the target state rather than on the ON -> OFF
+        // edge (see app/api/host/moderation/route.ts), which makes any later OFF
+        // write self-heal the strays this call could not flip.
+        console.warn(
+          "[pending-store] bulk-reject FALLBACK also failed — 0 entries flipped; strays are drained by the next moderation-OFF write",
+          fallbackErr,
+        );
+        return 0;
+      }
     }
   }
 

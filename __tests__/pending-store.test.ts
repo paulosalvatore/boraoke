@@ -35,6 +35,17 @@ class FakeRedis implements PendingRedisLike {
   /** Test-only: make EVAL fail, to exercise the driver's fail-open fallback. */
   public evalThrows = false;
 
+  /**
+   * Test-only: simulate a FULL Redis outage — every command throws, not just
+   * EVAL. This is what separates an EVAL-specific blip (the fallback saves
+   * the call) from an outage (the fallback throws too), which is the case
+   * TICKET-56 FU-1b is about.
+   */
+  public allThrows = false;
+  private outageGuard(): void {
+    if (this.allThrows) throw new Error("Redis unreachable");
+  }
+
   /** Test-only: simulate the TTL elapsing on a key — it vanishes like Redis expiry. */
   _expireNow(key: string): void {
     this.kv.delete(key);
@@ -56,6 +67,7 @@ class FakeRedis implements PendingRedisLike {
     return arr.length;
   }
   async lrange<T = unknown>(key: string, start: number, stop: number): Promise<T[]> {
+    this.outageGuard();
     const arr = this.lists.get(key) ?? [];
     const end = stop === -1 ? arr.length : stop + 1;
     return arr.slice(start, end) as unknown as T[];
@@ -73,6 +85,7 @@ class FakeRedis implements PendingRedisLike {
     return raw != null ? (JSON.parse(raw) as T) : null;
   }
   async mget<T = unknown>(...keys: string[]): Promise<(T | null)[]> {
+    this.outageGuard();
     this.calls.mget++;
     return keys.map((k) => {
       const raw = this.kv.get(k);
@@ -80,6 +93,7 @@ class FakeRedis implements PendingRedisLike {
     });
   }
   async set(key: string, value: unknown): Promise<unknown> {
+    this.outageGuard();
     this.calls.set++;
     this.kv.set(key, JSON.stringify(value));
     return "OK";
@@ -474,6 +488,30 @@ describe("UpstashPendingStore — batch / TTL / lazy-prune (TICKET-53)", () => {
     // Still idempotent on the fallback path.
     expect(await s.rejectAllPending(ROOM)).toBe(0);
     warn.mockRestore();
+  });
+
+  it("rejectAllPending never throws on a FULL outage — it reports 0 flipped, loudly (FU-1b)", async () => {
+    await s.add(makePending(UUID_A));
+    await s.add(makePending(UUID_B));
+    // Both the script AND the fallback's own commands fail: a real outage, not
+    // an EVAL-specific blip.
+    fake.evalThrows = true;
+    fake.allThrows = true;
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    // The contract that matters: the caller (the host's moderation toggle) is
+    // never handed a rejection. Before this, the throw propagated and 500-ed the
+    // route AFTER the toggle had already committed.
+    await expect(s.rejectAllPending(ROOM)).resolves.toBe(0);
+    // Not silent: both the EVAL failure and the fallback failure are reported.
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(String(warn.mock.calls[1][0])).toContain("FALLBACK also failed");
+
+    // And the entries really are untouched — 0 is an honest count, not a
+    // swallowed success. (Recovery is the caller's next moderation-OFF write.)
+    fake.evalThrows = false;
+    fake.allThrows = false;
+    expect(await s.countRoom(ROOM)).toBe(2);
   });
 
   it("after a rejected item's TTL expires, listRoom omits it AND lazily lrem's its dead id", async () => {

@@ -4,6 +4,15 @@ const config: Config = {
   preset: "ts-jest",
   testEnvironment: "node",
   testMatch: ["**/__tests__/**/*.test.ts"],
+  // TICKET-56 FU-7, fixed at the class level rather than per call site:
+  // several tests spy on `console.warn` and restore it as the LAST statement
+  // of the test body. If an assertion above that line throws, the restore
+  // never runs and the spy leaks into every later test in the module —
+  // silencing warnings on a run that is already red, which is exactly when
+  // they are worth reading. Restoring after every test makes the leak
+  // impossible for existing and future spies alike, instead of relying on
+  // each author remembering a `finally`.
+  restoreMocks: true,
   moduleNameMapper: {
     // `server-only` throws under plain node (by design — it guards Next.js
     // client bundles); stub it out for jest.
