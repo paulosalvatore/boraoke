@@ -357,3 +357,103 @@ describe("POST /api/queue — embeddability warning (TICKET-61)", () => {
     expect(Object.keys(json).sort()).toEqual(["pending", "pendingId", "warning"]);
   });
 });
+
+/* ------------------------------------------------------------------------- *
+ * TICKET-95 (MEDIUM-1 of the TICKET-67 cyber follow-ups) — cross-instance
+ * embeddability cache. Two DIFFERENT patrons pasting the SAME videoId must
+ * spend exactly ONE outbound `videos.list` call between them: the second
+ * submit is answered from `lib/embed-cache.ts` with zero network calls.
+ * ------------------------------------------------------------------------- */
+describe("POST /api/queue — embeddability cache (TICKET-95)", () => {
+  const PT_WARNING =
+    "esse vídeo não permite reprodução em telões — pode não tocar";
+  const realFetch = global.fetch;
+  const realKey = process.env.YOUTUBE_API_KEY;
+  let fetchMock: jest.Mock;
+
+  let n = 0;
+  function pasteBody(videoId: string, overrides: Record<string, unknown> = {}) {
+    n += 1;
+    return validBody({
+      source: "paste",
+      videoId,
+      patronUuid: `223e4567-e89b-42d3-a456-4266141750${String(10 + n).slice(-2)}`,
+      ...overrides,
+    });
+  }
+
+  function ytResponse(body: unknown, status = 200) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    } as unknown as Response;
+  }
+
+  beforeEach(async () => {
+    await store.clear(DEFAULT_ROOM);
+    const { _resetEmbedCache } = await import("@/lib/embed-cache");
+    _resetEmbedCache();
+    process.env.YOUTUBE_API_KEY = "test-key";
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  afterAll(() => {
+    global.fetch = realFetch;
+    if (realKey === undefined) delete process.env.YOUTUBE_API_KEY;
+    else process.env.YOUTUBE_API_KEY = realKey;
+  });
+
+  it("a HIT spends ZERO outbound calls: two distinct patrons, same videoId, one API call total", async () => {
+    const videoId = "cachehit001";
+    fetchMock.mockResolvedValue(
+      ytResponse({ items: [{ id: videoId, status: { embeddable: true } }] }),
+    );
+
+    const res1 = await POST(makeRequest(pasteBody(videoId)));
+    expect(res1.status).toBe(201);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockClear();
+    const res2 = await POST(makeRequest(pasteBody(videoId)));
+    expect(res2.status).toBe(201);
+    // The cache hit answers this submit — no second outbound call at all.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await store.getQueue(DEFAULT_ROOM)).toHaveLength(2);
+  });
+
+  it("a cached 'not-embeddable' verdict still carries the warning on the second submit", async () => {
+    const videoId = "cachehit002";
+    fetchMock.mockResolvedValue(
+      ytResponse({ items: [{ id: videoId, status: { embeddable: false } }] }),
+    );
+
+    const res1 = await POST(makeRequest(pasteBody(videoId)));
+    expect((await res1.json()).warning).toBe(PT_WARNING);
+
+    fetchMock.mockClear();
+    const res2 = await POST(makeRequest(pasteBody(videoId)));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await res2.json()).warning).toBe(PT_WARNING);
+  });
+
+  it("does NOT cache (and makes a fresh call) when no API key is configured", async () => {
+    delete process.env.YOUTUBE_API_KEY;
+    const videoId = "cachehit003";
+
+    const res1 = await POST(makeRequest(pasteBody(videoId)));
+    expect(res1.status).toBe(201);
+    expect(fetchMock).not.toHaveBeenCalled(); // checkEmbeddable itself short-circuits, no key
+
+    // Restore the key and submit the SAME videoId again: since no-key never
+    // wrote a cache entry, this is still a genuine cache miss and DOES call out.
+    process.env.YOUTUBE_API_KEY = "test-key";
+    fetchMock.mockResolvedValue(
+      ytResponse({ items: [{ id: videoId, status: { embeddable: true } }] }),
+    );
+    const res2 = await POST(makeRequest(pasteBody(videoId)));
+    expect(res2.status).toBe(201);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

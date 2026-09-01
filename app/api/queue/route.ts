@@ -7,6 +7,7 @@ import { submitRateLimitOk } from "@/lib/queue-rate-limit";
 import { getTranslations } from "next-intl/server";
 import { clientIpFrom } from "@/lib/host-auth";
 import { checkEmbeddable, isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
+import { getCachedEmbeddable, setCachedEmbeddable } from "@/lib/embed-cache";
 import { track } from "@/lib/telemetry";
 import { pendingStore } from "@/lib/pending-store";
 import {
@@ -214,16 +215,30 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // TICKET-61: embeddability pre-check for the PASTE path only (1 quota unit).
-  // Deliberately placed HERE — after body validation, after the dual-bucket rate
-  // limit, and after `checkSubmit` — so a malformed, throttled or refused submit
-  // can never spend a quota unit, and the outbound call is only ever made on
-  // behalf of a request that is already going to be accepted.
+  // TICKET-61: embeddability pre-check for the PASTE path only (1 quota unit
+  // on a cache miss — see TICKET-95 below). Deliberately placed HERE — after
+  // body validation, after the dual-bucket rate limit, and after
+  // `checkSubmit` — so a malformed, throttled or refused submit can never
+  // spend a quota unit, and the outbound call is only ever made on behalf of
+  // a request that is already going to be accepted.
+  //
+  // TICKET-95 (MEDIUM-1 of the TICKET-67 cyber follow-ups): a cross-instance
+  // cache (`lib/embed-cache.ts`) is consulted BEFORE any outbound call — a hit
+  // burns zero quota AND skips the ~1.5s worst-case hold time entirely, so a
+  // venue re-queuing the same handful of songs all night pays for the check
+  // once. Only a REAL `checkEmbeddable` answer is written back to the cache;
+  // a cache lookup/write is skipped entirely when no key is configured (the
+  // "unknown" that produces is a config fact, not a real API answer — nothing
+  // useful to cache, and it would otherwise pollute the cache with a verdict
+  // that has no bearing on whether a key gets configured later within the
+  // TTL window).
   //
   // NON-BLOCKING BY CONSTRUCTION: `checkEmbeddable` never throws and collapses
   // every failure (no key, HTTP error, quota exhaustion, timeout, bad payload)
   // to "unknown". Only the explicit "not-embeddable" verdict produces a warning,
-  // so a broken/absent YouTube API degrades to exactly today's behavior.
+  // so a broken/absent YouTube API degrades to exactly today's behavior. The
+  // cache itself is equally fail-open (see lib/embed-cache.ts) — any Redis
+  // trouble degrades to a live `checkEmbeddable` call, never a blocked submit.
   // The whole block is try/caught (cyber gate LOW-1): `checkEmbeddable` cannot
   // throw, but `getTranslations` is a dependency call on what is now the SUCCESS
   // path — and it runs BEFORE `store.addEntry`, so an i18n failure here would
@@ -232,10 +247,12 @@ export async function POST(req: NextRequest) {
   let warning: string | undefined;
   if (isPaste) {
     try {
-      const status = await checkEmbeddable(
-        resolvedVideoId,
-        process.env.YOUTUBE_API_KEY,
-      );
+      const key = process.env.YOUTUBE_API_KEY;
+      let status = key ? await getCachedEmbeddable(resolvedVideoId) : null;
+      if (status === null) {
+        status = await checkEmbeddable(resolvedVideoId, key);
+        if (key) await setCachedEmbeddable(resolvedVideoId, status);
+      }
       if (status === "not-embeddable") {
         const tw = await getTranslations("Errors");
         warning = tw("submitNotEmbeddable");
