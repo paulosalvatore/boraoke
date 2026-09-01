@@ -78,22 +78,46 @@ describe("advanceRateLimitOk (unit)", () => {
     expect(advanceRateLimitOk("roomA", { unplayable: true }, NOW + 100)).toBe(false);
   });
 
-  it("the two buckets are independent — exhausting one leaves the other free", () => {
-    // exhaust the singer-skip bucket
+  // Updated for TICKET-96: the specific buckets (singer-skip vs. unplayable)
+  // remain independent of EACH OTHER's ceiling, but both now also share the
+  // `total:<room>` bucket (40/60s), charged by every advance regardless of
+  // reason. So exhausting the singer-skip bucket (only 12 total-bucket hits)
+  // still leaves the unplayable bucket free — but exhausting the 40-cap
+  // unplayable bucket also exhausts the 40-cap total bucket for that room,
+  // which now correctly blocks a subsequent singer-skip advance too. This is
+  // the intended TICKET-96 behavior, not a regression: the whole point of the
+  // total bucket is that no combination of reasons can exceed 40/room/60s.
+  it("specific buckets stay independent of each other, but both are gated by the shared total bucket (TICKET-96)", () => {
+    // exhaust the singer-skip bucket (12 hits — total bucket has headroom left)
     for (let i = 0; i < ADVANCE_RATE_ROOM_MAX; i++) {
       advanceRateLimitOk("roomA", { unplayable: false }, NOW + i);
     }
     expect(advanceRateLimitOk("roomA", { unplayable: false }, NOW + 50)).toBe(false);
-    // unplayable bucket for the SAME room is untouched
+    // unplayable bucket for the SAME room is still free — total bucket only
+    // has 12/40 used so far
     expect(advanceRateLimitOk("roomA", { unplayable: true }, NOW + 51)).toBe(true);
 
-    // conversely: exhaust the unplayable bucket on a fresh room
+    // conversely: exhaust the unplayable bucket on a fresh room — this also
+    // fully exhausts that room's total bucket (40/40), since every unplayable
+    // hit charges both
     for (let i = 0; i < ADVANCE_RATE_UNPLAYABLE_ROOM_MAX; i++) {
       advanceRateLimitOk("roomB", { unplayable: true }, NOW + i);
     }
     expect(advanceRateLimitOk("roomB", { unplayable: true }, NOW + 50)).toBe(false);
-    // singer-skip bucket for roomB still free
-    expect(advanceRateLimitOk("roomB", { unplayable: false }, NOW + 51)).toBe(true);
+    // singer-skip bucket for roomB is nominally under its own 12-cap, but the
+    // shared total bucket for roomB is maxed out — TICKET-96's whole point is
+    // that this now correctly blocks, closing the old alternation bonus
+    expect(advanceRateLimitOk("roomB", { unplayable: false }, NOW + 51)).toBe(false);
+  });
+
+  // ── TICKET-96: alternation defeats the intended 12/min anti-grief budget ──
+  it("alternating unplayable/non-unplayable in one window sums to the total ceiling (TICKET-96 premise check)", () => {
+    let successes = 0;
+    for (let i = 0; i < 100; i++) {
+      const unplayable = i % 2 === 0;
+      if (advanceRateLimitOk("roomA", { unplayable }, NOW + i)) successes++;
+    }
+    expect(successes).toBe(40);
   });
 
   it("legacy 2-arg call (roomId, now) still charges the singer-skip bucket", () => {
