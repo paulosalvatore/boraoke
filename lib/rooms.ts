@@ -29,6 +29,7 @@ import {
   type RoomMode,
 } from "./rotation-modes";
 import { isLocale, normalizeLocale, type Locale } from "@/i18n/locales";
+import { roomCreateSetOptions, roomUpdateSetOptions } from "./retention";
 
 export interface RoomSettings {
   /**
@@ -226,17 +227,22 @@ class UpstashRoomBackend implements RoomBackend {
     return (await this.redis.get<Room>(roomKey(id))) ?? null;
   }
   async create(room: Room): Promise<void> {
-    await this.redis.set(roomKey(room.id), room);
+    // TICKET-91: apply the configurable retention TTL at first write. Default
+    // is no-expiry (roomCreateSetOptions() → undefined ⇒ a plain SET), so this
+    // is byte-for-byte the previous behavior until ROOM_RETENTION_DAYS is set.
+    await this.redis.set(roomKey(room.id), room, roomCreateSetOptions());
     // Monotonic creation counter — the ceiling input. Cheaper and simpler than
-    // SCANning the keyspace; slightly over-counts if rooms are ever deleted
-    // (none are yet — expiry is a #14 follow-up), which only makes the ceiling
-    // MORE conservative, never less.
+    // SCANning the keyspace; slightly over-counts if rooms are ever deleted or
+    // expire, which only makes the ceiling MORE conservative, never less.
     await this.redis.incr(ROOMS_COUNT_KEY);
   }
   async update(room: Room): Promise<void> {
     // In-place overwrite (no counter change). The caller only invokes this for a
     // room it already read, so a `set` here never creates a phantom record.
-    await this.redis.set(roomKey(room.id), room);
+    // TICKET-91: when retention is ON, preserve the create-time TTL with
+    // keepTtl so a host mode/language/moderation change does not silently reset
+    // the expiry window; when OFF this is a plain SET (no behavior change).
+    await this.redis.set(roomKey(room.id), room, roomUpdateSetOptions());
   }
   async count(): Promise<number> {
     const v = await this.redis.get<number | string>(ROOMS_COUNT_KEY);
@@ -313,11 +319,11 @@ export async function getPublicRoom(roomId: string): Promise<PublicRoom | null> 
 
 /**
  * Global active-room ceiling (security HIGH-1) — the hard cap an IP-rotating
- * attacker hits after the per-IP throttle. Env-tunable; default 500. Rooms are
- * never deleted yet, so the counter is monotonic — a room TTL/idle-expiry
- * (e.g. 7 idle days) is a recorded #14 follow-up: it is NOT cheap today because
- * expiring `room:<id>:meta` must be coordinated with the frozen queue store's
- * `room:<id>:{queue,paused}` keys, which this ticket must not touch.
+ * attacker hits after the per-IP throttle. Env-tunable; default 500. The
+ * counter is monotonic and stays a conservative ceiling even as records expire:
+ * TICKET-91 adds a configurable TTL on the `room:<id>:meta` write path (OFF by
+ * default — see lib/retention.ts), and expiring the frozen queue store's
+ * `room:<id>:{queue,paused}` keys remains the coordinated follow-up.
  */
 export function roomMax(): number {
   const raw = Number(process.env.ROOM_MAX);
