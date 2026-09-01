@@ -63,3 +63,91 @@ Resist it: we have three second-hand symptoms from five days ago and zero direct
 ## Explicitly NOT the fix
 
 Adding more Playwright specs on Chromium. The gap is the test *environment*, not test coverage.
+
+---
+
+# ROOT CAUSE FOUND — 2026-09-01, same day as filing
+
+**Status: mechanism PROVEN by static analysis. Attribution to the TL's specific TV is strong but
+needs one fact from him (his webOS version). Not yet reproduced on a physical TV.**
+
+## The finding
+
+`https://boraoke.com` ships a JavaScript chunk that **cannot be parsed by any browser engine older
+than Chrome 94**. A parse failure is not a degraded feature — the chunk never executes, so the app
+never boots. That is symptom 1 ("the site did not load"), and symptoms 2 and 3 follow from it: with
+no JS running there is no QR render and no player.
+
+## The evidence
+
+Production chunk `955-fa0cb7013a87d4cd.js`, parsed with acorn at successive ECMAScript levels:
+
+```
+ES2019: FAIL — Unexpected token (1:15788)
+ES2020: FAIL — Unexpected token (3:1715)
+ES2021: FAIL — Unexpected token (3:1715)
+ES2022: OK
+```
+
+The construct at the ES2020 failure point is a **class static initialization block**:
+
+```js
+static{this.memoizedDefaultLocale=null}
+```
+
+`static {}` is **ES2022**, supported from **Chrome 94**. There are 4 occurrences. The same chunk
+also carries 25 optional-chaining (`?.`) and 5 nullish-coalescing (`??`) operators — both ES2020,
+Chrome 80+ — so older engines fail even earlier in the file.
+
+**Blast radius: every route.** The chunk is referenced by `/`, `/default`, `/default/tv` and `/new`.
+There is no route that boots without it.
+
+**What the chunk is:** `next-intl` / `Intl` message-formatting code (`formats.date`,
+`resolvedOptions`, `pluralRules` are all visible in it). It is a **dependency**, and Next.js does not
+downlevel `node_modules` by default — it transpiles first-party code only. So our own source being
+conservative does not help; the dependency's own published syntax is what ships.
+
+`next.config.ts` sets no `transpilePackages`, and the repo has no `.browserslistrc` and no
+`browserslist` key in `package.json`. Nothing in the build targets an older engine.
+
+## Why this maps to an LG TV
+
+LG webOS TV browsers are **Chromium**-based, at a version fixed by the TV's firmware generation:
+
+| webOS | approx. year | Chromium | Can parse this chunk? |
+|---|---|---|---|
+| 6.0 | 2021 | 79 | **No** — fails on `?.` too |
+| 22 | 2022 | 87 | **No** — fails on `static {}` |
+| 23 | 2023 | 94 | Yes (right at the boundary) |
+| 24 | 2024 | 108 | Yes |
+
+So **any LG TV older than roughly 2023 cannot run boraoke at all**, and fails in exactly the way the
+TL described: nothing loads.
+
+**Correction to this ticket's original hypothesis.** It guessed "old/limited WebKit". That was
+wrong — webOS is Chromium-based. A probe against Playwright's WebKit (26.5) loaded the site cleanly
+with zero page or console errors, on both the landing and `/tv`, including with a webOS user-agent
+string. Modern WebKit is not the problem, and testing against it would have produced a false green.
+
+## The one fact still needed from the Tech Lead
+
+**Which LG TV / webOS version?** If it is webOS 22 or older, this is a complete explanation of all
+three symptoms. If it is webOS 23+, the parse floor is still a real defect that locks out most of
+the installed base, but something else also broke his night and we keep digging.
+
+## Fix direction
+
+1. **`transpilePackages`** for `next-intl` (and any other dependency shipping modern syntax) in
+   `next.config.ts`, so the dependency is downleveled with our own code.
+2. **Declare the target explicitly** — a `browserslist` naming the oldest webOS Chromium we intend
+   to support, so the build target is a stated product decision rather than an accident of defaults.
+3. **Verify by parsing the emitted bundle**, not by inspection — the check below.
+
+## This is TICKET-99's cheapest and highest-value machinery
+
+A build-time gate that parses **every emitted chunk** at the target ECMAScript level and fails the
+build on a regression. It needs no TV, no emulator and no device farm; it is a few lines of acorn;
+and it would have caught this exact defect the day the dependency was added. Note that it catches
+*parse-level* breakage only — runtime API gaps (a missing `Intl` feature, an unsupported CSS
+property) still need a real or emulated device, so this complements TICKET-99 rather than replacing
+it.
