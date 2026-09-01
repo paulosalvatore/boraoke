@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-01T15:49:05Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "ticket-91-retention-ttl", "short_sha": "18da097", "message_slug": "TICKET-91: configurable room-record retention TTL (default OFF)"}}
