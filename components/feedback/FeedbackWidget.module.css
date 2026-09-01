@@ -77,7 +77,6 @@
   z-index: 1000;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   height: var(--pill-size);
   padding: 0 16px;
   border: none;
@@ -89,6 +88,9 @@
   box-shadow: 0 4px 16px rgba(255, 61, 113, 0.35);
   cursor: pointer;
   transition: transform 0.12s ease;
+}
+.fab > * + * {
+  margin-left: 8px;
 }
 .fab:hover {
   transform: translateY(-1px);
@@ -181,7 +183,11 @@
 /* ── Overlay + sheet ── */
 .overlay {
   position: fixed;
-  inset: 0;
+  /* longhand, not `inset: 0` — the shorthand needs Chrome 87 (TICKET-101) */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 1001;
   display: flex;
   align-items: flex-end;
@@ -215,8 +221,10 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
   margin-bottom: 4px;
+}
+.header > * + * {
+  margin-left: 12px;
 }
 .title {
   font-size: 20px;
@@ -249,7 +257,6 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
   padding: 12px 4px;
   min-height: 72px;
   border: 1px solid var(--c-border);
@@ -260,6 +267,9 @@
   transition:
     border-color 0.12s ease,
     transform 0.12s ease;
+}
+.sentiment > * + * {
+  margin-top: 4px;
 }
 .sentiment:hover:not(:disabled) {
   border-color: var(--c-pink);
@@ -311,8 +321,20 @@
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
   margin-bottom: 4px;
+}
+/* wraps (TICKET-101): spacing on the CHILDREN, with a vertical-only negative
+   margin cancelling the last row's trailing space. Deliberately NO horizontal
+   negative margin: that pulled the container box 8-9px left of the content
+   column (measured against production), which is visible on any container
+   carrying a background or border. */
+.chips > * {
+  margin-right: 8px;
+  margin-bottom: 8px;
+}
+.chips {
+  margin-right: -8px;
+  margin-bottom: -8px;
 }
 .chip {
   border: 1px solid var(--c-border);
