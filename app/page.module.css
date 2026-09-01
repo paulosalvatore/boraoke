@@ -38,9 +38,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
   padding: 1rem 0;
   flex-wrap: wrap;
+}
+/* wraps (TICKET-101): spacing on the CHILDREN, with a vertical-only negative
+   margin cancelling the last row's trailing space, and a RIGHT-only negative
+   margin giving back the width the trailing child margin consumed (without it,
+   rows got wider and wrapped a line early — venueList jumped to its own line at
+   1440px). Deliberately no negative margin on the LEFT: that pulled the
+   container box 8-9px left of the content column, measured against production,
+   which is visible on any container carrying a background or border. */
+.header > * {
+  margin-right: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.header {
+  margin-right: -0.75rem;
+  margin-bottom: -0.75rem;
 }
 
 .brand {
@@ -51,7 +65,9 @@
 .headerRight {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+}
+.headerRight > * + * {
+  margin-left: 0.6rem;
 }
 
 .pill {
@@ -87,9 +103,23 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 0.35rem 0.6rem;
   margin-bottom: 1.25rem;
   font-size: 0.82rem;
+}
+/* wraps (TICKET-101): spacing on the CHILDREN, with a vertical-only negative
+   margin cancelling the last row's trailing space, and a RIGHT-only negative
+   margin giving back the width the trailing child margin consumed (without it,
+   rows got wider and wrapped a line early — venueList jumped to its own line at
+   1440px). Deliberately no negative margin on the LEFT: that pulled the
+   container box 8-9px left of the content column, measured against production,
+   which is visible on any container carrying a background or border. */
+.venues > * {
+  margin-right: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+.venues {
+  margin-right: -0.6rem;
+  margin-bottom: -0.35rem;
 }
 
 .venuesLead {
@@ -99,10 +129,24 @@
 .venueList {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem 0.55rem;
   list-style: none;
   padding: 0;
   margin: 0;
+}
+/* wraps (TICKET-101): spacing on the CHILDREN, with a vertical-only negative
+   margin cancelling the last row's trailing space, and a RIGHT-only negative
+   margin giving back the width the trailing child margin consumed (without it,
+   rows got wider and wrapped a line early — venueList jumped to its own line at
+   1440px). Deliberately no negative margin on the LEFT: that pulled the
+   container box 8-9px left of the content column, measured against production,
+   which is visible on any container carrying a background or border. */
+.venueList > * {
+  margin-right: 0.55rem;
+  margin-bottom: 0.35rem;
+}
+.venueList {
+  margin-right: -0.55rem;
+  margin-bottom: -0.35rem;
 }
 
 .venueList li {
@@ -138,7 +182,11 @@
 }
 
 .hero h1 {
-  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  /* TICKET-101 fallback for Chrome < 79, which drops the clamp() line below and
+     keeps this one. Plain cascade, no @supports needed — clamp has no
+     grid-vs-flex split, so an old engine simply ignores what it cannot parse. */
+  font-size: 2.2rem;
+  font-size: clamp(1.8rem, 4vw, 2.6rem); /* css-target-allow: 2.2rem fallback above for <79 */
   line-height: 1.15;
   letter-spacing: -0.01em;
   margin-bottom: 1rem;
@@ -197,8 +245,10 @@ a.cta {
 .now {
   display: flex;
   align-items: center;
-  gap: 0.9rem;
   margin-bottom: 1rem;
+}
+.now > * + * {
+  margin-left: 0.9rem;
 }
 
 .thumb {
@@ -252,10 +302,12 @@ a.cta {
 .rail li {
   display: flex;
   justify-content: space-between;
-  gap: 0.75rem;
   font-size: 0.85rem;
   padding: 0.42rem 0.5rem;
   border-radius: 6px;
+}
+.rail li > * + * {
+  margin-left: 0.75rem;
 }
 
 .rail li:nth-child(odd) {
@@ -300,7 +352,12 @@ a.cta {
 .qr {
   background: #fff;
   border-radius: 8px;
-  aspect-ratio: 1;
+  /* TICKET-101 fallback for Chrome < 88. `.qr` sits inside `.phone` (138px wide,
+     0.7rem padding each side), so its width resolves to ~115px and this keeps the
+     box approximately square there. On engines that DO support aspect-ratio the
+     computed height is >= this, so the min-height never binds. */
+  min-height: 115px;
+  aspect-ratio: 1; /* css-target-allow: min-height fallback above for <88 */
   display: grid;
   place-items: center;
   margin-bottom: 0.5rem;
@@ -352,12 +409,26 @@ a.cta {
 .joinStrip {
   display: flex;
   align-items: center;
-  gap: 1rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.1rem 1.25rem;
   flex-wrap: wrap;
+}
+/* wraps (TICKET-101): spacing on the CHILDREN, with a vertical-only negative
+   margin cancelling the last row's trailing space, and a RIGHT-only negative
+   margin giving back the width the trailing child margin consumed (without it,
+   rows got wider and wrapped a line early — venueList jumped to its own line at
+   1440px). Deliberately no negative margin on the LEFT: that pulled the
+   container box 8-9px left of the content column, measured against production,
+   which is visible on any container carrying a background or border. */
+.joinStrip > * {
+  margin-right: 1rem;
+  margin-bottom: 1rem;
+}
+.joinStrip {
+  margin-right: -1rem;
+  margin-bottom: -1rem;
 }
 
 .joinStrip h2 {
@@ -367,9 +438,11 @@ a.cta {
 
 .joinForm {
   display: flex;
-  gap: 0.5rem;
   flex: 1;
   min-width: 230px;
+}
+.joinForm > * + * {
+  margin-left: 0.5rem;
 }
 
 .joinInput {
