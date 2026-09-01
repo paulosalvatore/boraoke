@@ -65,3 +65,55 @@ the Tech Lead, especially once he reports his webOS version.
 - A check that keeps them honest, in the spirit of `scripts/check-bundle-es-target.mjs`: scan the
   emitted CSS for features newer than the declared target and fail the build. Note the parse gate
   cannot catch this class — CSS does not throw — so this is a **separate** check, not an extension.
+
+---
+
+# RESOLVED for the TV surface — 2026-09-01 (option 3, as recommended)
+
+**Approach taken:** fix the surface that actually renders on a television to the low floor, keep the
+higher floor on phone/desktop where modern browsers are the norm, and make the split enforceable
+rather than a matter of memory.
+
+## `components/tv/tv.module.css` now holds at Chrome 68
+
+- **10 flex-`gap` declarations → `> * + *` sibling margins.** Margins work in every engine.
+- **2 `inset: 0` → `top/right/bottom/left`** (the shorthand needs Chrome 87).
+- A file header states the constraint and, importantly, **why `@supports` is the wrong fix here**:
+  `@supports (gap: 1px)` reports TRUE on old Chrome because *grid* gap shipped in 66 while *flex*
+  gap only arrived in 84 — so the guard passes exactly where it is needed. That trap is the reason
+  this had to be a removal rather than a progressive enhancement.
+
+## `scripts/check-css-target.mjs` — the gate
+
+Scans source stylesheets for features newer than the declared floor and **fails the build** for the
+TV surface (`tv.module.css`, `globals.css`), while reporting everything else as **advisory** rather
+than blocking. That split is what let the TV be fixed now without waiting on the product decision
+about which TVs we support.
+
+It carries a per-rule flex-gap detector (a rule that is both `display:flex` and has `gap`), because
+the property name alone cannot distinguish grid gap (fine at 66) from flex gap (84). It also
+refuses to pass on an empty scan — a zero result must mean zero findings, not zero files scanned.
+
+Wired into `npm run build` alongside the ES gate, so neither an unparseable bundle nor a
+silently-wrong TV layout can be deployed.
+
+## Verified, by measurement rather than inspection
+
+- The gate fails on the pre-fix file and passes after.
+- Full Playwright suite **106/106**, including the TV layout specs at 1920x1080 and 1440x900.
+- **Spacing measured live**: adjacent up-next rail cards sit **29px** apart at a 1920 viewport,
+  against `gap: 1.5vw` = 28.8px. The sibling margins reproduce the original spacing exactly, so this
+  is a compatibility change with no visual cost on modern browsers.
+
+## Still open (deliberately)
+
+The **product decision** — which TVs boraoke supports — remains the Tech Lead's, bundled for him
+with his webOS version and the retest heads-up. The advisory findings on `app/page.module.css`,
+`LanguageSwitcher` and `FeedbackWidget` are left as-is on purpose: those surfaces are phone/desktop,
+and holding them to a 2019 TV floor would cost more than it buys. If that decision later says
+"support old TVs everywhere", the gate is already there — move those files into the strict list.
+
+**Known limitation this does NOT fix:** an old TV still boots into a page whose *other* surfaces
+(the patron room on a phone is fine; the landing page on the TV browser is not) use flex gap. The
+TV only ever renders `/[room]/tv`, so this is correct scoping rather than a gap — but if the TV is
+ever pointed at the landing page, spacing there will still collapse below Chrome 84.

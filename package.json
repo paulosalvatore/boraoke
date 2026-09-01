@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS='--localstorage-file=/tmp/boraoke-ls.json' next dev -p 3040",
-    "build": "next build && node scripts/check-bundle-es-target.mjs",
+    "build": "next build && node scripts/check-bundle-es-target.mjs && node scripts/check-css-target.mjs",
     "start": "next start -p 3040",
     "test": "jest --passWithNoTests",
     "test:e2e": "playwright test",
     "telemetry:rollup": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/telemetry-rollup.ts",
-    "check:es-target": "node scripts/check-bundle-es-target.mjs"
+    "check:es-target": "node scripts/check-bundle-es-target.mjs",
+    "check:css-target": "node scripts/check-css-target.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

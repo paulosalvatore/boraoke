@@ -1,4 +1,22 @@
 /*
+ * TICKET-101 — this file is held to the LOW browser floor on purpose.
+ *
+ * It renders on a venue's television, the one device we do not get to choose. LG
+ * webOS browsers are Chromium pinned by firmware (webOS 4.5/5.0 = Chrome 68,
+ * 6.0 = 79, 22 = 87), so anything newer than Chrome 68 here is dropped SILENTLY:
+ * no error, no console line, just a quietly broken layout in a bar.
+ *
+ * Two constraints to preserve when editing:
+ *   - NO `gap` inside a flex container (Chrome 84). Spacing uses `> * + *`
+ *     sibling margins, which work in every engine.
+ *   - NO `inset` shorthand (Chrome 87); use top/right/bottom/left.
+ *
+ * Do NOT "fix" a violation with @supports: `@supports (gap: 1px)` reports TRUE on
+ * old Chrome, because GRID gap shipped in 66 while FLEX gap only arrived in 84 —
+ * the guard passes exactly where it is needed. `scripts/check-css-target.mjs`
+ * enforces this file at build time.
+ */
+/*
  * /tv — 10-foot venue screen styles (TICKET-18).
  *
  * Reference: work/design/mockups/tv.html + design-system.md TV scale.
@@ -25,17 +43,23 @@
   --g-stage: linear-gradient(135deg, #ff3d71, #ffc24b);
 
   position: fixed;
-  inset: 0;
+  /* longhand, not `inset: 0` — the shorthand needs Chrome 87 (TICKET-101) */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2vw;
   padding: 2.5vw 3vw;
   background: var(--c-bg);
   color: var(--c-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+.tv > * + * {
+  margin-top: 2vw;
 }
 
 /* Passive screen: cursor vanishes with the chrome (design: cursor hidden) */
@@ -73,8 +97,10 @@
 .main {
   flex: 1;
   display: flex;
-  gap: 3vw;
   min-height: 0;
+}
+.main > * + * {
+  margin-left: 3vw;
 }
 /*
  * TICKET-82: the main row is mounted for the whole life of the screen so React
@@ -99,7 +125,11 @@
 .video :global(iframe),
 .playerHost {
   position: absolute;
-  inset: 0;
+  /* longhand, not `inset: 0` — the shorthand needs Chrome 87 (TICKET-101) */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   border: 0;
@@ -109,8 +139,10 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1.2vw;
   min-width: 0;
+}
+.meta > * + * {
+  margin-top: 1.2vw;
 }
 .label {
   font-size: 1.5vw;
@@ -183,8 +215,10 @@
 .rail {
   display: flex;
   align-items: stretch;
-  gap: 1.5vw;
   flex: none;
+}
+.rail > * + * {
+  margin-left: 1.5vw;
 }
 .railLabel {
   display: flex;
@@ -199,7 +233,6 @@
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 1.2vw;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: 1vw;
@@ -208,6 +241,9 @@
      of collapsing to ~0 — belt-and-suspenders alongside the `.join` cap
      above, which is the actual fix for the reported truncation. */
   min-width: 8vw;
+}
+.nextCard > * + * {
+  margin-left: 1.2vw;
 }
 .nextCard .n {
   font-size: 2.2vw;
@@ -245,9 +281,11 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.6vw;
   margin-top: 0.2vw;
   min-width: 0;
+}
+.nextCard .metaRow > * + * {
+  margin-left: 0.6vw;
 }
 .nextCard .what {
   flex: 1 1 auto;
@@ -299,7 +337,6 @@
 .join {
   display: flex;
   align-items: center;
-  gap: 1.2vw;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: 1vw;
@@ -307,6 +344,9 @@
   flex: none;
   max-width: 26vw;
   min-width: 0;
+}
+.join > * + * {
+  margin-left: 1.2vw;
 }
 .qr {
   width: 5.5vw;
@@ -356,9 +396,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2.4vw;
   text-align: center;
   min-height: 0;
+}
+.idle > * + * {
+  margin-top: 2.4vw;
 }
 .idle .wordmark {
   font-size: 5vw;
@@ -390,9 +432,11 @@
   bottom: 2.5vw;
   z-index: 10;
   display: flex;
-  gap: 1vw;
   opacity: 1;
   transition: opacity 0.35s ease;
+}
+.chrome > * + * {
+  margin-left: 1vw;
 }
 .chromeHidden {
   opacity: 0;
@@ -401,7 +445,6 @@
 .chromeBtn {
   display: flex;
   align-items: center;
-  gap: 0.6vw;
   padding: 0.7vw 1.4vw;
   font-size: 1.5vw;
   font-weight: 700;
@@ -412,6 +455,9 @@
   cursor: pointer;
   font-family: inherit;
   transition: color 0.12s ease, border-color 0.12s ease;
+}
+.chromeBtn > * + * {
+  margin-left: 0.6vw;
 }
 .chromeBtn:hover {
   color: var(--c-text);
