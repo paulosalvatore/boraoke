@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-01T21:42:16Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-101", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/101-css-floor", "short_sha": "57dc462", "message_slug": "TICKET-101: hold the TV surface to the Chrome 68 floor, and gate it"}}
