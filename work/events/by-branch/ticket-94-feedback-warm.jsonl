@@ -1,1 +1,2 @@
 {"v": "1", "ts": "2026-09-01T22:00:44Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-94", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/94-feedback-warm", "short_sha": "e4d7347", "message_slug": "TICKET-94: warm /api/feedback before asserting, and close the never-warm"}}
+{"v": "1", "ts": "2026-09-01T22:01:16Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-94", "pr": null, "event": "worktree_removed", "payload": {"branch": "ticket/94-feedback-warm"}}
