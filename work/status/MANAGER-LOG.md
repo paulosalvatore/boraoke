@@ -1,5 +1,22 @@
 # boraoke — Manager Log
 
+## 2026-09-01 (late night, post-compaction) — 🟢 DEPLOY VERIFIED AGAINST PRODUCTION: the TV fix is LIVE, and "merged" was not taken as evidence
+
+**Written for a stranger.** HEAD `main` at `edff5a2`, clean. One deliberate worktree (`.worktrees/t101-landing`, PR #79 held). Zero product code changed by this entry.
+
+**The check that mattered.** For five days a TV defect hid behind a green `main`, so the closing check on #76/#77 was deliberately defined as *"what does boraoke.com actually serve?"*, never *"did the PRs merge?"*. The Vercel daily window reset and both deployed. Verified directly against production:
+
+- The pre-fix chunk `955-fa0cb7013a87d4cd.js` now returns **404** — replaced by `955-c5605ba08601cc26.js`. The old asset is gone, so this is a genuine redeploy, not a cache serving stale bytes.
+- **All 8 chunks served across `/` and `/default/tv` parse clean at ES2019** (`255`, `4bd1b696`, `721`, `769`, `955`, `main-app`, `polyfills`, `webpack`).
+- **The parse harness was proven discriminating before its green was believed.** Re-run at `ecmaVersion: 5` against the same downloaded files it fails **6 of 8** and exits 1, and it exits 1 on an empty scan — so a passing result cannot mean "scanned nothing" or "silently parsed everything". A green from an unexercised harness is exactly the shape of the bug being closed, so it was not accepted untested.
+- **The TV stylesheet is clean at the source of truth — the bytes the browser receives.** The served `/tv` CSS has **0 flex `gap`, 0 `inset`, 0 `aspect-ratio`** across 59 rules. Detection is per rule (a block that is both `display:flex` and carries `gap`), because `@supports (gap: 1px)` is true on old Chrome — grid gap shipped in 66, flex gap in 84.
+
+**Net effect, stated plainly: an LG TV can now boot AND correctly render boraoke down to roughly Chrome 68** — covering webOS 4.5 and newer. Both failure modes found on 2026-08-27 are closed in production, not merely in the repo.
+
+**The one residual, and it is exactly where it was predicted to be.** The second stylesheet served on the TV route still carries 4 flex `gap`s, 1 `inset` and 1 non-flex `gap` — and **every one of them is `FeedbackWidget_*`**. That is precisely PR #79's scope, held for the TL because it is patron-facing. The boundary landing exactly on the held PR is a good sign rather than a coincidence: the strict/advisory split in `check-css-target.mjs` was drawn along that same line. `FeedbackWidget` markup does **not** appear in the `/tv` SSR HTML, so the television surface is unaffected regardless; the widget is a floating overlay whose worst case on an old set is collapsed spacing, never a boot failure.
+
+**What this does NOT close.** The TL's **LG model / webOS version** is still unknown, and it remains the fact that decides whether these two fixes are the *complete* explanation of his night. If his set is webOS 23+ (Chromium 94+), the parse floor was still a real defect that locked out most pre-2023 TVs, but a second cause would remain unfound. The right next step is his retest, not more speculation from this tab.
+
 ## 2026-09-01 (late night) — 🟢 PR #77 MERGED — the second failure mode closed and gated; TICKET-99's no-browser half delivered
 
 **Written for a stranger.** HEAD `main` at `4092d49`+events, clean, zero open PRs, zero worktrees.

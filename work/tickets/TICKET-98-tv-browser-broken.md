@@ -201,3 +201,20 @@ current process, not a one-off accident, and it will recur on any similarly busy
    therefore his call.
 
 Either way the deploy itself is a single command; nothing else is blocking it.
+
+---
+
+## 2026-09-01 (late night) — DEPLOY VERIFIED LIVE
+
+The Vercel daily window reset; PR #76 (parse floor) and PR #77 (TV CSS floor) are deployed. Verified against the **live served assets**, which is the whole point of this note — a green `main` is what hid this defect for five days.
+
+- `955-fa0cb7013a87d4cd.js` (the pre-fix chunk) → **404**; now serving `955-c5605ba08601cc26.js`.
+- All **8** production chunks across `/` and `/default/tv` parse clean at **ES2019**.
+- Harness proven discriminating: at `ecmaVersion: 5` the same files fail 6/8 and exit 1; empty scan also exits 1.
+- Served `/tv` CSS: **0** flex `gap`, **0** `inset`, **0** `aspect-ratio`.
+
+**Both 2026-08-27 failure modes are closed in production.** An LG set can boot and render correctly down to ~Chrome 68 (webOS 4.5+).
+
+Residual, all `FeedbackWidget_*` (4 flex `gap`, 1 `inset`, 1 non-flex `gap`) — PR #79's scope, held for the TL as patron-facing. The widget does not render in `/tv` SSR HTML, so the TV surface is unaffected.
+
+**Still open:** the TL's LG model / webOS version, and his retest. If his set is webOS 23+ (Chromium 94+), the parse floor was still a genuine defect but a second cause would remain unfound.
