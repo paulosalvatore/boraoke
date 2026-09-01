@@ -80,8 +80,26 @@ export function isValidVideoId(id: string): boolean {
 const VIDEOS_ENDPOINT_PATH = "/youtube/v3/videos";
 const DEFAULT_API_ORIGIN = "https://www.googleapis.com";
 
-/** Outbound-call budget for the pre-check. Short: it must not slow a submit. */
-export const EMBEDDABLE_CHECK_TIMEOUT_MS = 1500;
+/**
+ * Outbound-call budget for the pre-check. Short: it must not slow a submit.
+ *
+ * TICKET-95 (MEDIUM-3 of the TICKET-67 cyber follow-ups) tightened this from
+ * 1500ms to 800ms. Reasoning: `lib/embed-cache.ts` (TICKET-95 MEDIUM-1) now
+ * answers the common case — a repeat videoId — with zero network calls, so
+ * this budget only bites on a genuine cache miss (a videoId never checked
+ * before, or one whose prior verdict was "unknown" and expired). On a miss,
+ * Google's `videos.list` is normally well under 800ms end-to-end; a timeout
+ * fails OPEN to "unknown" (never blocks the submit — see the design rules
+ * above), so tightening this only trades a few accurate not-embeddable
+ * warnings under real upstream slowness for materially less held concurrency
+ * on this unauthenticated, most-hit mutation route during a slow-upstream or
+ * miss-burst window (many distinct new videos submitted at once). 800ms was
+ * chosen over going lower still because Data API p99s occasionally land in
+ * the 400–700ms range from some regions, and cutting it much closer would
+ * start trading away real warnings for negligible additional hold-time
+ * savings.
+ */
+export const EMBEDDABLE_CHECK_TIMEOUT_MS = 800;
 
 /**
  * Result of the pre-check. `unknown` is the fail-open value: the caller must
