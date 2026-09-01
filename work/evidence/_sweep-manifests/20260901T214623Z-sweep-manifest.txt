@@ -1,0 +1,10 @@
+# hygiene-sweep manifest — 20260901T214623Z UTC
+# every path below was permanently discarded (rm -rf) from work/evidence/_quarantine/
+# by scripts/hygiene-sweep.sh. This file is the durable, auditable record TICKET-F294
+# added after a run destroyed ~300 files with only a batch count as its trace.
+
+## batch: work/evidence/_quarantine/20260901T192959Z  (4 file(s))
+work/evidence/_quarantine/20260901T192959Z/.next/server/app/icon.png/route.js
+work/evidence/_quarantine/20260901T192959Z/.next/server/app/icon.png/route.js.nft.json
+work/evidence/_quarantine/20260901T192959Z/.next/server/app/apple-icon.png/route.js
+work/evidence/_quarantine/20260901T192959Z/.next/server/app/apple-icon.png/route.js.nft.json
