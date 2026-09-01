@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-01T16:42:23Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "ticket/quota-form-s2-refresh", "short_sha": "e601da0", "message_slug": "docs(quota-form): §2 describes the shipped daily search.list bound, not "}}
