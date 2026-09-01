@@ -4,6 +4,16 @@ const config: Config = {
   preset: "ts-jest",
   testEnvironment: "node",
   testMatch: ["**/__tests__/**/*.test.ts"],
+  // D-033 puts a ticket's git worktree at <repo>/.worktrees/<slug>, i.e. INSIDE
+  // this rootDir. Without this ignore, a run started while any worktree exists
+  // scans the worktree's copies too: suite count doubles, jest-haste-map reports
+  // duplicate manual mocks, and every suite importing @boraoke/rotation-engine
+  // fails to resolve it against two identical package.json files. The failures
+  // are pure infrastructure noise, but they read exactly like real breakage —
+  // and the passing-test COUNT still goes up, so a run that only checks "Tests:"
+  // looks greener than green while 16 suites are failing.
+  testPathIgnorePatterns: ["/node_modules/", "/.worktrees/"],
+  modulePathIgnorePatterns: ["<rootDir>/.worktrees/"],
   // TICKET-56 FU-7, fixed at the class level rather than per call site:
   // several tests spy on `console.warn` and restore it as the LAST statement
   // of the test body. If an assertion above that line throws, the restore
