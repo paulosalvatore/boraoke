@@ -1,5 +1,25 @@
 # boraoke — Manager Log
 
+## 2026-09-01 (late night) — 🔴🟢 TICKET-99 Phase 2 COMPLETE: the runtime harness works, and on its FIRST run it proved production still does not boot on Chrome 68 (TICKET-102). PR #80 open, in review, NOT merged.
+
+**Written for a stranger.** `main` clean. PR **#80** (draft, `ticket/99-runtime-check`) carries the harness + the `globalThis` shim; an opus Reviewer is running against it. `.worktrees/t101-landing` (PR #79) still held for the TL.
+
+**The headline, and it corrects this log's own earlier claim.** boraoke **still did not boot on Chrome 68** after #76 and #77. Executing the live site in a pinned Chromium 68.0.3440.0 over CDP throws `ReferenceError: globalThis is not defined` from chunk `255` during module init, before React attaches — no hydration, no QR. Filed as **TICKET-102**; BOARD.md and TICKET-98 carry superseding corrections.
+
+**Scope, stated precisely so it is not over-read.** `globalThis` landed in **Chrome 71**. The still-broken range is **Chrome 68/69/70 = webOS 4.5 and 5.0 only**. webOS 6.0+ (Chrome 79+) is unaffected, and for those sets the #76/#77 fixes are real and complete. This does **not** explain a failure on a webOS 6+ television, so the Tech Lead's LG model remains the deciding fact for 2026-08-27.
+
+**Reproduced by the TM directly, not relayed.** The Dev's chain (Step 1 post-fix+shim PASS with `hydrated=true`/`qr-img=true`; Step 2 known-bad `58b44f8` FAIL; bonus post-fix-without-shim FAIL) was accepted only after the TM ran the harness personally against production and got the same FAIL, and after independently verifying PR #80's state, the shim's presence, and that the diff contains nothing beyond `layout.tsx` + the harness + the checkpoint. **The reverse-check is satisfied in both directions**, which is what makes the gate trustworthy rather than decorative.
+
+**THE FINDING THAT MATTERS MOST, and it retroactively justifies the SSR fix made hours earlier.** In the TM's own production run: `Runtime.exceptionThrown count: 1` and **`error-level console/log entries: 0`**. An uncaught `ReferenceError` that kills the entire application produced **zero** error-level console entries. So a harness resting on console-error detection would have **FALSE-PASSED on an app that never boots**. The earlier catch — that the harness originally asserted only server-rendered selectors, which are present even when nothing executes — was not a tidiness fix; **it is the reason this defect is detectable at all.** The load-bearing assertions are the React hydration marker and the QR-liveness check. The reviewer has been asked to say plainly whether the console assertion provides any coverage or is dead weight that invites false confidence.
+
+**Three floor classes have now been hit from one unenforced declaration** (`browserslist: chrome >= 68` in #76): parse (fixed+gated, #76), CSS feature (fixed+gated for `/tv`, #77), and runtime global (this one — **no gate exists**). A class-level gate is proposed in TICKET-102 with its honest hard part recorded: distinguishing an **unguarded** `globalThis.foo` from the correct defensive `"object"==typeof globalThis` in the webpack/polyfills chunks. A naive scan flags the correct code, and a gate that cries wolf is switched off within a week.
+
+**Doctrine baked into the tool rather than a document.** The harness prints the host load with every verdict and, on failure, states: *"if this failure looks like a hard incompatibility, re-check under a quiet host before concluding — a heavily loaded host can produce misleading timing/liveness results, not just slow ones."* That is the morning's load-starvation lesson made mechanical, where it cannot be forgotten.
+
+**Not merged, deliberately.** PR #80 ships a shim that runs on **every page load for every user** to support televisions two-to-three firmware generations old. That is a genuine product trade, not a TM call, and it is going to the Tech Lead alongside the which-TVs-do-we-support question already open. The opus review was pointed at the real risks rather than a generic pass: residue on `Object.prototype` if the shim throws midway, **silent breakage on a future Next upgrade that changes script injection — the fix would stop working with no failing test**, CSP interaction, and whether any harness path can report success without asserting anything.
+
+**Gates as observed:** Jest `Test Suites: 52 passed, 52 total` (`Tests: 5 skipped, 918 passed, 923 total`); `bundle-es-target: OK — all 47 chunks parse at ES2019`; `css-target: OK`. Load 8.9-17.75 throughout, well under the 40 ceiling.
+
 ## 2026-09-01 (late night) — TICKET-99 Phase 2 harness WRITTEN, held on load; a false-green caught in it before it could certify nothing
 
 **Written for a stranger.** Docs-only entry. `main` clean; `.worktrees/t99-runtime` holds the harness on `ticket/99-runtime-check`, committed and pushed. **Nothing has been executed against any build yet** — no PR.
