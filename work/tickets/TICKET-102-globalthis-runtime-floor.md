@@ -16,6 +16,19 @@ Uncaught — ReferenceError: globalThis is not defined
 
 One root cause, three symptoms: the error throws during module init before React attaches, so hydration never happens and the QR never renders — the exact symptom the Tech Lead reported on 2026-08-27 ("the QR didn't show").
 
+## The reusable lesson — why this ticket exists at all
+
+**"Verified statically is not verified working."**
+
+This is a second, distinct trap in the same family as *"merged is not live"* — and the two failed differently, which is the instructive part:
+
+- *Merged is not live* was **already known** on this product, was written into the process, and **was caught**: the deploy was verified against the live served assets rather than against a green `main`.
+- *Verified statically is not verified working* was **not** known, was **not** in the process, and was **not** caught. Every static measurement was correct — chunks parse at ES2019, `/tv` CSS uses nothing past Chrome 68 — and a runtime conclusion ("an LG TV can now boot") was drawn from them and written into the board as fact. It survived until something executed the app on the target engine, at which point production failed on the first try.
+
+Both traps share one shape: **a check that is sound within its own domain, mistaken for evidence about a different domain.** Parsing proves parseability. It says nothing about a global that does not exist. CSS property scanning proves properties are supported. It says nothing about whether the app boots.
+
+This is the strongest argument for the runtime harness, and it is stronger than any argument made *before* the harness existed: on its first real run against production it found a defect that **no** amount of static analysis could ever have surfaced — the same way `check-bundle-es-target.mjs` immediately found `uuid` v11, a second offender manual analysis had missed. A gate that finds something the day it is built is a gate that was missing.
+
 ## Root cause, verified independently
 
 `globalThis` landed in **Chrome 71** / V8 7.1. The target engine is Chrome 68 (V8 6.8).
