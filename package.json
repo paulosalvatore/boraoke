@@ -10,7 +10,8 @@
     "test:e2e": "playwright test",
     "telemetry:rollup": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/telemetry-rollup.ts",
     "check:es-target": "node scripts/check-bundle-es-target.mjs",
-    "check:css-target": "node scripts/check-css-target.mjs"
+    "check:css-target": "node scripts/check-css-target.mjs",
+    "check:tv-runtime": "node scripts/tv-runtime-check.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",
