@@ -28,6 +28,37 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Cache pinned Chromium 68 snapshot (TICKET-99)
+        uses: actions/cache@v4
+        with:
+          path: /tmp/boraoke-tv-runtime-check-chromium
+          # Bump the revision here if scripts/tv-runtime-check.mjs's
+          # CHROMIUM_REVISION ever changes — the key has no other way to know.
+          key: chromium-561733-linux
+
+      - name: Old-Chromium runtime gate (TICKET-99)
+        # Boots the pinned Chromium 68.0.3440.0 (webOS 4.5/5.0 floor) headless
+        # over raw CDP against the just-built app and asserts it genuinely
+        # hydrates and renders the QR — see scripts/tv-runtime-check.mjs for
+        # why this exists (it catches defects, like an unguarded `globalThis`
+        # reference, that the ES-parse and CSS-target gates structurally
+        # cannot see). Runs on ubuntu-latest, so the harness's Linux_x64
+        # snapshot branch is exercised here, not just the Mac one a Dev runs
+        # locally.
+        run: |
+          NODE_OPTIONS='--localstorage-file=/tmp/boraoke-ci-ls.json' npx next start -p 3100 &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sS --max-time 2 -o /dev/null http://localhost:3100/default/tv; then
+              break
+            fi
+            sleep 1
+          done
+          node scripts/tv-runtime-check.mjs --url http://localhost:3100/default/tv
+          RESULT=$?
+          kill "$SERVER_PID" 2>/dev/null || true
+          exit $RESULT
+
       - name: Unit tests
         run: npm test
 

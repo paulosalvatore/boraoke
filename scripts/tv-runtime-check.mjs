@@ -8,18 +8,20 @@
  * neither one ever runs the app. A chunk can parse at ES2019 and a stylesheet
  * can avoid every listed feature and the app can STILL fail to boot or render
  * on the real target engine, because of something only observable at runtime:
- * a Web API the engine lacks, a polyfill that itself needs a newer feature, a
- * hydration mismatch that only old V8 exhibits, timing. This gate is the one
- * that actually launches the pinned old Chromium and watches the page live —
- * it is slow and heavy on purpose, which is why the other two gates exist to
- * catch what they catch cheaply and this one is reserved for what they can't.
+ * a Web API/global the engine lacks (see: the `globalThis` defect this exact
+ * gate found — valid ES2019 syntax, missing runtime global, invisible to a
+ * parser), a polyfill that itself needs a newer feature, a hydration mismatch
+ * that only old V8 exhibits, timing. This gate is the one that actually
+ * launches the pinned old Chromium and watches the page live — it is slow and
+ * heavy on purpose, which is why the other two gates exist to catch what they
+ * catch cheaply and this one is reserved for what they can't.
  *
  * SCOPE, stated honestly: this proves the app boots and renders meaningful DOM
  * on ONE pinned old-Chromium build, driven headless, on ONE machine. It does
  * not prove every TV model, every input device, every network condition. See
- * work/reports/TICKET-99-runtime-checkpoint.md for the feasibility record and
- * the reverse-check (known-bad commit fails, post-fix commit passes) that
- * proves this gate is discriminating rather than a permanent false green.
+ * work/reports/TICKET-99-runtime-checkpoint.md for the reverse-check (known-bad
+ * commit fails, post-fix commit passes, verbatim output) that proves this gate
+ * is discriminating rather than a permanent false green.
  *
  * WHY RAW CDP, NOT PLAYWRIGHT/PUPPETEER: both drive browsers through protocol
  * surfaces (and, for Puppeteer's launcher assumptions) that assume a modern
@@ -35,9 +37,24 @@
  * it has no Chrome 68 V8/Blink parse or CSS floor to trip on — which would
  * make this gate a permanent false green on exactly the defect class TICKET-98
  * and TICKET-101 exist to catch. Chromium only.
+ *
+ * DEFAULT-DENY, BY CONSTRUCTION (D-022 review finding B1): a gate script's
+ * unhandled failure mode is Node's own default exit code, which is 0 — GREEN.
+ * A reviewer proved this concretely: kill the Chromium process mid-navigate
+ * (after CDP binds, before the DOM check runs) and the pre-fix version of this
+ * script printed no verdict and exited 0. Root cause was two independent bugs
+ * (an `.unref()`'d hard timeout that could never fire once it was the last
+ * event-loop handle, and a CDP client that never rejected in-flight promises
+ * on socket close) compounding into a silent empty-loop exit. Both are fixed
+ * below, AND there is a third, structural backstop: `verdictReached` is set
+ * true only at the two places that print an actual verdict, and a
+ * `process.on("exit", ...)` handler forces `exitCode = 1` whenever the process
+ * is about to end without one having been reached — so ANY future code path
+ * that falls through without printing PASS or FAIL is red by construction,
+ * not by the author having remembered to add another `process.exit(1)`.
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync, mkdirSync, openSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, mkdirSync, openSync, chmodSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir, loadavg } from "node:os";
 import { join } from "node:path";
 
@@ -49,13 +66,50 @@ import { join } from "node:path";
  * script tweak (see check-bundle-es-target.mjs's TARGET_ECMA comment).
  */
 const CHROMIUM_REVISION = "561733";
-const CHROMIUM_SNAPSHOT_URL = `https://commondatastorage.googleapis.com/chromium-browser-snapshots/Mac/${CHROMIUM_REVISION}/chrome-mac.zip`;
 
+/**
+ * Chromium snapshots are published per-platform under one revision number.
+ * This runs both on a developer's Mac and on GitHub Actions' `ubuntu-latest`
+ * runners, so the snapshot path, archive layout, and binary location are all
+ * platform-dependent — hardcoding `/Mac/` here was a real gap (D-022 review
+ * finding B2): it made the gate unable to run in CI at all.
+ */
+function platformSnapshotInfo() {
+  const platform = process.platform;
+  if (platform === "darwin") {
+    return {
+      dirSegment: "Mac",
+      zipName: "chrome-mac.zip",
+      unzippedDir: "chrome-mac",
+      binaryRelPath: ["Chromium.app", "Contents", "MacOS", "Chromium"],
+      needsQuarantineClear: true,
+    };
+  }
+  if (platform === "linux") {
+    return {
+      dirSegment: "Linux_x64",
+      zipName: "chrome-linux.zip",
+      unzippedDir: "chrome-linux",
+      binaryRelPath: ["chrome"],
+      needsQuarantineClear: false,
+    };
+  }
+  throw new Error(
+    `No pinned Chromium ${CHROMIUM_REVISION} snapshot layout known for process.platform="${platform}" (only darwin and linux are wired up).`,
+  );
+}
+
+const SNAPSHOT_INFO = platformSnapshotInfo();
+const CHROMIUM_SNAPSHOT_URL = `https://commondatastorage.googleapis.com/chromium-browser-snapshots/${SNAPSHOT_INFO.dirSegment}/${CHROMIUM_REVISION}/${SNAPSHOT_INFO.zipName}`;
+
+/** Outside the repo entirely (OS temp dir) — never committed, no .gitignore entry needed. */
 const DEFAULT_CACHE_DIR = join(tmpdir(), "boraoke-tv-runtime-check-chromium");
 const CDP_PORT = Number(process.env.TV_RUNTIME_CDP_PORT ?? 9333);
 const OVERALL_TIMEOUT_MS = Number(process.env.TV_RUNTIME_TIMEOUT_MS ?? 120_000);
 const LAUNCH_TIMEOUT_MS = Number(process.env.TV_RUNTIME_LAUNCH_TIMEOUT_MS ?? 60_000);
-const SETTLE_MS = Number(process.env.TV_RUNTIME_SETTLE_MS ?? 5_000);
+/** Max time to poll the DOM waiting for hydration + the QR to resolve (D-022 F8: was a flat sleep). */
+const SETTLE_DEADLINE_MS = Number(process.env.TV_RUNTIME_SETTLE_MS ?? 8_000);
+const POLL_INTERVAL_MS = 250;
 
 function log(...args) {
   console.log(`[tv-runtime-check]`, ...args);
@@ -90,9 +144,10 @@ async function fetchWithTimeout(url, ms) {
 
 /**
  * Locate a usable Chromium binary. Checked-in override > cache dir > fetch.
- * The binary itself is NEVER committed — the cache dir is gitignored, and if
- * absent this fetches the pinned snapshot fresh (~83MB) and quarantine-clears
- * it (macOS Gatekeeper blocks an unsigned x86_64 binary otherwise).
+ * The binary itself is NEVER committed — the cache dir lives outside the repo
+ * under the OS temp dir, and if absent this fetches the pinned snapshot fresh
+ * (~80-90MB depending on platform) and, on macOS, quarantine-clears it
+ * (Gatekeeper otherwise blocks an unsigned x86_64 binary).
  */
 async function resolveChromium(explicitPath) {
   if (explicitPath) {
@@ -102,15 +157,15 @@ async function resolveChromium(explicitPath) {
     return explicitPath;
   }
 
-  const cachedBinary = join(DEFAULT_CACHE_DIR, "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium");
+  const cachedBinary = join(DEFAULT_CACHE_DIR, SNAPSHOT_INFO.unzippedDir, ...SNAPSHOT_INFO.binaryRelPath);
   if (existsSync(cachedBinary)) {
     log(`using cached Chromium ${CHROMIUM_REVISION} at ${cachedBinary}`);
     return cachedBinary;
   }
 
-  log(`no cached Chromium found — fetching pinned revision ${CHROMIUM_REVISION} (~83MB, one-time)`);
+  log(`no cached Chromium found — fetching pinned revision ${CHROMIUM_REVISION} for ${process.platform} (one-time)`);
   mkdirSync(DEFAULT_CACHE_DIR, { recursive: true });
-  const zipPath = join(DEFAULT_CACHE_DIR, "chrome-mac.zip");
+  const zipPath = join(DEFAULT_CACHE_DIR, SNAPSHOT_INFO.zipName);
 
   const res = await fetchWithTimeout(CHROMIUM_SNAPSHOT_URL, 60_000);
   if (!res.ok) {
@@ -120,12 +175,19 @@ async function resolveChromium(explicitPath) {
   writeFileSync(zipPath, buf);
 
   await run("unzip", ["-q", zipPath, "-d", DEFAULT_CACHE_DIR]);
-  await run("xattr", ["-cr", join(DEFAULT_CACHE_DIR, "chrome-mac", "Chromium.app")]);
+  if (SNAPSHOT_INFO.needsQuarantineClear) {
+    await run("xattr", ["-cr", join(DEFAULT_CACHE_DIR, SNAPSHOT_INFO.unzippedDir)]);
+  }
 
   if (!existsSync(cachedBinary)) {
     throw new Error(`Chromium fetched+unzipped but binary not found at expected path: ${cachedBinary}`);
   }
-  log(`fetched and quarantine-cleared Chromium ${CHROMIUM_REVISION}`);
+  try {
+    chmodSync(cachedBinary, 0o755);
+  } catch {
+    /* best-effort — the archive usually preserves the executable bit already */
+  }
+  log(`fetched and prepared Chromium ${CHROMIUM_REVISION}`);
   return cachedBinary;
 }
 
@@ -184,12 +246,26 @@ async function newTarget(port, url) {
   return target;
 }
 
-/** Minimal raw-CDP client over the global WebSocket. */
+/**
+ * Minimal raw-CDP client over the global WebSocket.
+ *
+ * D-022 review B1 fix: the websocket going away (Chromium killed, crashed, or
+ * wedged mid-request) used to leave any in-flight `send()` promise dangling
+ * forever, with nothing to reject it — which is exactly how the process could
+ * fall through to Node's default (green) exit code with zero verdict printed.
+ * Both "close" and "error" now reject every pending request so the caller's
+ * `await cdp.send(...)` always settles one way or the other.
+ */
 function cdpClient(wsUrl) {
   const ws = new WebSocket(wsUrl);
   let nextId = 1;
   const pending = new Map();
   const eventHandlers = [];
+
+  function rejectAllPending(err) {
+    for (const { reject } of pending.values()) reject(err);
+    pending.clear();
+  }
 
   ws.addEventListener("message", (ev) => {
     const msg = JSON.parse(ev.data);
@@ -203,6 +279,13 @@ function cdpClient(wsUrl) {
     }
   });
 
+  ws.addEventListener("close", () => {
+    rejectAllPending(new Error("CDP websocket closed unexpectedly (browser exited or connection dropped)"));
+  });
+  ws.addEventListener("error", (e) => {
+    rejectAllPending(new Error(`CDP websocket error: ${e.message ?? e}`));
+  });
+
   const ready = new Promise((resolve, reject) => {
     ws.addEventListener("open", () => resolve());
     ws.addEventListener("error", (e) => reject(new Error(`CDP websocket error: ${e.message ?? e}`)));
@@ -212,7 +295,12 @@ function cdpClient(wsUrl) {
     const id = nextId++;
     return new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
-      ws.send(JSON.stringify({ id, method, params }));
+      try {
+        ws.send(JSON.stringify({ id, method, params }));
+      } catch (err) {
+        pending.delete(id);
+        reject(err);
+      }
     });
   }
 
@@ -240,17 +328,16 @@ function cdpClient(wsUrl) {
  * the page and renders static HTML with ZERO JS execution — e.g. Chrome 68
  * hitting the known-bad pre-fix bundle, which fails to parse and never boots —
  * still satisfies every one of those selectors. Asserting only on them proves
- * "the server responded and the shell rendered", NOT that the app booted. That
- * would make the reverse-check pass on the known-bad build by luck (the
- * console/log-error path might still catch the SyntaxError, but a harness
- * whose only real discriminating power is one unverified assumption is exactly
- * the false-green shape this ticket exists to prevent).
+ * "the server responded and the shell rendered", NOT that the app booted.
  *
  * So there are two tiers below:
  *  - SHELL_SELECTORS: SSR-only proof, kept because they're still worth having,
  *    but labeled honestly — never treated as boot proof.
  *  - The hydration marker and the QR-image selector are the actual boot proof:
- *    both can only become true by client JS actually executing.
+ *    both can only become true by client JS actually executing. These are the
+ *    only two DOM-derived load-bearing assertions (plus `Runtime.exceptionThrown`
+ *    — see below for why the console/log-error assertion that used to sit
+ *    alongside them was removed).
  */
 const SHELL_SELECTORS = ['[data-testid="tv-root"]', '[data-testid="tv-chrome"]'];
 const MEANINGFUL_CONTENT_SELECTORS = ['[data-testid="tv-idle"]', '[data-testid="tv-hero"]'];
@@ -259,16 +346,12 @@ const MEANINGFUL_CONTENT_SELECTORS = ['[data-testid="tv-idle"]', '[data-testid="
  * React attaches an internal instance key directly onto the DOM node as an
  * own property once it hydrates — `__reactFiber$<id>` (and `__reactProps$<id>`)
  * — never present in the raw SSR HTML the browser initially receives, and
- * never something server-rendered markup can fake. This has been the stable
- * technique across React 16-19 for asking "did this element actually
- * hydrate", exactly because it requires the client bundle to have executed
- * and attached. NOT yet confirmed live against this project's actual
- * `react@^19.0.0` runtime output (that happens on the first real run of this
- * harness) — checking multiple key prefixes (`__reactFiber$`, `__reactProps$`,
- * `__reactContainer$`) is the hedge against the exact prefix having shifted.
- * If the first real reverse-check run shows `hydrated: false` on a build that
- * is known-good by every other signal, verify the live key name in a plain
- * `Object.keys(el)` dump before trusting a FAIL from this specific check.
+ * never something server-rendered markup can fake. CONFIRMED LIVE (D-022
+ * review + this ticket's own reverse-check) against this project's actual
+ * `react@^19.0.0` client output: `hydrated: true` on a genuinely hydrated
+ * build, `hydrated: false` on a build whose client JS never ran. Checking all
+ * three prefixes (`__reactFiber$`, `__reactProps$`, `__reactContainer$`)
+ * remains a harmless hedge, not an unresolved guess.
  */
 const HYDRATION_ROOT_SELECTOR = '[data-testid="tv-root"]';
 
@@ -277,22 +360,114 @@ const HYDRATION_ROOT_SELECTOR = '[data-testid="tv-root"]';
  * the Tech Lead's TV). `components/QrCode.tsx` SSRs a `qr-placeholder` div and
  * ONLY replaces it with `<img data-testid="qr-img">` from a `useEffect` that
  * calls `QRCode.toDataURL()` client-side. The idle state (`tv-idle`, the state
- * a fresh `default` room renders — see the checkpoint) always mounts a
- * `<QrCode value={joinUrl} .../>`. So "qr-img present, qr-placeholder gone" is
- * both a genuine JS-executed signal AND the literal user-visible symptom.
+ * a fresh `default` room renders) always mounts a `<QrCode value={joinUrl} .../>`.
+ * So "qr-img present, qr-placeholder gone" is both a genuine JS-executed
+ * signal AND the literal user-visible symptom.
  */
 const QR_IMG_SELECTOR = '[data-testid="qr-img"]';
 const QR_PLACEHOLDER_SELECTOR = '[data-testid="qr-placeholder"]';
 
+/**
+ * D-022 review finding F4: the console/log error-level assertion that used to
+ * live here was measured, on real runs against both a fatal-ReferenceError
+ * build and a healthy build, to be ZERO entries in BOTH cases — it never once
+ * discriminated. Worse, it is actively dangerous to keep as a failure
+ * condition: the CDP `Log` domain reports network/rendering entries at
+ * "error" level too (a 404 on a font or a third-party asset), so it could
+ * fail this TV gate for a reason with no bearing on old-Chromium
+ * compatibility. Removed. The three assertions below are the only
+ * load-bearing ones, each independently confirmed (via this ticket's
+ * reverse-check) to flip in both directions between the known-bad and
+ * post-fix builds: `Runtime.exceptionThrown` count, the hydration marker, and
+ * the QR image flip.
+ */
+
+const domCheckExpression = `
+  (function() {
+    const shell = ${JSON.stringify(SHELL_SELECTORS)};
+    const meaningful = ${JSON.stringify(MEANINGFUL_CONTENT_SELECTORS)};
+    const shellFound = shell.map(function(s) { return { selector: s, found: !!document.querySelector(s) }; });
+    const meaningfulFound = meaningful.map(function(s) { return { selector: s, found: !!document.querySelector(s) }; });
+
+    const rootEl = document.querySelector(${JSON.stringify(HYDRATION_ROOT_SELECTOR)});
+    var hydrated = false;
+    if (rootEl) {
+      hydrated = Object.keys(rootEl).some(function(k) {
+        return k.indexOf("__reactFiber$") === 0 || k.indexOf("__reactProps$") === 0 || k.indexOf("__reactContainer$") === 0;
+      });
+    }
+
+    const qrImg = !!document.querySelector(${JSON.stringify(QR_IMG_SELECTOR)});
+    const qrPlaceholder = !!document.querySelector(${JSON.stringify(QR_PLACEHOLDER_SELECTOR)});
+
+    return {
+      shellFound: shellFound,
+      meaningfulFound: meaningfulFound,
+      hydrationRootPresent: !!rootEl,
+      hydrated: hydrated,
+      qrImg: qrImg,
+      qrPlaceholder: qrPlaceholder,
+      bodyChildCount: document.body ? document.body.children.length : -1,
+      readyState: document.readyState
+    };
+  })()
+`;
+
+async function evaluateDom(cdp) {
+  const domCheck = await cdp.send("Runtime.evaluate", {
+    expression: domCheckExpression,
+    returnByValue: true,
+  });
+  if (domCheck.exceptionDetails) {
+    throw new Error(`Runtime.evaluate for DOM check threw: ${JSON.stringify(domCheck.exceptionDetails)}`);
+  }
+  return domCheck.result.value;
+}
+
+/**
+ * D-022 review F8: this used to be a single flat sleep before one DOM read.
+ * The QR draw is async (`QRCode.toDataURL()` inside a `useEffect`), so a flat
+ * sleep is a guess that produces false REDs under load, not false greens —
+ * still worth fixing, since a gate that cries wolf gets disabled. Poll until
+ * hydration + the QR both converge, or the deadline expires; return whatever
+ * was last observed either way so the caller always has a result to report.
+ */
+async function pollDomUntilConverged(cdp, deadlineMs) {
+  const start = Date.now();
+  let last = await evaluateDom(cdp);
+  while (Date.now() - start < deadlineMs) {
+    if (last.hydrated && last.qrImg && !last.qrPlaceholder) return last;
+    await sleep(POLL_INTERVAL_MS);
+    last = await evaluateDom(cdp);
+  }
+  return last;
+}
+
 async function main() {
   const { url, chromiumPath } = parseArgs(process.argv.slice(2));
+
+  // D-022 review B1, layer 3 (structural backstop): a verdict has been
+  // reached only at the two places below that set this true right before
+  // printing PASS or FAIL. If the process is about to exit for ANY other
+  // reason — an unhandled rejection, an exotic fall-through, a future bug —
+  // this forces exitCode 1 rather than trusting Node's default of 0.
+  let verdictReached = false;
+  process.on("exit", () => {
+    if (!verdictReached) {
+      process.exitCode = 1;
+      // console, not errlog/log helpers — those may already be torn down by exit time.
+      console.error("[tv-runtime-check] FAIL — process exiting without a printed verdict. Defaulting to exit 1 (default-deny).");
+    }
+  });
+
   if (!url) {
     errlog("FAIL — no --url given. Usage: tv-runtime-check.mjs --url http://localhost:3099/default/tv");
+    verdictReached = true;
     process.exit(1);
   }
 
   const loadAvg1 = loadavg()[0];
-  log(`starting — target url: ${url}, host 1-min load average: ${loadAvg1.toFixed(2)}`);
+  log(`starting — target url: ${url}, host 1-min load average: ${loadAvg1.toFixed(2)}, platform: ${process.platform}`);
 
   const binaryPath = await resolveChromium(chromiumPath);
   const userDataDir = mkdtempSync(join(tmpdir(), "boraoke-tv-runtime-udata-"));
@@ -300,12 +475,18 @@ async function main() {
 
   let child = null;
   let cdp = null;
+
+  // D-022 review B1, layer 1: NOT unref'd. An unref'd timer cannot keep the
+  // event loop alive, so once every other handle drops (e.g. Chromium is
+  // killed and the websocket closes) this timer would never fire and the
+  // process would idle out to Node's default exit code, 0. This must be the
+  // one timer in the whole script guaranteed to run to completion.
   const overallTimer = setTimeout(() => {
     errlog(`FAIL — hard overall timeout (${OVERALL_TIMEOUT_MS}ms) exceeded. Forcing exit.`);
+    verdictReached = true;
     cleanup();
     process.exit(1);
   }, OVERALL_TIMEOUT_MS);
-  overallTimer.unref?.();
 
   function cleanup() {
     try {
@@ -326,7 +507,6 @@ async function main() {
   }
 
   const runtimeExceptions = [];
-  const consoleErrors = [];
 
   try {
     log(`launching Chromium ${CHROMIUM_REVISION} headless on CDP port ${CDP_PORT} (launch timeout ${LAUNCH_TIMEOUT_MS}ms)`);
@@ -346,23 +526,24 @@ async function main() {
     cdp.onEvent((method, params) => {
       if (method === "Runtime.exceptionThrown") {
         runtimeExceptions.push(params);
-      } else if (method === "Log.entryAdded") {
-        const entry = params.entry;
-        if (entry && (entry.level === "error" || entry.level === "SEVERE")) {
-          consoleErrors.push(entry);
-        }
-      } else if (method === "Console.messageAdded") {
-        const m = params.message;
-        if (m && m.level === "error") {
-          consoleErrors.push({ source: "console", text: m.text, level: m.level });
-        }
       }
     });
 
     await cdp.send("Runtime.enable");
-    await cdp.send("Log.enable");
-    await cdp.send("Console.enable");
     await cdp.send("Page.enable");
+
+    // D-022 review NIT-2: register the load-event listener BEFORE navigating,
+    // not after `Page.navigate` resolves — a fast load could otherwise fire
+    // before anyone is listening, wasting the full 30s fallback for nothing.
+    let loadEventFired = false;
+    const loadEventPromise = new Promise((resolve) => {
+      cdp.onEvent((method) => {
+        if (method === "Page.loadEventFired") {
+          loadEventFired = true;
+          resolve();
+        }
+      });
+    });
 
     log(`navigating to ${url}`);
     const navResult = await cdp.send("Page.navigate", { url });
@@ -371,59 +552,12 @@ async function main() {
     }
 
     // Wait for load, bounded — old Chromium can be slow, but never unbounded.
-    await Promise.race([
-      new Promise((resolve) => {
-        cdp.onEvent((method) => {
-          if (method === "Page.loadEventFired") resolve();
-        });
-      }),
-      sleep(30_000),
-    ]);
-
-    // Settle time for client-side hydration/render after the load event. The
-    // QR draw in particular is async (QRCode.toDataURL inside a useEffect), so
-    // this must be generous enough to let it resolve before we check for it.
-    await sleep(SETTLE_MS);
-
-    const domCheck = await cdp.send("Runtime.evaluate", {
-      expression: `
-        (function() {
-          const shell = ${JSON.stringify(SHELL_SELECTORS)};
-          const meaningful = ${JSON.stringify(MEANINGFUL_CONTENT_SELECTORS)};
-          const shellFound = shell.map(function(s) { return { selector: s, found: !!document.querySelector(s) }; });
-          const meaningfulFound = meaningful.map(function(s) { return { selector: s, found: !!document.querySelector(s) }; });
-
-          const rootEl = document.querySelector(${JSON.stringify(HYDRATION_ROOT_SELECTOR)});
-          var hydrated = false;
-          if (rootEl) {
-            hydrated = Object.keys(rootEl).some(function(k) {
-              return k.indexOf("__reactFiber$") === 0 || k.indexOf("__reactProps$") === 0 || k.indexOf("__reactContainer$") === 0;
-            });
-          }
-
-          const qrImg = !!document.querySelector(${JSON.stringify(QR_IMG_SELECTOR)});
-          const qrPlaceholder = !!document.querySelector(${JSON.stringify(QR_PLACEHOLDER_SELECTOR)});
-
-          return {
-            shellFound: shellFound,
-            meaningfulFound: meaningfulFound,
-            hydrationRootPresent: !!rootEl,
-            hydrated: hydrated,
-            qrImg: qrImg,
-            qrPlaceholder: qrPlaceholder,
-            bodyChildCount: document.body ? document.body.children.length : -1,
-            readyState: document.readyState
-          };
-        })()
-      `,
-      returnByValue: true,
-    });
-
-    if (domCheck.exceptionDetails) {
-      throw new Error(`Runtime.evaluate for DOM check threw: ${JSON.stringify(domCheck.exceptionDetails)}`);
+    await Promise.race([loadEventPromise, sleep(30_000)]);
+    if (!loadEventFired) {
+      log(`Page.loadEventFired never observed within 30s fallback — proceeding to DOM check anyway (hard overall timeout still governs).`);
     }
 
-    const domResult = domCheck.result.value;
+    const domResult = await pollDomUntilConverged(cdp, SETTLE_DEADLINE_MS);
 
     clearTimeout(overallTimer);
 
@@ -441,14 +575,9 @@ async function main() {
     for (const exc of runtimeExceptions) {
       errlog(`  exception: ${exc.exceptionDetails?.text ?? "?"} — ${exc.exceptionDetails?.exception?.description ?? ""}`);
     }
-    log(`error-level console/log entries: ${consoleErrors.length}`);
-    for (const entry of consoleErrors) {
-      errlog(`  console error: ${entry.text ?? JSON.stringify(entry)}`);
-    }
 
     const failures = [];
     if (runtimeExceptions.length > 0) failures.push(`${runtimeExceptions.length} Runtime.exceptionThrown event(s)`);
-    if (consoleErrors.length > 0) failures.push(`${consoleErrors.length} error-level console/log entr(y/ies)`);
     for (const { selector, found } of domResult.shellFound) {
       if (!found) failures.push(`SSR-shell selector missing: ${selector} (server did not even respond correctly)`);
     }
@@ -473,10 +602,12 @@ async function main() {
       errlog(`Host 1-min load average at run time was ${loadAvg1.toFixed(2)}; if this failure looks like a hard`);
       errlog(`incompatibility, re-check under a quiet host before concluding — a heavily loaded host can produce`);
       errlog(`misleading timing/liveness results, not just slow ones.`);
+      verdictReached = true;
       process.exit(1);
     }
 
     log(`\ntv-runtime-check: OK — app booted, hydrated, and rendered the real QR on Chromium ${CHROMIUM_REVISION} (${url}).\n`);
+    verdictReached = true;
     process.exit(0);
   } catch (err) {
     clearTimeout(overallTimer);
@@ -491,6 +622,7 @@ async function main() {
       }
     }
     cleanup();
+    verdictReached = true;
     process.exit(1);
   }
 }
