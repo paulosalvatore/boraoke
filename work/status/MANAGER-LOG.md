@@ -1,5 +1,26 @@
 # boraoke — Manager Log
 
+## 2026-09-01 (late night) — ✅ TICKET-99 Phase 1 SETTLED: Chrome 68 runs on this machine, and the earlier "wedge" was load, not incompatibility
+
+**Written for a stranger.** Docs-only entry; no product code touched. `main` clean. Two intentional worktrees (`t101-landing` = PR #79 held; `t99-runtime` = checkpointed at `08d38df`).
+
+**The question this closes.** The prior probe left feasibility genuinely undecided: an old Chromium stayed alive for 2+ minutes, never bound its CDP port, never forked a child, and logged nothing. That was deliberately NOT written down as a verdict, because it was equally consistent with "a 2018 x86_64 build cannot start under Rosetta on macOS 26.5" and with "the host was at load 79-166 on 10 cores".
+
+**It was the load.** Re-run on a quiet box (load 9.9), same binary, same flags:
+
+- **Chromium 68.0.3440.0 launched and bound CDP in ~3 seconds.**
+- **2 child processes** forked promptly — the earlier run forked **zero**, which was the actual tell.
+- `/json/version` → `HeadlessChrome/68.0.3440.0`, **V8 6.8.275**, DevTools protocol **1.3** — modern enough to drive over raw CDP.
+- Verbose log (`--enable-logging=stderr --v=1`) is **448 bytes and boring**: a DNS-options warning, `Lost UI shared context` (expected under `--disable-gpu`), a webrtc download-dir note. **No sandbox failure, no Mojo/IPC stall, no crash report.**
+
+**The fleet lesson, which is the more valuable half.** Under that load the machine was not merely slow — it produced **actively misleading** output. A process that never forks a child and never logs is indistinguishable from a hard incompatibility. Had the first result been recorded as a verdict, the next step would have been the Docker/Linux-container fallback, which is *more* expensive than what was being avoided (the same Virtualization VM that was the single biggest consumer at 89%). Refusing to guess is what prevented that, and the throttle is what made the measurement possible.
+
+**Keep the diagnostic flag permanently.** `--enable-logging=stderr --v=1` did not change this outcome, but it is what would have separated "wedged in sandbox init" from "wedged in IPC" had the second run failed too. A silent probe can only ever be re-run; a verbose one can be diagnosed.
+
+**Where TICKET-99 stands now.** The runtime approach is **proven viable on real Chrome 68 over real CDP, with no WebKit anywhere** — which matters, since a WebKit probe false-greens this exact defect under a webOS UA. What remains is Phase 2: write `scripts/tv-runtime-check.mjs`, then prove it discriminating by building the pre-fix base **`58b44f8`** (must FAIL — unparseable on Chrome 68) before trusting the post-fix PASS. That is two Next builds, ~15-20 min, genuinely heavy, and is deliberately deferred to a quiet window rather than run opportunistically.
+
+**Assertion targets already identified** (from the checkpoint, so Phase 2 does not re-derive them): `data-testid="tv-root"` and `tv-chrome` are present in every queue state; `tv-idle` vs `tv-hero` distinguishes empty from playing. Cached Chromium build lives in the session scratchpad — no re-download needed, and it is not in the repo.
+
 ## 2026-09-01 (late night) — ⏸️ TICKET-99 runtime half STARTED then HELD under a fleet-wide load throttle; feasibility still genuinely undecided
 
 **Written for a stranger.** `main` at `a576af0`, clean. Two worktrees, both intentional: `.worktrees/t101-landing` (PR #79, held for the TL) and `.worktrees/t99-runtime` (branch `ticket/99-runtime-check`, checkpointed at `08d38df`, clean and pushed). No open PR from this work.
