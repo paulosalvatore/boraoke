@@ -231,9 +231,58 @@ function cdpClient(wsUrl) {
   return { ready, send, onEvent, close };
 }
 
-/** DOM selectors the checkpoint already identified — see the checkpoint file. */
-const ALWAYS_PRESENT_SELECTORS = ['[data-testid="tv-root"]', '[data-testid="tv-chrome"]'];
+/**
+ * DOM selectors, and WHY each one is or isn't proof of JS execution.
+ *
+ * IMPORTANT: `tv-root`, `tv-chrome`, `tv-idle`/`tv-hero`, and `qr-placeholder`
+ * are all present in the raw SERVER-RENDERED HTML — confirmed directly against
+ * production (`curl https://boraoke.com/default/tv`). A browser that fetches
+ * the page and renders static HTML with ZERO JS execution — e.g. Chrome 68
+ * hitting the known-bad pre-fix bundle, which fails to parse and never boots —
+ * still satisfies every one of those selectors. Asserting only on them proves
+ * "the server responded and the shell rendered", NOT that the app booted. That
+ * would make the reverse-check pass on the known-bad build by luck (the
+ * console/log-error path might still catch the SyntaxError, but a harness
+ * whose only real discriminating power is one unverified assumption is exactly
+ * the false-green shape this ticket exists to prevent).
+ *
+ * So there are two tiers below:
+ *  - SHELL_SELECTORS: SSR-only proof, kept because they're still worth having,
+ *    but labeled honestly — never treated as boot proof.
+ *  - The hydration marker and the QR-image selector are the actual boot proof:
+ *    both can only become true by client JS actually executing.
+ */
+const SHELL_SELECTORS = ['[data-testid="tv-root"]', '[data-testid="tv-chrome"]'];
 const MEANINGFUL_CONTENT_SELECTORS = ['[data-testid="tv-idle"]', '[data-testid="tv-hero"]'];
+
+/**
+ * React attaches an internal instance key directly onto the DOM node as an
+ * own property once it hydrates — `__reactFiber$<id>` (and `__reactProps$<id>`)
+ * — never present in the raw SSR HTML the browser initially receives, and
+ * never something server-rendered markup can fake. This has been the stable
+ * technique across React 16-19 for asking "did this element actually
+ * hydrate", exactly because it requires the client bundle to have executed
+ * and attached. NOT yet confirmed live against this project's actual
+ * `react@^19.0.0` runtime output (that happens on the first real run of this
+ * harness) — checking multiple key prefixes (`__reactFiber$`, `__reactProps$`,
+ * `__reactContainer$`) is the hedge against the exact prefix having shifted.
+ * If the first real reverse-check run shows `hydrated: false` on a build that
+ * is known-good by every other signal, verify the live key name in a plain
+ * `Object.keys(el)` dump before trusting a FAIL from this specific check.
+ */
+const HYDRATION_ROOT_SELECTOR = '[data-testid="tv-root"]';
+
+/**
+ * The QR itself (TICKET-99's actual reported symptom — "the QR didn't show" on
+ * the Tech Lead's TV). `components/QrCode.tsx` SSRs a `qr-placeholder` div and
+ * ONLY replaces it with `<img data-testid="qr-img">` from a `useEffect` that
+ * calls `QRCode.toDataURL()` client-side. The idle state (`tv-idle`, the state
+ * a fresh `default` room renders — see the checkpoint) always mounts a
+ * `<QrCode value={joinUrl} .../>`. So "qr-img present, qr-placeholder gone" is
+ * both a genuine JS-executed signal AND the literal user-visible symptom.
+ */
+const QR_IMG_SELECTOR = '[data-testid="qr-img"]';
+const QR_PLACEHOLDER_SELECTOR = '[data-testid="qr-placeholder"]';
 
 async function main() {
   const { url, chromiumPath } = parseArgs(process.argv.slice(2));
@@ -331,19 +380,37 @@ async function main() {
       sleep(30_000),
     ]);
 
-    // Settle time for client-side hydration/render after the load event.
+    // Settle time for client-side hydration/render after the load event. The
+    // QR draw in particular is async (QRCode.toDataURL inside a useEffect), so
+    // this must be generous enough to let it resolve before we check for it.
     await sleep(SETTLE_MS);
 
     const domCheck = await cdp.send("Runtime.evaluate", {
       expression: `
         (function() {
-          const always = ${JSON.stringify(ALWAYS_PRESENT_SELECTORS)};
+          const shell = ${JSON.stringify(SHELL_SELECTORS)};
           const meaningful = ${JSON.stringify(MEANINGFUL_CONTENT_SELECTORS)};
-          const alwaysFound = always.map(function(s) { return { selector: s, found: !!document.querySelector(s) }; });
+          const shellFound = shell.map(function(s) { return { selector: s, found: !!document.querySelector(s) }; });
           const meaningfulFound = meaningful.map(function(s) { return { selector: s, found: !!document.querySelector(s) }; });
+
+          const rootEl = document.querySelector(${JSON.stringify(HYDRATION_ROOT_SELECTOR)});
+          var hydrated = false;
+          if (rootEl) {
+            hydrated = Object.keys(rootEl).some(function(k) {
+              return k.indexOf("__reactFiber$") === 0 || k.indexOf("__reactProps$") === 0 || k.indexOf("__reactContainer$") === 0;
+            });
+          }
+
+          const qrImg = !!document.querySelector(${JSON.stringify(QR_IMG_SELECTOR)});
+          const qrPlaceholder = !!document.querySelector(${JSON.stringify(QR_PLACEHOLDER_SELECTOR)});
+
           return {
-            alwaysFound: alwaysFound,
+            shellFound: shellFound,
             meaningfulFound: meaningfulFound,
+            hydrationRootPresent: !!rootEl,
+            hydrated: hydrated,
+            qrImg: qrImg,
+            qrPlaceholder: qrPlaceholder,
             bodyChildCount: document.body ? document.body.children.length : -1,
             readyState: document.readyState
           };
@@ -362,12 +429,14 @@ async function main() {
 
     // ---- Report + verdict ----
     log(`document.readyState: ${domResult.readyState}, body children: ${domResult.bodyChildCount}`);
-    for (const { selector, found } of domResult.alwaysFound) {
-      log(`  always-present selector ${selector}: ${found ? "FOUND" : "MISSING"}`);
+    for (const { selector, found } of domResult.shellFound) {
+      log(`  SSR-shell selector ${selector}: ${found ? "FOUND" : "MISSING"} (proves the server responded and the shell rendered — NOT that JS executed)`);
     }
     for (const { selector, found } of domResult.meaningfulFound) {
-      log(`  meaningful-content selector ${selector}: ${found ? "FOUND" : "MISSING"}`);
+      log(`  SSR-content selector ${selector}: ${found ? "FOUND" : "MISSING"} (also SSR — see above)`);
     }
+    log(`  hydration marker on ${HYDRATION_ROOT_SELECTOR}: root-present=${domResult.hydrationRootPresent}, hydrated=${domResult.hydrated} (React fiber/props key attached only post-hydration — this is real JS-executed proof)`);
+    log(`  QR liveness: qr-img=${domResult.qrImg}, qr-placeholder=${domResult.qrPlaceholder} (qr-img only exists once client JS draws the real QR — this is the Tech Lead's reported symptom)`);
     log(`Runtime.exceptionThrown count: ${runtimeExceptions.length}`);
     for (const exc of runtimeExceptions) {
       errlog(`  exception: ${exc.exceptionDetails?.text ?? "?"} — ${exc.exceptionDetails?.exception?.description ?? ""}`);
@@ -380,12 +449,19 @@ async function main() {
     const failures = [];
     if (runtimeExceptions.length > 0) failures.push(`${runtimeExceptions.length} Runtime.exceptionThrown event(s)`);
     if (consoleErrors.length > 0) failures.push(`${consoleErrors.length} error-level console/log entr(y/ies)`);
-    for (const { selector, found } of domResult.alwaysFound) {
-      if (!found) failures.push(`always-present selector missing: ${selector}`);
+    for (const { selector, found } of domResult.shellFound) {
+      if (!found) failures.push(`SSR-shell selector missing: ${selector} (server did not even respond correctly)`);
     }
     const anyMeaningful = domResult.meaningfulFound.some((m) => m.found);
     if (!anyMeaningful) {
-      failures.push(`neither meaningful-content selector present: ${MEANINGFUL_CONTENT_SELECTORS.join(" or ")}`);
+      failures.push(`neither SSR-content selector present: ${MEANINGFUL_CONTENT_SELECTORS.join(" or ")}`);
+    }
+    // The actual boot proof — these can only be true if client JS executed.
+    if (!domResult.hydrated) {
+      failures.push(`no React hydration marker found on ${HYDRATION_ROOT_SELECTOR} — the shell rendered (SSR) but client JS never hydrated it`);
+    }
+    if (!domResult.qrImg || domResult.qrPlaceholder) {
+      failures.push(`QR never rendered client-side (qr-img found=${domResult.qrImg}, qr-placeholder still present=${domResult.qrPlaceholder}) — this is the exact symptom reported on the Tech Lead's TV`);
     }
 
     cleanup();
@@ -400,7 +476,7 @@ async function main() {
       process.exit(1);
     }
 
-    log(`\ntv-runtime-check: OK — app booted and rendered meaningful DOM on Chromium ${CHROMIUM_REVISION} (${url}).\n`);
+    log(`\ntv-runtime-check: OK — app booted, hydrated, and rendered the real QR on Chromium ${CHROMIUM_REVISION} (${url}).\n`);
     process.exit(0);
   } catch (err) {
     clearTimeout(overallTimer);
