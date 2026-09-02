@@ -1,5 +1,40 @@
 # boraoke — Manager Log
 
+## 2026-09-01 (end of night) — ⏸️ PRODUCT PAUSED by Tech-Lead structure change. Clean stop; this entry is the resume brief.
+
+**Written for a stranger — read this section alone and you can resume.** The TL narrowed active focus to Quiz ILP, Deixa Pronto and OT. boraoke pauses. Nothing is mid-flight, nothing is stranded, no agent is running.
+
+### State at pause (verified, not assumed)
+- `main` at `923ed96`, clean, nothing unpushed. Only `work/heartbeats/` untracked.
+- **Two open PRs, both DRAFT, both deliberately unmerged.** Two worktrees, both intentional and both must stay — removing either strands its branch.
+  - **PR #80** — `.worktrees/t99-runtime`, branch `ticket/99-runtime-check` at `5c0ad6c`. Clean, pushed.
+  - **PR #79** — `.worktrees/t101-landing`, branch `ticket/101-landing-floor` at `206ea2c`. Clean, pushed. **Held for the TL** because it is patron-facing.
+- Zero boraoke processes; ports 3040/3099/9333 free (3100 belongs to another tab).
+
+### THE ONE THING THAT MATTERS MOST ON RESUME
+**PR #80 is NOT re-reviewed.** It went through a full opus review that returned **REQUEST-CHANGES** with three blockers; all three were fixed, but **the fixed harness has not been re-reviewed**, and the harness changed materially (verdict logic, CI wiring, assertion set, shim mechanism). Do not merge #80 on the strength of the first review — that review was of code that no longer exists. **Re-review is the first action on resume.**
+
+Blockers as closed, with what is and is not verified:
+- **B1 (HIGH) — a proven FALSE GREEN, now fixed and verified by the TM personally.** Killing Chromium *after* CDP bound made the harness print no verdict, run no DOM check, and exit **0**. Post-fix, the identical scenario exits **1**. (The launch-phase path was always correct — killing before bind gave a proper `FAIL — CDP never bound`. The hole was post-bind only; fixing the launch path would have looked like closing it while leaving it open.)
+- **B2 (HIGH) — the gate was wired into nothing.** Now `npm run check:tv-runtime` plus a CI job and a platform-aware snapshot resolver (`Mac` vs `Linux_x64`). **UNVERIFIED: this has never run on real CI infrastructure** — only `node --check`, YAML parse and the darwin path locally. That is the single largest unproven claim on the PR and the re-review should target it.
+- **B3 — the committed report was false** (said the script "does not exist"). Rewritten as a completion report carrying the reverse-check evidence verbatim, in the repo rather than in chat.
+- Also taken: the console/log-error assertion **deleted** (measured zero discriminating power in both directions, and the CDP `Log` domain reports 404s at error level, so a missing font could have failed the TV gate); shim simplified; `next/script strategy="beforeInteractive"` with an honest ordering comment replacing a false guarantee; poll-until-converged instead of a flat 5s sleep.
+
+### Product truth at pause — do not soften this
+**Old webOS 4.5/5.0 sets (Chrome 68-70) still do NOT boot boraoke in production**, and will not until #80 ships. The `globalThis` shim is the fix and it is sitting in an unmerged draft. `globalThis` landed in Chrome 71, so **webOS 6.0+ (Chrome 79+) is unaffected** and for those sets the shipped #76/#77 fixes are real and complete. Tracked as **TICKET-102**.
+
+### Open questions for the Tech Lead (unchanged, all still open)
+1. **His LG model / webOS version** — the highest-value single fact. It decides whether the three fixes explain his 2026-08-27 night, whether the #80 shim is worth shipping at all, and whether the declared floor should simply move to Chrome 79.
+2. **Whether to ship the shim to every user** to support TVs two-to-three firmware generations old — a genuine product trade, not a TM call.
+3. **PR #79** (landing/patron CSS floor) — patron-facing, awaiting him.
+4. Longer-standing: the redesign direction (four options, parked since 2026-08-19), the retention window value, and `ADVANCE_AUTH=enforce` (deferred, entangled with TICKET-100).
+
+### Not started, deliberately
+The `render-and-links` cold-compile warm-up (TICKET-94 class) was queued second and never begun. It needs a Playwright run to verify, so it was not pre-authored blind.
+
+### Three framework guardrails filed tonight (inbox notes, the one sanctioned framework write)
+Load-starved measurements return misleading verdicts rather than merely slow ones; SSR DOM-presence assertions are not boot assertions; and the class entry — **a broken instrument and a real finding look identical**, seen three separate times in one night, arguing that every gate needs a positive control proving the gate itself ran.
+
 ## 2026-09-01 (late night) — 🔴🟢 TICKET-99 Phase 2 COMPLETE: the runtime harness works, and on its FIRST run it proved production still does not boot on Chrome 68 (TICKET-102). PR #80 open, in review, NOT merged.
 
 **Written for a stranger.** `main` clean. PR **#80** (draft, `ticket/99-runtime-check`) carries the harness + the `globalThis` shim; an opus Reviewer is running against it. `.worktrees/t101-landing` (PR #79) still held for the TL.

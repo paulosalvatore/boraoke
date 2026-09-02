@@ -1,5 +1,8 @@
 # boraoke — Board
 
+_**⏸️ PRODUCT PAUSED 2026-09-01 (end of night)** — TL narrowed active focus to Quiz ILP / Deixa Pronto / OT. Clean stop: `main` at `923ed96`, nothing unpushed, zero processes, two intentional worktrees. **PR #80 (globalThis shim + old-Chromium runtime gate) and PR #79 (landing CSS floor) are both DRAFT and unmerged.** **On resume, the FIRST action is re-reviewing PR #80** — its opus review returned REQUEST-CHANGES, all three blockers were fixed, but the fixed harness has NOT been re-reviewed and it changed materially. **Product truth: webOS 4.5/5.0 (Chrome 68-70) still do NOT boot until #80 ships; webOS 6.0+ is unaffected.** See MANAGER-LOG's top entry — it is a complete resume brief._
+
+
 _(Title corrected from "cantai" by heartbeat #27, 2026-07-25 — the rename is long done and heartbeat #26 confirmed `~/Documents/GitHub/boraoke` is the live clone; the stale H1 was part of the "stale cantai naming" housekeeping debt listed under Roadmap reconciliation.)_
 
 _Last updated: 2026-09-01 (late night). **🟢 PR #77 MERGED — the second failure mode is closed and gated.** The TV stylesheet now holds at Chrome 68 (flex `gap` → sibling margins, `inset` → longhand) and `scripts/check-css-target.mjs` fails the build if the TV surface regresses, while reporting phone/desktop as advisory. Spacing verified by measurement: 29px between rail cards vs `gap:1.5vw` = 28.8px — zero visual cost on modern browsers. **Both of the day's TV fixes (#76 parse floor, #77 CSS floor) are merged and gated but NOT LIVE** — the Vercel daily deploy cap is exhausted and the TL chose to wait for the reset. The closing check when it deploys is to confirm the LIVE SERVED chunk parses clean, not just that main is green.
