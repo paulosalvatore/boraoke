@@ -218,3 +218,23 @@ The Vercel daily window reset; PR #76 (parse floor) and PR #77 (TV CSS floor) ar
 Residual, all `FeedbackWidget_*` (4 flex `gap`, 1 `inset`, 1 non-flex `gap`) — PR #79's scope, held for the TL as patron-facing. The widget does not render in `/tv` SSR HTML, so the TV surface is unaffected.
 
 **Still open:** the TL's LG model / webOS version, and his retest. If his set is webOS 23+ (Chromium 94+), the parse floor was still a genuine defect but a second cause would remain unfound.
+
+
+---
+
+## 2026-09-01 (late night) — CORRECTION: "both failure modes closed" was true; "an LG set can boot down to ~Chrome 68" was NOT
+
+The deploy-verified note above is accurate on what it measured — the old chunk 404s, all 8 live chunks parse at ES2019, the served `/tv` CSS is clean. **The conclusion drawn from it was wrong.**
+
+Those are STATIC checks. Neither can see a missing runtime global. When the TICKET-99 harness executed the live site in a real pinned Chromium 68, production threw:
+
+```
+Uncaught — ReferenceError: globalThis is not defined
+  at Object.7297 (/_next/static/chunks/255-3981a3d1f3561bd8.js:1:106560)
+```
+
+and **never booted** — no hydration, no QR. So an LG set on Chrome 68-70 still cannot run boraoke. Filed as **TICKET-102**.
+
+**Scope, so this is not over-read:** `globalThis` requires **Chrome 71**, so the still-broken range is **webOS 4.5 and 5.0 only**. webOS 6.0+ (Chrome 79+) is unaffected, and for those sets the parse and CSS fixes verified above are real and complete.
+
+**Lesson worth keeping:** "merged is not live" was the trap this ticket already taught, and it was caught. **"Verified statically is not verified working"** is a second, distinct trap of the same family — and it was NOT caught until something actually executed the app on the target engine.
