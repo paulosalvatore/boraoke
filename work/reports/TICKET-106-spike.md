@@ -108,7 +108,34 @@ The instrumentation TICKET-85 asked for — a `cached: true|false` flag on `sear
 
 ## Step 2 — Does a granted quota extension raise the `search.list` CALL cap?
 
-_(in progress — written in as soon as it lands)_
+### Verdict: **YES. It is a separately-requested, per-method, per-day allocation with its own field on the form. The form is NOT a placebo.** [VERIFIED]
+
+TICKET-85 flagged this as "the single most important open question in this document" and could not resolve it, because the audit *documentation* still described the pre-June world. The resolution is that **the documentation was the wrong place to look — the answer is on the form itself.**
+
+**Primary source, and it is decisive:** the YouTube Data API Services Audit and Quota Extension Form, https://support.google.com/youtube/contact/yt_api_form (fetched 2026-09-27, HTTP 200, server-rendered without sign-in; Google Support contact forms carry no "Last updated" date). Under "Quota Details for Project #1", verbatim:
+
+> "Please note: At the end of your selection you can specify the total quota required. **This quota can be used for all endpoints except search.list and videos.insert.**"
+> "**If you need additional quota for search.list and videos.insert you must specify the quota required for each of these methods separately below the box to enter total quota.**"
+
+And the form's field sequence, verbatim in page order:
+
+> "What is the total quota you are requesting for Project #1?" · "No change / Default quota (10k quota points)" · "Above Default quota" · "Total Per Day Quota \*" · "Detailed Justification \*" · **"youtube.search.list"** · "Total Per Day Quota \*" · "Detailed Justification \*" · **"youtube.videos.insert"** · "Total Per Day Quota \*" · "Detailed Justification \*"
+
+Three independent per-day asks, each with its own mandatory justification. `youtube.search.list` and `youtube.videos.insert` are additionally hoisted to the top of the endpoint checkbox list, ahead of the otherwise-alphabetical remainder.
+
+**This was verified twice, independently.** The research pass fetched the raw HTML and retained it; I then re-grepped that retained HTML myself rather than accepting the summary, and both the "except search.list" sentence and the three `Total Per Day Quota` / `Detailed Justification` field pairs are present verbatim (the pattern repeats for Projects #1–#10 on the form). This is a measurement, not a relayed claim.
+
+**Corroboration from the docs, now that we know what to look for:**
+
+- Revision history, https://developers.google.com/youtube/v3/revision_history ("Last updated 2026-09-14 UTC"), on the 2026-06-01 change: *"This update simplifies the path to quota increases by allowing YouTube to more easily verify and approve requests based on specific method usage."* and *"API calls to the videos.insert and search.list methods will be charged to their own respective quota buckets. … Developers can view quota limits in the Google Cloud Console, and they can request additional quota through the Quota Extension Form."* The per-method buckets and the extension mechanism are named in the same paragraph, and per-method approvability is stated as the *purpose* of the change.
+- Getting-started, https://developers.google.com/youtube/v3/getting-started ("Last updated 2026-09-14 UTC"): *"request additional quota by completing the Quota extension request form for YouTube API Services"* — whose raw `href` is exactly the form URL above.
+- Quota and compliance audits, https://developers.google.com/youtube/v3/guides/quota_and_compliance_audits ("Last updated 2026-09-14 UTC"): extensions are *"beyond the default allocation"*, and the preceding sentence defines that allocation as the one **including** the 100 `search.list` calls. Nothing on any of these pages restricts extensions to "units".
+
+**What is still NOT established:** the *magnitude* granted, and the odds. The form is an audit, not a slider — *"All requests for additional quota requests must go through a compliance audit"* and *"demonstrating significant independent value to the YT ecosystem and its users. Applications that are unable to meet requirements may not be granted additional quota."* No published ceiling on the number you may enter, no published SLA, no published rubric. So Step 2 converts the form from *"possibly worthless"* to *"the only documented path past 100 calls/day"* — it does not make it a plan, and nothing should be sequenced behind it.
+
+**A documentation-staleness finding worth recording on its own:** the June-2026 rewrite did not regenerate Google's auto-generated "Page Summary"/TTS layers, which now contradict their own page bodies. `determine_quota_cost` ("Last updated 2026-09-15 UTC") has a summary still claiming *"videos.insert have the highest cost of 1600 points"* while its own table row reads *"100 quota per day. Each call costs 1 quota."*; the audits page summary still says *"a default allocation of 10,000 units per day"*; getting-started's footer still says searching *"costs much more"* against a body reading *"A search query costs 1 unit."* **Body text and table rows are current; never quote a Page Summary as doctrine.** This is very likely why TICKET-85 read the audit docs as pre-June: parts of them still are.
+
+**Also note for the form itself:** the correction the ticket already flagged (form §2 should describe TICKET-87's *shipped* platform-wide bound rather than "in progress") still applies, and one more now does too — **the ask must be denominated in the `youtube.search.list` per-day box, not as "1,000,000 units/day"**, which under the current model asks for more of the resource boraoke already has in surplus. Filing remains the Tech Lead's decision; this spike did not file anything.
 
 ---
 
