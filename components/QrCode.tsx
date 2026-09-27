@@ -49,10 +49,24 @@ export default function QrCode({
 
   if (!dataUrl) {
     // Reserve the layout box so surrounding content doesn't jump on load.
+    //
+    // TICKET-103: only when the caller has NOT supplied a class. `size` is the
+    // raster resolution of the generated PNG, which is not the same thing as the
+    // display box — a caller with a stylesheet (the TV, whose `.qr` is sized in
+    // `vw`) sets the box itself, and an inline width/height wins over that class,
+    // so the placeholder rendered at a different size than the QR that replaced
+    // it and the layout popped for a frame. Letting the class own the box when
+    // there is one keeps raster resolution and display size independent, which is
+    // what lets the TV raster at 240 for camera legibility over moving video
+    // while still displaying at its own `vw` size.
     return (
       <div
         className={className}
-        style={{ width: size, height: size, background: "#ffffff", borderRadius: 8 }}
+        style={
+          className
+            ? { background: "#ffffff", borderRadius: 8 }
+            : { width: size, height: size, background: "#ffffff", borderRadius: 8 }
+        }
         aria-label={title}
         role="img"
         data-testid="qr-placeholder"

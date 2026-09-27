@@ -14,6 +14,11 @@ import {
   type StallState,
 } from "./watchdog";
 import { shouldSelfHealReload, queueItemsEqual } from "./self-heal";
+import {
+  focusModeActive,
+  shouldRunQueuePeek,
+  nextQueuePeekStep,
+} from "./focus-state";
 
 declare global {
   interface Window {
@@ -113,6 +118,22 @@ export default function TvScreen({
   const [reorderNotice, setReorderNotice] = useState("");
   const [micCallSecs, setMicCallSecs] = useState<number | null>(null);
   const [skipNotice, setSkipNotice] = useState(false);
+  /**
+   * TICKET-103: is the periodic up-next overlay currently revealed? A boolean of
+   * our OWN, toggled at most twice per 30s cycle by a self-scheduling timeout —
+   * never a ticking interval. It deliberately does not touch `queue`, so
+   * TICKET-62's if-changed poll write still bails React out of the render on a
+   * no-op poll and the timers that depend on that keep working.
+   */
+  const [queuePeek, setQueuePeek] = useState(false);
+  /**
+   * TICKET-103: how many times we have caught the player iframe becoming the
+   * fullscreen element and pulled the screen back out of it. Not UI — it is the
+   * only externally observable trace of a redirect that completes in a single
+   * event-loop turn, which is what lets e2e assert the hazard is actually closed
+   * rather than assert the absence of a symptom.
+   */
+  const [nativeFsRedirects, setNativeFsRedirects] = useState(0);
   // Bumped by the watchdog's `recreate` rung so the player effect re-runs
   // deterministically and rebuilds the destroyed player (TICKET-41).
   const [playerEpoch, setPlayerEpoch] = useState(0);
@@ -724,21 +745,65 @@ export default function TvScreen({
     );
 
     const doc = document as Document & { webkitFullscreenElement?: Element };
-    const onChange = () =>
-      setIsFullscreen(
-        Boolean(document.fullscreenElement || doc.webkitFullscreenElement)
-      );
+    /**
+     * TICKET-103 — close the native-fullscreen hazard, on EVERY path.
+     *
+     * TICKET-89 set `fs: 0` to remove YouTube's fullscreen BUTTON, and exited
+     * iframe-fullscreen when the queue emptied. Step 0 measured that this is not
+     * enough: `fs: 0` does not disable YouTube's KEYBOARD shortcut, so a click
+     * inside the iframe (which focuses it) followed by `F` still makes the iframe
+     * the fullscreen element — at which point nothing of ours composites, the
+     * join QR included. That is the state the Tech Lead described and liked, and
+     * it is precisely why his QR disappeared. A patron leaning on a remote
+     * reaches it by accident, so it is a live defect, not a theoretical one.
+     *
+     * We cannot stop a cross-origin iframe from receiving that first keypress.
+     * What we can do is notice the outcome and undo it within one event-loop
+     * turn: `exitFullscreen()` needs no user gesture (TICKET-89 established
+     * that), and the state we land back in is now the app-owned focus state —
+     * big video, QR painted, periodic queue — which is a BETTER version of what
+     * he was reaching for. That is why this is a redirect and not just an exit.
+     *
+     * Deliberately NOT paired with a `requestFullscreen()` re-entry: RE-entering
+     * needs a gesture we do not have here, so it would silently no-op in the
+     * field while looking fixed in a harness that grants it (TICKET-89's
+     * activation probe). The focus state is pure CSS for exactly this reason.
+     */
+    const onChange = () => {
+      const fsEl = document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+      const host = playerHostRef.current;
+      if (fsEl && host && host.contains(fsEl)) {
+        exitFullscreenIfPlayerIsFullscreen(host);
+        setNativeFsRedirects((n) => n + 1);
+        // Do not report this as "the venue is in fullscreen": we are on our way
+        // out of it, and flashing the exit hint on/off would be visible noise.
+        setIsFullscreen(false);
+        return;
+      }
+      setIsFullscreen(Boolean(fsEl));
+    };
     document.addEventListener("fullscreenchange", onChange);
     document.addEventListener("webkitfullscreenchange", onChange);
     return () => {
       document.removeEventListener("fullscreenchange", onChange);
       document.removeEventListener("webkitfullscreenchange", onChange);
     };
-  }, []);
+  }, [exitFullscreenIfPlayerIsFullscreen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "f" || e.key === "F") {
+        // TICKET-103: if focus is sitting inside the player iframe, the NEXT `f`
+        // would go to YouTube instead of us and re-open the hazard above. Hand
+        // focus back to our own document so the venue's second press reaches the
+        // app's own fullscreen. Belt only — the `fullscreenchange` redirect is
+        // what actually closes the hazard, since this handler never runs for a
+        // keypress the iframe swallowed.
+        const host = playerHostRef.current;
+        const active = document.activeElement;
+        if (host && active && active !== document.body && host.contains(active)) {
+          (active as HTMLElement).blur?.();
+        }
         if (!document.fullscreenElement) requestAppFullscreen();
       }
     };
@@ -796,15 +861,86 @@ export default function TvScreen({
     pokeChrome(); // discoverable on load / reload (ticket: re-show after reload)
     window.addEventListener("mousemove", pokeChrome);
     window.addEventListener("pointerdown", pokeChrome);
+    // TICKET-103: `mousemove`/`pointerdown` alone are no longer enough now that
+    // the focus state makes the player iframe nearly full-bleed. Pointer events
+    // that occur OVER a cross-origin iframe are delivered to that iframe and
+    // never reach this window, so at ~97% coverage a venue could wave the remote
+    // over the video and see nothing wake up — the exact cycle the Tech Lead
+    // relies on ("used the remote, UI showed"). Two cheap, additive signals close
+    // most of that:
+    //   - `keydown`: a webOS remote's D-pad/OK/back are key events, and they
+    //     reach us whenever focus is anywhere in our document.
+    //   - window `blur`: fires when focus moves INTO the iframe, i.e. the one
+    //     interaction we would otherwise be blind to. Worst case (the whole
+    //     browser lost focus) it shows the chrome for 4s, which is harmless.
+    // Residual, recorded rather than papered over: a pointer that moves only
+    // inside the already-focused iframe still wakes nothing. That needs real
+    // webOS hardware to judge and is filed as a device-validation follow-up.
+    window.addEventListener("keydown", pokeChrome);
+    window.addEventListener("blur", pokeChrome);
     return () => {
       window.removeEventListener("mousemove", pokeChrome);
       window.removeEventListener("pointerdown", pokeChrome);
+      window.removeEventListener("keydown", pokeChrome);
+      window.removeEventListener("blur", pokeChrome);
       if (chromeTimerRef.current) clearTimeout(chromeTimerRef.current);
     };
   }, [pokeChrome]);
 
   const nowPlaying = queue[0] ?? null;
   const upcoming = queue.slice(1, 4); // design: max 3 on the rail
+
+  /**
+   * TICKET-103 — the app-owned focus state.
+   *
+   * Rides on the SAME idle signal the venue already experiences (`chromeVisible`
+   * false == no pointer/remote activity for `CHROME_HIDE_MS`), so this surface has
+   * one idle notion rather than two that can disagree, and so the cycle the Tech
+   * Lead described — "used the remote, UI showed, then black again" — is exactly
+   * what he keeps getting, only with a much bigger video and a QR that stays.
+   * All the layout lives in `.focus` in the stylesheet; see its block comment.
+   */
+  const focusActive = focusModeActive({
+    chromeVisible,
+    hasNowPlaying: nowPlaying !== null,
+  });
+
+  /**
+   * TICKET-103 item 4 — reveal the up-next queue periodically, then hide it.
+   *
+   * Two state writes per cycle from a self-scheduling timeout, not a tick: a
+   * kiosk runs this forever, and TICKET-62 made the queue poll if-changed
+   * precisely so the TV stops re-rendering ~20x/min for nothing. This must not
+   * hand that back. It also never touches `queue`, so the player effect (which
+   * depends on `queue`'s identity) does not re-run and the iframe is never
+   * disturbed — a remount would kill playback.
+   *
+   * The decisions (whether to run at all, and each step's delay) are pure and
+   * unit-tested in ./focus-state.ts; this is only the wiring.
+   */
+  const upcomingCount = upcoming.length;
+  useEffect(() => {
+    if (!shouldRunQueuePeek({ focusActive, upcomingCount })) {
+      setQueuePeek(false);
+      return;
+    }
+    let visible = false;
+    let first = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      const { nextVisible, delayMs } = nextQueuePeekStep({ visible, first });
+      first = false;
+      timer = setTimeout(() => {
+        visible = nextVisible;
+        setQueuePeek(nextVisible);
+        schedule();
+      }, delayMs);
+    };
+    schedule();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [focusActive, upcomingCount]);
 
   // ---- TICKET-46 Layer 1: proactive reload when the token is OLD *and* idle ----
   // The screen token is valid only for its 24h bucket + the previous one (≤48h).
@@ -871,8 +1007,13 @@ export default function TvScreen({
 
   return (
     <div
-      className={`${styles.tv} ${!chromeVisible ? styles.cursorHidden : ""}`}
+      className={`${styles.tv} ${focusActive ? styles.focus : ""} ${
+        focusActive && queuePeek ? styles.peek : ""
+      } ${!chromeVisible ? styles.cursorHidden : ""}`}
       data-testid="tv-root"
+      /* TICKET-103: see `nativeFsRedirects` — the only observable trace of the
+         iframe-fullscreen redirect, so the closed hazard is assertable. */
+      data-native-fs-redirects={nativeFsRedirects}
     >
       {/* top bar */}
       <div className={styles.topBar}>
@@ -937,8 +1078,13 @@ export default function TvScreen({
             </div>
           )}
 
-          {/* bottom rail */}
-          <div className={styles.rail}>
+          {/*
+            bottom rail — in the focus state this same element is lifted out of
+            flow and floated over the video (TICKET-103). It is repositioned, not
+            replaced: that keeps the QR a SINGLE DOM node across both states and
+            makes the reserved-strip fallback a one-CSS-rule change.
+          */}
+          <div className={styles.rail} data-testid="tv-rail">
             {upcoming.length > 0 && (
               <>
                 <span className={styles.railLabel}>{t("upNext")}</span>
@@ -967,10 +1113,19 @@ export default function TvScreen({
             )}
             {poweredByFooter && (
               <div className={styles.join} data-testid="tv-powered-by">
+                {/*
+                  TICKET-103: raster at 240px, not 120px. CSS sizes this QR
+                  (5.5vw == ~106px @1080p) and the focus state puts it directly
+                  over moving video, where a phone camera has less contrast to
+                  work with than it does over a flat panel. A 120px PNG was
+                  already at 1:1 and would upscale badly at any larger display
+                  size; 240 keeps it crisp and costs nothing at runtime — the
+                  data URL is generated once, client-side.
+                */}
                 <QrCode
                   className={styles.qr}
                   value={joinUrl}
-                  size={120}
+                  size={240}
                   title={t("qrTitle")}
                 />
                 <div className={styles.joinText}>

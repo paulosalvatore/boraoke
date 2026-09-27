@@ -83,6 +83,14 @@
   align-items: center;
   justify-content: space-between;
   flex: none;
+  /* TICKET-103: `max-height` (not `height: auto`, which cannot animate) is what
+     lets the focus state reclaim this row's space with a real transition.
+     8vw is a generous ceiling over the row's natural height (2.6vw wordmark), so
+     it never clips in the normal state. Both properties predate Chrome 68. */
+  max-height: 8vw;
+  opacity: 1;
+  overflow: hidden;
+  transition: opacity 0.35s ease, max-height 0.35s ease;
 }
 .topBar .wordmark {
   font-size: 2.6vw;
@@ -140,6 +148,14 @@
   flex-direction: column;
   justify-content: center;
   min-width: 0;
+  /* TICKET-103: the focus state collapses this column to `max-width: 0` so the
+     video inherits its width. `max-width` beats `flex-basis`, is animatable, and
+     needs nothing newer than Chrome 68 — unlike the `flex`/`grid` rewrites that
+     would be the obvious modern approach. The generous normal-state ceiling
+     keeps the flex sizing (1.5 : 1 against `.video`) in charge here. */
+  max-width: 100vw;
+  opacity: 1;
+  transition: opacity 0.35s ease, max-width 0.4s ease;
 }
 .meta > * + * {
   margin-top: 1.2vw;
@@ -423,6 +439,155 @@
   font-size: 2.4vw;
   color: var(--c-amber);
   font-weight: 700;
+}
+
+/*
+ * ==== TICKET-103: the app-owned FOCUS STATE =================================
+ *
+ * WHAT THIS IS. The Tech Lead liked a state where "the screen goes black with
+ * only the video playing", and reported the join QR disappearing in it. Step 0
+ * measurement (work/reports/testing/TICKET-103-test-report.md) proved that state
+ * was YouTube's OWN fullscreen, reached by a keyboard shortcut `fs: 0` does not
+ * suppress: the IFRAME becomes the fullscreen element, so the video fills the
+ * viewport and NOTHING of ours composites — which is both why he liked it and
+ * exactly why the QR vanished. A DOM overlay on a fullscreen cross-origin iframe
+ * is impossible, not merely awkward, so the QR cannot be rescued inside that
+ * state. These rules build an equivalent-looking state inside OUR own DOM, where
+ * the QR and the up-next overlay still paint. TvScreen redirects away from the
+ * iframe-fullscreen accident and into this.
+ *
+ * WHY IT IS A CLASS AND NOT `requestFullscreen()`. Re-entering fullscreen needs a
+ * user gesture (TICKET-89 measured this), and the path that lands us here has
+ * spent its gesture inside a cross-origin iframe. A class change always works;
+ * a fullscreen request would silently no-op in the field.
+ *
+ * WHY EVERY TRANSITION IS opacity / max-width / max-height. This file is pinned
+ * to the Chrome 68 floor (see the header). The modern way to do this — animating
+ * `flex`, using `grid-template` transitions, aspect-ratio, or a fluid-size
+ * clamping function — is all newer than the floor and would be DROPPED SILENTLY
+ * on a webOS TV. These three properties are animatable and universally
+ * supported. (The words are spelled out rather than written as CSS because
+ * check-css-target.mjs greps this file textually and does not skip comments —
+ * naming a banned function even in prose fails the gate, which is the right
+ * trade for a gate that must never miss a real use.)
+ *
+ * THE RESERVED-STRIP FALLBACK (ticket item 3) IS ONE RULE. `.focus .rail` below
+ * is what lifts the rail out of flow and floats it over the video. Delete that
+ * one block and the rail stays in flow as a bottom strip, with zero TSX change —
+ * which is the whole reason the QR overlay is a repositioned EXISTING element
+ * rather than a new one. The placement decision belongs to the captured
+ * screenshots, so the code is built to let either answer win cheaply.
+ */
+.focus {
+  /* Give the video back most of the screen's own margin too, not just the
+     panels'. The normal 2.5vw/3vw frame is 10-foot-UI breathing room around a
+     dense layout; in the focus state there is nothing left to breathe around. */
+  padding: 1vw 1.5vw;
+}
+.focus .topBar {
+  opacity: 0;
+  max-height: 0;
+}
+.focus > * + * {
+  /* `.tv > * + * { margin-top: 2vw }` would otherwise keep paying for the rows
+     this state removes. */
+  margin-top: 0;
+}
+.focus .meta {
+  opacity: 0;
+  max-width: 0;
+}
+.focus .main > * + * {
+  margin-left: 0;
+}
+.focus .video {
+  /* Softer corner at near-full-bleed: the 1.2vw radius reads as a framed panel
+     at 54% width and as a rounding artifact at 97%. */
+  border-radius: 0.5vw;
+}
+/*
+ * The QR + up-next overlay. `.rail` leaves the column flow (so `.main`, i.e. the
+ * video, inherits its height) and floats over the bottom of the video. It is
+ * right-aligned and bottom-aligned, and the up-next cards stay IN LAYOUT while
+ * hidden — see `.focus .nextCard` below for why that is deliberate.
+ *
+ * Containing block is `.tv`'s padding box (`.tv` is `position: fixed`), so these
+ * offsets are measured from inside the focus padding — i.e. from the video's own
+ * edges, which is what we want.
+ */
+.focus .rail {
+  position: absolute;
+  bottom: 1.2vw;
+  right: 1.2vw;
+  /* `left: auto` on purpose, NOT a matching left offset. Pinning both edges
+     stretches the overlay across the whole video, and because the QR card is
+     right-aligned within it, the "A SEGUIR" label ends up marooned in the
+     opposite corner with the full width of the screen between it and the cards
+     it labels — caught in the first evidence capture
+     (work/evidence/TICKET-103/). Shrink-to-fit keeps the label, the cards and
+     the QR together as one composed panel, which is what makes the timed reveal
+     read as designed rather than as debris. */
+  left: auto;
+  z-index: 12;
+  /* Centre, not flex-end: bottom-aligning left the "A SEGUIR" label sitting on
+     the overlay's bottom edge, reading as though it were falling off the screen
+     (first evidence capture). Centring aligns it against the tallest item — the
+     QR card — so the label, the cards and the QR read as one row. */
+  align-items: center;
+  pointer-events: none;
+}
+/*
+ * Ticket item 1, the one the TL cared most about: the QR is ALWAYS painted.
+ *
+ * This is the SAME single DOM node in both states — never conditionally
+ * unmounted, never inside an opacity-0 parent, and deliberately not duplicated
+ * into a focus-only copy (which is how `tv-powered-by` ended up on two nodes).
+ * Over video it needs a stronger, more opaque plate than it does over the page
+ * background, since whatever frame is playing is now directly behind it.
+ */
+.focus .join {
+  background: rgba(13, 10, 20, 0.92);
+  border-color: rgba(247, 243, 252, 0.28);
+  box-shadow: 0 0 2vw rgba(0, 0, 0, 0.55);
+}
+/* Bigger over video: this is the state where the whole point is that a patron
+   across the room can still scan, and the 5.5vw rail size was sized against a
+   dense bottom strip it no longer has to share. The PNG is rastered at 240px
+   (see TvScreen) so 8vw == ~154px @1080p is still upscale-free. */
+.focus .qr {
+  width: 8vw;
+  height: 8vw;
+}
+/*
+ * Ticket item 4: the periodic up-next reveal.
+ *
+ * Only `opacity` animates; the cards keep their boxes the whole time. With the
+ * rail right-aligned, that means the QR card does not MOVE when the queue
+ * appears or disappears — the reveal reads as an intentional, composed overlay
+ * rather than as the bottom of the screen jumping, which is the difference
+ * between "designed" and "glitch" the ticket asks for.
+ */
+.focus .railLabel,
+.focus .nextCard {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.focus.peek .railLabel,
+.focus.peek .nextCard {
+  opacity: 1;
+}
+.focus .nextCard {
+  background: rgba(26, 20, 36, 0.9);
+  box-shadow: 0 0 1.5vw rgba(0, 0, 0, 0.45);
+}
+/* The muted label colour is sized for a flat dark page background. Over video it
+   can land on a blown-out sky and effectively disappear (seen in the evidence
+   capture), so in the focus state it gets the same dark plate the cards have. */
+.focus .railLabel {
+  color: var(--c-text);
+  background: rgba(13, 10, 20, 0.82);
+  border-radius: 999px;
+  padding: 0.6vw 1.1vw;
 }
 
 /* ---- auto-hiding chrome (fullscreen + skip) ---- */
