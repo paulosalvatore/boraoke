@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-27T11:10:57Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-106", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/106-search-quota", "short_sha": "58278ac", "message_slug": "spike(106): Step 1 production numbers — cap hit at 90/90, root cause is "}}
