@@ -4,11 +4,22 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { useTranslations } from "next-intl";
 import { parseYouTubeVideoId } from "@/lib/youtube";
 import { augmentQuery } from "@/lib/search-query";
+import { planSearch } from "@/lib/search-prefix";
 import type { Mode } from "@/lib/store";
 import { MAX_SEARCH_PAGES, type SearchResult } from "@/lib/youtube-search";
 
 const DEBOUNCE_MS = 400;
-const MIN_CHARS = 3;
+/**
+ * TICKET-108: raised 3 → 4. A 3-character query was measured to be worth
+ * nothing: production's real page for "esc" does not contain "Escurinho do
+ * Cinema" anywhere in its 50 rows, so the call was spent to show the patron
+ * results they then had to type past anyway. Over the 80 real production queries
+ * this drops billed calls a further ~12% with hit@10 unchanged (the measured
+ * table is in work/reports/dev/TICKET-108-dev-report.md; at 5 chars quality DOES
+ * degrade, which is why this is 4 and not 5). The server's own MIN_QUERY stays
+ * at 3 — this is a client-side demand reduction, not a contract change.
+ */
+const MIN_CHARS = 4;
 
 /**
  * Rows revealed per "load more" tap. The server hands us up to
@@ -61,7 +72,18 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
   // i18n (TICKET-30): all user-facing copy from the `Search` catalog.
   const t = useTranslations("Search");
   const [input, setInput] = useState("");
+  /**
+   * The rows currently RENDERED. Since TICKET-108 this is not necessarily the
+   * whole fetched page: while the patron keeps extending a query we already hold
+   * results for, this is the locally-narrowed subset and no call was spent.
+   */
   const [results, setResults] = useState<SearchResult[]>([]);
+  /**
+   * The full page we HOLD from the last billed `search.list` call, and the raw
+   * query it was fetched for (TICKET-108). One call returns up to 50 rows, so
+   * this is the pool every subsequent keystroke narrows for free.
+   */
+  const [heldRows, setHeldRows] = useState<SearchResult[]>([]);
   /** How many of `results` are currently rendered (grows by PAGE_SIZE). */
   const [visible, setVisible] = useState(PAGE_SIZE);
   /** Google cursor for the NEXT server page; "" when there is no further page. */
@@ -85,6 +107,18 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
    * 12h. Pinning the query makes that impossible.
    */
   const [resultsQuery, setResultsQuery] = useState("");
+  /**
+   * The raw query the RENDERED rows currently correspond to (TICKET-108).
+   *
+   * Distinct from `resultsQuery`, and the distinction is load-bearing:
+   * `resultsQuery` is what the held PAGE (and its cursor) belongs to, while this
+   * is what the patron has typed and the rows have been narrowed to. Local
+   * narrowing makes `input !== resultsQuery` an ordinary, legitimate state, so
+   * the "the patron has moved on, withdraw load-more" check below must key off
+   * THIS rather than off `resultsQuery` — otherwise load-more would vanish for
+   * the whole time a patron is typing deeper into a page we already hold.
+   */
+  const [filterQuery, setFilterQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [degraded, setDegraded] = useState(false);
@@ -127,6 +161,49 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     modeRef.current = mode;
   }, [mode]);
 
+  /**
+   * TICKET-108 follows TICKET-83's pattern for exactly the same reason: the held
+   * page is read through a ref inside the search effect, so landing a fetch does
+   * not change the effect's dependencies. The effect stays keyed on `[input,
+   * runSearch]` alone — which is what keeps the TICKET-83 guarantee intact (a
+   * mode flip, or a fetch completing, can never re-trigger a debounce, a fetch,
+   * or a quota charge).
+   */
+  const heldRef = useRef<{ query: string; rows: SearchResult[] }>({ query: "", rows: [] });
+  /** The raw input the rendered rows belong to; read inside `loadMore`. */
+  const filterQueryRef = useRef("");
+
+  /** Adopt a freshly-fetched page as the held pool. */
+  const setHeld = useCallback((query: string, rows: SearchResult[]) => {
+    heldRef.current = { query, rows };
+    setHeldRows(rows);
+  }, []);
+
+  /** Forget the held pool (empty input, paste-a-link, degraded, error). */
+  const clearHeld = useCallback(() => {
+    heldRef.current = { query: "", rows: [] };
+    filterQueryRef.current = "";
+    setHeldRows([]);
+    setFilterQuery("");
+  }, []);
+
+  /**
+   * What to RENDER for `raw` given a held pool — the single place the narrowing
+   * decision is applied, so the effect and "load more" can never disagree.
+   *
+   * The `fetch` branch renders the pool untouched, and that is deliberate: a
+   * freshly-fetched page must NEVER be filtered by its own query. YouTube
+   * legitimately returns rows whose title does not contain the query at all
+   * (production: "escurinho do cinema" surfaces Rita Lee's "Flagra" — a lyric
+   * match, measured in the TICKET-106 spike), and self-filtering would throw
+   * those away. Narrowing is only ever applied to a query that strictly EXTENDS
+   * the one the pool was fetched for.
+   */
+  const renderRowsFor = useCallback((raw: string, heldQuery: string, rows: SearchResult[]) => {
+    const plan = planSearch({ next: raw, heldQuery, heldRows: rows });
+    return plan.action === "filter" ? plan.rows : rows;
+  }, []);
+
   const clearSelection = useCallback(() => {
     setSelectedId(null);
     onSelect(null);
@@ -156,6 +233,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           setResults([]);
           setResultsMode(null);
           setResultsQuery("");
+          clearHeld();
           setRateLimitMsg(data.error ?? t("rateLimited"));
           return;
         }
@@ -164,14 +242,21 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           setResults([]);
           setResultsMode(null);
           setResultsQuery("");
+          clearHeld();
           setDailyLimited(data.reason === "daily-limit");
           setDegraded(true);
           return;
         }
-        setResults(Array.isArray(data.results) ? data.results : []);
+        const page = Array.isArray(data.results) ? (data.results as SearchResult[]) : [];
+        // This call is now the held pool: every further character the patron
+        // types is narrowed against these rows instead of billing again.
+        setHeld(q, page);
+        setResults(page);
         setNextPageToken(typeof data.nextPageToken === "string" ? data.nextPageToken : "");
         setResultsMode(searchMode);
         setResultsQuery(q);
+        filterQueryRef.current = q;
+        setFilterQuery(q);
       } catch {
         if (seq !== seqRef.current) return;
         // Network error → fail soft to the paste-link fallback. This is a real
@@ -179,6 +264,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         setResults([]);
         setResultsMode(null);
         setResultsQuery("");
+        clearHeld();
         setDailyLimited(false);
         setDegraded(true);
       } finally {
@@ -189,7 +275,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     // deliberately excluded so `runSearch` keeps a stable identity — the search
     // effect depends on it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [patronUuid],
+    [patronUuid, setHeld, clearHeld],
   );
 
   /**
@@ -241,11 +327,18 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         return;
       }
       if (!res.ok || data.degraded || !Array.isArray(data.results)) return;
-      setResults((prev) => {
-        // Defensive de-dup: Google can repeat an id across page boundaries.
-        const seen = new Set(prev.map((r) => r.videoId));
-        return [...prev, ...(data.results as SearchResult[]).filter((r) => !seen.has(r.videoId))];
-      });
+      // TICKET-108: the new page joins the HELD pool, and what is rendered is
+      // that pool re-narrowed by whatever the patron has typed — otherwise a
+      // deep page would arrive unfiltered and undo the narrowing on screen.
+      const { query: heldQuery, rows: heldSoFar } = heldRef.current;
+      const seen = new Set(heldSoFar.map((r) => r.videoId));
+      // Defensive de-dup: Google can repeat an id across page boundaries.
+      const merged = [
+        ...heldSoFar,
+        ...(data.results as SearchResult[]).filter((r) => !seen.has(r.videoId)),
+      ];
+      setHeld(heldQuery, merged);
+      setResults(renderRowsFor(filterQueryRef.current, heldQuery, merged));
       setNextPageToken(typeof data.nextPageToken === "string" ? data.nextPageToken : "");
       setPagesFetched((p) => p + 1);
       setVisible((v) => v + PAGE_SIZE);
@@ -254,7 +347,18 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     } finally {
       setLoadingMore(false);
     }
-  }, [visible, results.length, nextPageToken, loadingMore, pagesFetched, resultsQuery, resultsMode, patronUuid]);
+  }, [
+    visible,
+    results.length,
+    nextPageToken,
+    loadingMore,
+    pagesFetched,
+    resultsQuery,
+    resultsMode,
+    patronUuid,
+    setHeld,
+    renderRowsFor,
+  ]);
 
   // React to input changes: resolve pasted links locally, else debounce a search.
   useEffect(() => {
@@ -267,6 +371,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       setResults([]);
       setResultsMode(null);
       setResultsQuery("");
+      clearHeld();
       setVisible(PAGE_SIZE);
       setNextPageToken("");
       setPagesFetched(1);
@@ -291,6 +396,9 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       setPagesFetched(1);
       setResultsMode(null);
       setResultsQuery("");
+      // A pasted link is resolved locally and is NOT a search result, so it must
+      // never become the held pool (AC2: zero API calls on this path).
+      clearHeld();
       setResults([
         {
           videoId: pastedId,
@@ -312,6 +420,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       setResults([]);
       setResultsMode(null);
       setResultsQuery("");
+      clearHeld();
       setVisible(PAGE_SIZE);
       setNextPageToken("");
       setPagesFetched(1);
@@ -321,14 +430,53 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       return;
     }
 
-    // Free-text search (debounced).
     clearSelection();
+
+    /**
+     * THE POINT OF TICKET-108. Before scheduling a debounce — which is what
+     * bills one of the platform's 90 daily `search.list` calls — ask whether we
+     * already hold the answer.
+     *
+     * Production measured 3.75 billed calls per queued song, because one patron
+     * typing "escurinho do cinema" spent TWELVE of the day's 90 calls on twelve
+     * prefixes of one title. A single call returns up to 50 rows, so while the
+     * patron is extending a query we already hold, the rows to show are already
+     * in memory.
+     *
+     * `planSearch` refuses to narrow when narrowing would STARVE (fewer than
+     * MIN_LOCAL_MATCHES rows left), which is the measured difference between a
+     * real fix and a false win: a short prefix's page may genuinely not contain
+     * the song, and blindly filtering it would have dropped hit@10 from 79% to
+     * 36% while the quota graph looked excellent.
+     */
+    const held = heldRef.current;
+    const plan = planSearch({ next: trimmed, heldQuery: held.query, heldRows: held.rows });
+
+    if (plan.action === "filter") {
+      // FREE PATH: no network, no quota, no debounce. There is nothing to
+      // debounce away — the cost a debounce exists to amortise is exactly the
+      // API call we are not making — so narrowing is applied immediately and the
+      // list reacts as the patron types.
+      setResults(plan.rows);
+      setVisible(PAGE_SIZE);
+      filterQueryRef.current = trimmed;
+      setFilterQuery(trimmed);
+      setLoading(false);
+      clearDegraded();
+      setRateLimitMsg("");
+      return;
+    }
+
+    // PAID PATH: we do not hold an answer for this query. Debounce as before, so
+    // a burst of keystrokes still collapses into one call.
     debounceRef.current = setTimeout(() => runSearch(trimmed), DEBOUNCE_MS);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // onSelect/clearSelection are stable via useCallback in the parent contract.
+    // heldRef is a REF on purpose (TICKET-83/108): landing a fetch must not
+    // change this effect's deps, or a completed search would re-trigger it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, runSearch]);
 
@@ -348,7 +496,17 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
    * "load more" here would spend one of the day's 100 searches deepening a
    * query the patron has already moved off. Withdraw the affordance instead.
    */
-  const queryDirty = resultsQuery !== "" && input.trim() !== resultsQuery;
+  /**
+   * The patron has typed something the rendered rows do NOT yet answer, i.e. a
+   * debounced fetch is in flight. Offering "load more" across that window would
+   * spend a daily search deepening a query already moved off.
+   *
+   * TICKET-108 re-keys this from `resultsQuery` to `filterQuery`: local narrowing
+   * makes `input !== resultsQuery` completely normal (the pool belongs to a
+   * shorter query by design), so the old comparison would have withdrawn
+   * load-more for the entire time a patron types deeper into a held page.
+   */
+  const queryDirty = filterQuery !== "" && input.trim() !== filterQuery;
   const canFetchMore =
     !!nextPageToken && pagesFetched < MAX_SEARCH_PAGES && !queryDirty;
   const hasMore = visible < results.length || canFetchMore;
@@ -362,7 +520,9 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
    * exactly like an exhausted list, so on anything at or under one client page
    * we use the neutral "try other words" copy rather than asserting a falsehood.
    */
-  const certainlyExhausted = results.length > PAGE_SIZE;
+  // TICKET-108: judged on the HELD page, not the narrowed view — a locally
+  // narrowed list of 3 rows says nothing about whether Google had more.
+  const certainlyExhausted = heldRows.length > PAGE_SIZE;
   /** Results on screen were fetched under a different mode than the one now selected. */
   const staleMode = resultsMode !== null && resultsMode !== mode && results.length > 0;
 

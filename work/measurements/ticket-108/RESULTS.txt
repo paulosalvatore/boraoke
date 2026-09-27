@@ -1,0 +1,107 @@
+
+> boraoke@0.1.0 measure:t108
+> ts-node --transpile-only --compilerOptions '{"module":"commonjs","moduleResolution":"node","target":"es2020","esModuleInterop":true}' work/measurements/ticket-108/replay.ts --controls
+
+========================================================================================================
+TICKET-108 — billed calls AND result quality, replayed over real production traces
+========================================================================================================
+oracle: 80 production cache keys → 80 distinct raw inputs, 3919 real YouTube rows, 0 search.list calls spent
+traces: 32 keystroke families covering all 80 raw inputs
+
+longest families (the ones that drained the budget):
+  12 billed calls today:  esc → escu → escur → escuri → escurinh → escurinho → escurinho d → escurinho do → escurinho do c → escurinho do ci → escurinho do cin → escurinho do cinema
+   5 billed calls today:  bor → borb → borbu → borbulhas → borbulhas de
+   5 billed calls today:  zé r → zé ra → zé ram → zé rama → zé ramalho
+   4 billed calls today:  vida → vida de → vida de gad → vida de gado
+   4 billed calls today:  cerol → cerol na → cerol na mao → cerol na mão
+   4 billed calls today:  quien → quien se → quien se hay tomado → quien se hay tomado tofo
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────
+BILLED CALLS — replayed over the same real production traces
+────────────────────────────────────────────────────────────────────────────────────────────────────────
+BEFORE (today: one call per debounce)       80 calls   = 3.75 per queued song (measured: 90 calls / 24 songs)
+AFTER  minChars=3 minLocalMatches=1         50 calls   = 2.34 per queued song   (−38%)
+AFTER  minChars=3 minLocalMatches=2         55 calls   = 2.58 per queued song   (−31%)
+AFTER  minChars=3 minLocalMatches=3         57 calls   = 2.67 per queued song   (−29%)
+AFTER  minChars=3 minLocalMatches=5         58 calls   = 2.72 per queued song   (−28%)
+AFTER  minChars=3 minLocalMatches=8         61 calls   = 2.86 per queued song   (−24%)
+AFTER  minChars=4 minLocalMatches=1         43 calls   = 2.02 per queued song   (−46%)
+AFTER  minChars=4 minLocalMatches=2         47 calls   = 2.20 per queued song   (−41%)
+AFTER  minChars=4 minLocalMatches=3         48 calls   = 2.25 per queued song   (−40%)
+AFTER  minChars=4 minLocalMatches=5         49 calls   = 2.30 per queued song   (−39%)
+AFTER  minChars=4 minLocalMatches=8         52 calls   = 2.44 per queued song   (−35%)
+AFTER  minChars=5 minLocalMatches=1         36 calls   = 1.69 per queued song   (−55%)
+AFTER  minChars=5 minLocalMatches=2         39 calls   = 1.83 per queued song   (−51%)
+AFTER  minChars=5 minLocalMatches=3         40 calls   = 1.88 per queued song   (−50%)
+AFTER  minChars=5 minLocalMatches=5         41 calls   = 1.92 per queued song   (−49%)
+AFTER  minChars=5 minLocalMatches=8         42 calls   = 1.97 per queued song   (−48%)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────
+RESULT QUALITY — the guardrail. Same 32 graded production queries, same hit predicate as the spike.
+────────────────────────────────────────────────────────────────────────────────────────────────────────
+EXCLUDED — never searched in production, so there is no page to grade against (NOT silently counted as misses): 4/32
+   · boquinha da g karaoke
+   · olha a onfs karaoke
+   · boquinha da garrafa karaoke
+   · na boca da garrafa karaoke
+
+BEFORE  full-string search (today)         n=28  hit@1 18 ( 64%)  hit@5 20 ( 71%)  hit@10 22 ( 79%)
+AFTER   minChars=3 minLocalMatches=1       n=28  hit@1 21 ( 75%)  hit@5 23 ( 82%)  hit@10 24 ( 86%)  ▲ +2
+AFTER   minChars=3 minLocalMatches=2       n=28  hit@1 19 ( 68%)  hit@5 22 ( 79%)  hit@10 23 ( 82%)  ▲ +1
+AFTER   minChars=3 minLocalMatches=3       n=28  hit@1 19 ( 68%)  hit@5 21 ( 75%)  hit@10 22 ( 79%)  = holds
+AFTER   minChars=3 minLocalMatches=5       n=28  hit@1 19 ( 68%)  hit@5 21 ( 75%)  hit@10 22 ( 79%)  = holds
+AFTER   minChars=3 minLocalMatches=8       n=28  hit@1 19 ( 68%)  hit@5 21 ( 75%)  hit@10 22 ( 79%)  = holds
+AFTER   minChars=4 minLocalMatches=1       n=28  hit@1 21 ( 75%)  hit@5 22 ( 79%)  hit@10 23 ( 82%)  ▲ +1
+AFTER   minChars=4 minLocalMatches=2       n=28  hit@1 19 ( 68%)  hit@5 21 ( 75%)  hit@10 22 ( 79%)  = holds
+AFTER   minChars=4 minLocalMatches=3       n=28  hit@1 19 ( 68%)  hit@5 21 ( 75%)  hit@10 22 ( 79%)  = holds
+AFTER   minChars=4 minLocalMatches=5       n=28  hit@1 19 ( 68%)  hit@5 21 ( 75%)  hit@10 22 ( 79%)  = holds
+AFTER   minChars=4 minLocalMatches=8       n=28  hit@1 19 ( 68%)  hit@5 21 ( 75%)  hit@10 22 ( 79%)  = holds
+AFTER   minChars=5 minLocalMatches=1       n=28  hit@1 19 ( 68%)  hit@5 20 ( 71%)  hit@10 21 ( 75%)  ◀ DEGRADED -1
+AFTER   minChars=5 minLocalMatches=2       n=28  hit@1 17 ( 61%)  hit@5 19 ( 68%)  hit@10 20 ( 71%)  ◀ DEGRADED -2
+AFTER   minChars=5 minLocalMatches=3       n=28  hit@1 17 ( 61%)  hit@5 19 ( 68%)  hit@10 20 ( 71%)  ◀ DEGRADED -2
+AFTER   minChars=5 minLocalMatches=5       n=28  hit@1 17 ( 61%)  hit@5 19 ( 68%)  hit@10 20 ( 71%)  ◀ DEGRADED -2
+AFTER   minChars=5 minLocalMatches=8       n=28  hit@1 17 ( 61%)  hit@5 19 ( 68%)  hit@10 20 ( 71%)  ◀ DEGRADED -2
+
+by query shape, BEFORE vs the recommended variant (minChars=3 minLocalMatches=3):
+   partial   hit@10  before 8/12   after 8/12
+   typo      hit@10  before 2/4   after 2/4
+   accent    hit@10  before 5/5   after 5/5
+   complete  hit@10  before 7/7   after 7/7
+
+   before misses: escu karaoke | escurinho do cin karaoke | borb karaoke | banderille karaoke | soda stete karaoke | banderilleros karaoke
+   after  misses: escu karaoke | escurinho do cin karaoke | borb karaoke | banderille karaoke | soda stete karaoke | banderilleros karaoke
+   why the recommended variant still spent calls: {"no-held-results":32,"local-matches-starved":25}
+
+ungradable production strings excluded by the spike (a human cannot tell either): 20
+
+
+========================================================================================================
+PROVE-THE-MEASUREMENT-CAN-FAIL CONTROLS
+========================================================================================================
+A quality harness that scores the same however badly the policy behaves is measuring nothing.
+Each control below breaks something on purpose; the stated number MUST move.
+
+C1  naive "extension ⇒ never refetch" (minLocalMatches=0, starvation guard REMOVED)
+      billed 32 (baseline 80)   n=28  hit@1  9 ( 32%)  hit@5 10 ( 36%)  hit@10 10 ( 36%)
+      → hit@10 10 vs baseline 22: DROPS, as it must — the quality arm does detect degradation, so the "holds" verdicts above mean something
+      C1 misses: escu karaoke | escurinho d karaoke | escurinho do cin karaoke | vida de gad karaoke | evide | banderille karaoke | musical jm feliz | soda stete karaoke | banderilleros karaoke | quien se hay tomado tofo | evidências | maná | mana | com quem será | escurinho do cinema karaoke | vida de gado karaoke | rita lee escurinho karaoke | bad guy karaoke
+
+C2  empty oracle (must be 0%)
+      n=28  hit@1  0 (  0%)  hit@5  0 (  0%)  hit@10  0 (  0%)
+      → 0 hits, as required — hit() is not vacuously true
+
+C3  no local narrowing at all (held page shown verbatim)
+      billed 57   n=28  hit@1 16 ( 57%)  hit@5 20 ( 71%)  hit@10 22 ( 79%)
+      → does not beat the baseline, as expected
+
+C4  diacritic folding is load-bearing (an accent added after the fact must not bill)
+      "evide" → "evidências":  planSearch = filter (39 rows, 0 calls)   raw unfolded startsWith = false
+      "mana" → "maná":  planSearch = filter (50 rows, 0 calls)   raw unfolded startsWith = false
+      "cerol na mao" → "cerol na mão":  planSearch = filter (50 rows, 0 calls)   raw unfolded startsWith = false
+
+C5  token-PREFIX matching is load-bearing (mid-word typing)
+      page("escurinho") narrowed by "escurinho do cin":  prefix-match 1 rows   whole-word-equality 0 rows
+      page("vida") narrowed by "vida de gad":  prefix-match 0 rows   whole-word-equality 0 rows
+      page("quien") narrowed by "quien se hay tomado":  prefix-match 0 rows   whole-word-equality 0 rows
+      page("borbulhas") narrowed by "borbulhas de":  prefix-match 43 rows   whole-word-equality 43 rows
+      → prefix matching keeps rows that word-equality would starve on — the rule earns its keep

@@ -504,3 +504,126 @@ test("budget spent mid-session retires load-more instead of failing silently", a
   await page.getByRole("button", { name: /Budget Song 3/i }).click();
   await expect(page.getByText(/Selecionada: b1vid3/)).toBeVisible();
 });
+
+/**
+ * TICKET-108 — THE quota acceptance criterion, asserted as a call COUNT.
+ *
+ * Production spent 90 of 90 daily `search.list` calls to queue 24 songs because
+ * this input searched on every 400ms typing pause: one patron typing "escurinho
+ * do cinema" burned TWELVE of the platform's 90 daily calls on twelve prefixes of
+ * one title. These tests type the way a patron types — in chunks, with pauses
+ * LONGER than the debounce, because a fast `fill()` collapses into one call on
+ * the pre-fix code too and would prove nothing.
+ */
+
+/** Type `text` in chunks, pausing past the debounce between them, like a real patron. */
+async function typeInChunks(page: Page, chunks: string[]) {
+  const input = page.getByLabel(/Buscar música/i);
+  await input.click();
+  for (const chunk of chunks) {
+    await input.pressSequentially(chunk, { delay: 25 });
+    await page.waitForTimeout(700); // > DEBOUNCE_MS (400)
+  }
+}
+
+/** A 50-row page whose rows all match `stem`, so local narrowing never starves. */
+function pageMatching(stem: string, n = 50) {
+  return Array.from({ length: n }, (_, i) => ({
+    videoId: `m${i}`,
+    title: `${stem} - versão ${i}`,
+    channelTitle: "Karaokê Playback",
+    duration: "3:00",
+    thumbnailUrl: "https://i.ytimg.com/vi/x/mqdefault.jpg",
+  }));
+}
+
+test("typing a title in chunks bills ONE search, not one per pause (TICKET-108)", async ({ page }) => {
+  const queries: string[] = [];
+  await page.route("**/api/search**", async (route) => {
+    queries.push(new URL(route.request().url()).searchParams.get("q") ?? "");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: pageMatching("Escurinho do Cinema"), nextPageToken: "CURSOR_2" }),
+    });
+  });
+
+  await joinAs(page, "KeystrokeUser");
+  // Four pauses past the debounce. The pre-fix code billed one call per pause.
+  await typeInChunks(page, ["escu", "rinho", " do", " cinema"]);
+
+  await expect(page.getByRole("button", { name: /Escurinho do Cinema - versão 0/ })).toBeVisible();
+  // The first chunk fetched; every later chunk was answered from the 50 rows that
+  // call already returned, so the whole title cost ONE of the daily 90.
+  expect(queries).toEqual(["escu karaoke"]);
+});
+
+test("a prefix whose page cannot answer the longer query DOES refetch (TICKET-108 guardrail)", async ({ page }) => {
+  // This is the guardrail that stops the billing win being paid for in quality: a
+  // short prefix's real top-50 may simply not contain the song. Here "escu"
+  // returns rows about something else entirely, so narrowing to "escurinho do
+  // cinema" starves — and the honest answer is to spend a call, not to show the
+  // patron a page that does not contain what they asked for.
+  const queries: string[] = [];
+  await page.route("**/api/search**", async (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q") ?? "";
+    queries.push(q);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: q.startsWith("escu ")
+          ? pageMatching("Escola de Samba", 50)
+          : pageMatching("Escurinho do Cinema", 50),
+      }),
+    });
+  });
+
+  await joinAs(page, "StarveUser");
+  await typeInChunks(page, ["escu", "rinho do cinema"]);
+
+  // Two calls, and the second one is the query the patron actually meant.
+  expect(queries).toHaveLength(2);
+  expect(queries[1]).toBe("escurinho do cinema karaoke");
+  // And the patron ends up looking at their song, not at samba schools.
+  await expect(page.getByRole("button", { name: /Escurinho do Cinema - versão 0/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Escola de Samba/ })).toHaveCount(0);
+});
+
+test("load more pages against the HELD query while narrowing locally (TICKET-108)", async ({ page }) => {
+  // TICKET-83's rule — never pair a NEW query with the PREVIOUS query's cursor —
+  // has to survive TICKET-108, where `input !== resultsQuery` is now the NORMAL
+  // state rather than a sign the patron moved on. The cursor belongs to the held
+  // page's query, so that is what a deep fetch must carry.
+  const requests: { q: string; pageToken: string | null }[] = [];
+  await page.route("**/api/search**", async (route) => {
+    const url = new URL(route.request().url());
+    requests.push({ q: url.searchParams.get("q") ?? "", pageToken: url.searchParams.get("pageToken") });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: pageMatching("Escurinho do Cinema", 10),
+        nextPageToken: url.searchParams.get("pageToken") ? undefined : "CURSOR_2",
+      }),
+    });
+  });
+
+  await joinAs(page, "HeldCursorUser");
+  await typeInChunks(page, ["escu", "rinho"]);
+  expect(requests).toHaveLength(1);
+
+  // 10 rows held, 8 shown → one free reveal, then a real deep fetch.
+  await page.getByTestId("search-load-more").click();
+  await expect(page.getByRole("button", { name: /Escurinho do Cinema - versão 9/ })).toBeVisible();
+  expect(requests).toHaveLength(1);
+
+  await page.getByTestId("search-load-more").click();
+  await expect.poll(() => requests.filter((r) => r.pageToken).length, { timeout: 5000 }).toBe(1);
+  const deep = requests.filter((r) => r.pageToken)[0];
+  // The cursor came from the "escu" page, so the deep request must say "escu" —
+  // pairing it with the narrowed "escurinho" would be a guaranteed cache miss and
+  // one of the platform's daily searches spent on junk.
+  expect(deep.q).toBe("escu karaoke");
+  expect(deep.pageToken).toBe("CURSOR_2");
+});
