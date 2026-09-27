@@ -10,6 +10,8 @@ import {
   isLoginThrottled,
   registerLoginFailure,
   resetLoginThrottle,
+  hostNoClaimCookieName,
+  HOST_COOKIE_PATH,
 } from "@/lib/host-auth";
 
 const MAX_BODY_BYTES = 1024;
@@ -78,5 +80,12 @@ export async function POST(req: NextRequest) {
 
   const res = NextResponse.json({ ok: true });
   res.cookies.set(hostCookieName(roomId), session, hostCookieOptions());
+  // TICKET-104: presenting the host code proves possession, so lift any earlier
+  // logout's auto-claim suppression — this device gets frictionless re-entry
+  // again. Path must match the set-path or the browser won't clear it.
+  res.cookies.set(hostNoClaimCookieName(roomId), "", {
+    path: HOST_COOKIE_PATH,
+    maxAge: 0,
+  });
   return res;
 }

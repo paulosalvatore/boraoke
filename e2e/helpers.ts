@@ -20,7 +20,7 @@
  * shown once at /new) so the helper can hash it into the room secret.
  */
 import { createHmac } from "crypto";
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 
 /** Mirror of lib/host-auth.ts DEV_FALLBACK_TOKEN — the default-room dev secret. */
 const DEV_FALLBACK_TOKEN = "cantai-dev-host";
@@ -218,4 +218,25 @@ export async function drainQueue(
     if (!data.items?.length) return;
     await advanceOnce(request, roomId, rawHostCode);
   }
+}
+
+/**
+ * The httpOnly identity cookie (`lib/identity.ts`). Named here because specs
+ * need to drop it deliberately — see `dropCreatorIdentity`.
+ */
+export const IDENTITY_COOKIE = "boraoke_identity";
+
+/**
+ * Make this browser stop being the room's CREATOR, so the host-code login gate
+ * is reachable again (TICKET-104).
+ *
+ * Since TICKET-104 a creator never sees the gate: `POST /api/host/claim`
+ * re-authenticates them off the identity cookie, which is the whole point. Specs
+ * that exist to exercise the CODE path therefore have to present themselves as a
+ * different device — a venue tablet typing the code a host created elsewhere,
+ * which is exactly the scenario the gate serves. Dropping only the identity
+ * cookie does that without disturbing locale or session cookies.
+ */
+export async function dropCreatorIdentity(page: Page) {
+  await page.context().clearCookies({ name: IDENTITY_COOKIE });
 }

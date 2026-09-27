@@ -100,17 +100,52 @@ export interface IdentityRequestLike {
  *      one).
  *   3. else mint a brand-new uuid v4 → touch it (fresh-device first touch,
  *      acceptance #1).
+ *
+ * ADOPTION GUARD (TICKET-104 — load-bearing, do not relax): step 2 adopts a
+ * uuid the CALLER asserted, and both callers (`POST /api/identity`,
+ * `POST /api/rooms`) then hand it back as the httpOnly identity cookie. That was
+ * harmless while nothing authorized off an identity. TICKET-104 makes
+ * `room.creatorUuid` grant a host session (`POST /api/host/claim`), which turns
+ * unguarded adoption into impersonation: `POST /api/identity {legacyUuid: <a
+ * creator's uuid>}` would mint a cookie for that creator and let the caller
+ * claim their room. So adoption is refused for a uuid that ALREADY OWNS ROOMS
+ * server-side (`listRooms`), and a fresh uuid is minted instead.
+ *
+ * Only the client-asserted branch is guarded — a cookie-presented uuid was set
+ * by us and is never re-checked. Accepted cost: a device whose identity predates
+ * the cookie, which created rooms and then lost the cookie, can no longer
+ * re-adopt its uuid by asserting it; it falls back to the host code. That is the
+ * safe side of an ambiguity an attacker impersonates, and it is the ONLY case
+ * the guard fires on (a patron-only legacy uuid owns no rooms and still adopts).
  */
 export function createIdentityResolver(store: IdentityStore) {
+  /**
+   * Whether a CLIENT-ASSERTED uuid may be adopted: only if it owns no rooms.
+   * A failed lookup refuses adoption (fail-closed on the impersonation axis —
+   * identity continuity is best-effort, host access is not).
+   */
+  async function adoptable(uuid: string): Promise<boolean> {
+    try {
+      return (await store.listRooms(uuid)).length === 0;
+    } catch {
+      return false;
+    }
+  }
+
   return async function resolveIdentity(
     req: IdentityRequestLike,
     legacyUuid?: unknown,
   ): Promise<ResolvedIdentity> {
     const cookieUuid = req.cookies.get(IDENTITY_COOKIE)?.value;
+    const asserted = isValidUuid(legacyUuid) ? legacyUuid : undefined;
+    // The uuid the CLIENT already believes is its own — a server-set cookie
+    // first, else the asserted legacy uuid. Used only for the fail-open return
+    // below, never as the adoption decision.
+    const clientKnown = isValidUuid(cookieUuid) ? cookieUuid : asserted;
     const candidate = isValidUuid(cookieUuid)
       ? cookieUuid
-      : isValidUuid(legacyUuid)
-        ? legacyUuid
+      : asserted && (await adoptable(asserted))
+        ? asserted
         : uuidv4();
     const userAgentClass = classifyUserAgent(req.headers.get("user-agent"));
     try {
@@ -118,9 +153,12 @@ export function createIdentityResolver(store: IdentityStore) {
       return { uuid: candidate, ok: true };
     } catch {
       // Fail-open (acceptance #4): never throw, never block the caller's flow.
-      // The candidate uuid is still returned so the client has something
-      // consistent to keep using locally even though nothing was persisted.
-      return { uuid: candidate, ok: false };
+      // The client's own best-known uuid is returned so it keeps something
+      // consistent locally even though nothing was persisted. Safe despite the
+      // adoption guard above: `ok: false` means callers set NO identity cookie
+      // and write NO `creatorUuid`, so an unverified uuid returned here can
+      // never become a claim credential — it is a local-only echo.
+      return { uuid: clientKnown ?? candidate, ok: false };
     }
   };
 }

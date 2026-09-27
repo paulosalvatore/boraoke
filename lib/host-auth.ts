@@ -184,6 +184,88 @@ export async function verifySessionValue(roomId: string, cookieValue: unknown): 
 }
 
 /**
+ * Cookie marking "this device asked to be logged OUT of this room" (TICKET-104).
+ *
+ * Auto-claim would otherwise make logout a no-op: the creator's identity cookie
+ * lives 2 years, so clearing the host session and reloading `/<room>/admin` would
+ * silently claim straight back in. That would break the one control this module
+ * names as the mitigation for the shared-venue-tablet case (see the 30-day note
+ * above) — the next person to pick up the tablet would be host again.
+ *
+ * So logout sets this marker and the claim route refuses while it is present.
+ * A successful host-code LOGIN clears it: someone who can present the code has
+ * proved possession, and re-enabling their frictionless re-entry is the whole
+ * point of the ticket. New cookie, so it uses the current `boraoke` brand (no
+ * legacy-name constraint, same reasoning as `boraoke_identity`).
+ */
+export function hostNoClaimCookieName(roomId: string): string {
+  return `boraoke_noclaim_${roomId}`;
+}
+
+/**
+ * Lifetime of the no-claim marker. It must OUTLIVE the identity cookie it
+ * suppresses (2 years, `lib/identity.ts`), or logout would quietly expire back
+ * into auto-claim; 3 years gives it margin without being literally forever.
+ */
+export const NO_CLAIM_MAX_AGE_SECONDS = 60 * 60 * 24 * 365 * 3;
+
+/** Cookie options for the no-claim marker — same scope as the session cookie. */
+export function noClaimCookieOptions() {
+  return {
+    httpOnly: true as const,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: HOST_COOKIE_PATH,
+    maxAge: NO_CLAIM_MAX_AGE_SECONDS,
+  };
+}
+
+/** True when this device opted out of auto-claim for this room (logged out). */
+export function hasNoClaimMarker(req: NextRequest, roomId: string): boolean {
+  return Boolean(req.cookies.get(hostNoClaimCookieName(roomId))?.value);
+}
+
+/**
+ * Whether `identityUuid` is the registered creator of `roomId` (TICKET-104).
+ *
+ * This is the no-typing re-entry proof. The creator's identity uuid is held in
+ * the httpOnly, root-path, 2-year `boraoke_identity` cookie (`lib/identity.ts`)
+ * — 24x the host session's 30-day window — and the room stores the same value as
+ * `creatorUuid`, which is server-side bookkeeping never exposed to any client
+ * (`PublicRoom` omits it; `__tests__/rooms.test.ts` asserts that). So a returning
+ * creator proves ownership with a cookie they cannot read, forge, or leak via
+ * JS, and NOTHING has to be persisted in localStorage — `lib/room-memory.ts`'s
+ * never-store-the-host-code invariant stands untouched.
+ *
+ * Hard preconditions, all deliberate:
+ *   - The caller MUST pass a uuid read from the identity COOKIE. Never accept
+ *     one from a request body or query string: that would turn the localStorage
+ *     mirror `cantai_patron_uuid` into a bearer credential for host access.
+ *     See the ADOPTION GUARD in `lib/identity.ts`, which closes the matching
+ *     hole on the cookie-minting side.
+ *   - A room with no `creatorUuid` (legacy rooms, or created while the identity
+ *     store was down — creation is fail-open) is NOT claimable. An absent
+ *     creator must never match an absent/blank uuid.
+ *
+ * Comparison is constant-time for uniformity with the rest of this module;
+ * uuids are not guessable by timing in practice, but nothing here needs to be
+ * the one place that compares identity material with `===`.
+ */
+export async function verifyCreatorClaim(
+  roomId: string,
+  identityUuid: unknown,
+): Promise<boolean> {
+  if (typeof identityUuid !== "string" || identityUuid.length === 0) return false;
+  // `default` has no room record and therefore no creator — it stays on the
+  // env-token path exclusively.
+  if (roomId === DEFAULT_ROOM) return false;
+  const room = await getRoom(roomId);
+  const creator = room?.creatorUuid;
+  if (typeof creator !== "string" || creator.length === 0) return false;
+  return timingSafeHexEqual(identityUuid, creator);
+}
+
+/**
  * Path the session cookie is scoped to (least privilege, security LOW-1):
  * only the `/api/host/*` routes ever read it — the /admin page itself is a
  * public client bundle whose auth state comes from `GET /api/host/session`,
@@ -225,6 +307,38 @@ const LOGIN_THROTTLE_OPTS: CounterOptions = {
 /** Namespaced counter key for a login-failure IP (helper prefixes `rl:`). */
 function loginKey(ip: string): string {
   return `login:${ip}`;
+}
+
+// ─── Creator-claim throttle (TICKET-104) ─────────────────────────────────────
+//
+// `POST /api/host/claim` gets its OWN bucket, deliberately NOT the login one.
+// Sharing it would let claim failures spend the budget a legitimate host needs
+// for the code gate: any visitor landing on `/<room>/admin` without a live
+// session triggers one claim attempt, so a patron who opened an admin URL a few
+// times would have 429'd the creator's own login on that shared IP (a venue
+// tablet, a café NAT). Separate buckets cap claim probing without ever being
+// able to lock out the code path. Same window/ceiling — it's the same class of
+// online guessing, just a different secret.
+const CLAIM_THROTTLE_OPTS: CounterOptions = LOGIN_THROTTLE_OPTS;
+
+/** Namespaced counter key for a claim-failure IP. */
+function claimKey(ip: string): string {
+  return `hostclaim:${ip}`;
+}
+
+/** True when this IP has exhausted its creator-claim failure budget. */
+export function isClaimThrottled(ip: string): Promise<boolean> {
+  return isThrottled(claimKey(ip), CLAIM_THROTTLE_OPTS);
+}
+
+/** Record one failed creator-claim attempt for this IP. */
+export function registerClaimFailure(ip: string): Promise<void> {
+  return registerFailure(claimKey(ip), CLAIM_THROTTLE_OPTS);
+}
+
+/** Clear the creator-claim failure bucket for this IP (successful claim). */
+export function resetClaimThrottle(ip: string): Promise<void> {
+  return resetKey(claimKey(ip));
 }
 
 /**

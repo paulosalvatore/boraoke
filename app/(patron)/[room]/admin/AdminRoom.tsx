@@ -88,13 +88,33 @@ export default function AdminRoom({
 
   const roomQuery = `?room=${encodeURIComponent(roomId)}`;
 
-  // Auth probe on load
+  // Auth probe on load.
+  //
+  // TICKET-104 — creator re-entry without typing: when the session probe fails
+  // we do NOT go straight to the code gate any more. The host code is shown once
+  // and unrecoverable, and nobody hands it to the creator, so the gate is a dead
+  // end for exactly the person who owns the room. We first try ONE
+  // `POST /api/host/claim`, which mints a session when the device's httpOnly
+  // `boraoke_identity` cookie matches the room's `creatorUuid` (see that route's
+  // security contract — the uuid travels as a cookie the client cannot read, and
+  // nothing is stored in localStorage). A non-creator's claim just 401s and the
+  // gate appears exactly as before, so this only ever removes a dead end.
+  //
+  // Sequenced deliberately: the cheap read-only probe first, the claim only on
+  // its failure, one attempt, no retry loop.
   const checkSession = useCallback(async () => {
     try {
       const res = await fetch(`/api/host/session${roomQuery}`);
       const data = await res.json().catch(() => ({}));
       setConfigured(data.configured !== false);
-      setAuth(res.ok && data.authed ? "authed" : "gate");
+      if (res.ok && data.authed) {
+        setAuth("authed");
+        return;
+      }
+      const claimed = await fetch(`/api/host/claim${roomQuery}`, { method: "POST" })
+        .then((r) => r.ok)
+        .catch(() => false);
+      setAuth(claimed ? "authed" : "gate");
     } catch {
       setAuth("gate");
     }

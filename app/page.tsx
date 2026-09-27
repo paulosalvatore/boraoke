@@ -6,6 +6,11 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import SavedRooms from "@/components/SavedRooms";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import {
+  loadRooms,
+  primaryCreatedRoom,
+  type RememberedRoom,
+} from "@/lib/room-memory";
 import styles from "./page.module.css";
 
 /**
@@ -39,6 +44,26 @@ export default function Landing() {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [lastRoom, setLastRoom] = useState("");
+  /**
+   * TICKET-104 — the room this device CREATED that the hero should lead with,
+   * or null for a first-time visitor (whose hero is unchanged).
+   *
+   * Read in an effect, like `lastRoom` above, because `localStorage` does not
+   * exist during SSR. So the FIRST paint is always the generic hero and a
+   * returning creator's hero swaps in on hydration. That ordering is deliberate:
+   * the alternative (hold the hero back behind a skeleton until the check runs)
+   * would slow the hero for every first-time visitor — the common case — to
+   * spare returning creators a sub-frame swap. The landing must stay instant.
+   */
+  const [myRoom, setMyRoom] = useState<RememberedRoom | null>(null);
+
+  useEffect(() => {
+    // Same blob TICKET-43 already writes (`cantai_rooms_v1`) — nothing new is
+    // persisted for this, and no host code is involved anywhere in the path.
+    try {
+      setMyRoom(primaryCreatedRoom(loadRooms()));
+    } catch { /* sandboxed — stay on the generic hero */ }
+  }, []);
 
   useEffect(() => {
     try {
@@ -84,56 +109,105 @@ export default function Landing() {
       <main>
         <section className={styles.hero} aria-labelledby="landing-hero-title">
           <div>
-            {/*
-              Venue labels — deliberately NON-interactive. These were styled as
-              filter chips with one "selected", which promised per-venue
-              switching that does not exist (venue presets are TICKET-32, Phase
-              3). Now they are plain labels: no roles, no aria-selected, no
-              tabindex, nothing to activate.
+            {myRoom ? (
+              <>
+                {/*
+                  TICKET-104 — returning-creator hero. A device that created a
+                  room gets ITS room as the hero, not the generic create-a-room
+                  pitch: the creator's first need on returning is to get back
+                  into their own admin, and that affordance used to live in
+                  "Suas salas" below the fold, behind the hero and the feature
+                  bullets. The "open admin" link needs no code — AdminRoom's
+                  session probe falls through to POST /api/host/claim, which
+                  re-authenticates the creator off the httpOnly identity cookie
+                  (see app/api/host/claim/route.ts).
 
-              Two a11y details, both VERIFIED against Chromium's accessibility
-              tree rather than assumed (an earlier version of this comment
-              claimed things that turned out to be false — see
-              e2e/render-and-links.spec.ts, which now asserts the accessible
-              names so the claim cannot rot again):
+                  The h1 keeps the `landing-hero-title` id in BOTH branches —
+                  the section's aria-labelledby points at it, so dropping it
+                  here would leave the hero unlabelled for assistive tech.
+                */}
+                <div className={styles.venues}>
+                  <span className={styles.venuesLead}>{t("creatorHeroEyebrow")}</span>
+                </div>
 
-              - The "·" separators are real `aria-hidden` spans, NOT a CSS
-                `::after`. Chromium folds generated content INTO the accessible
-                name, so the pseudo-element version made each listitem announce
-                as "No bar·". Each name therefore sits in its own span, keeping
-                the listitem's accessible name exactly the venue name.
-              - The lead-in carries NO `aria-labelledby` link to the list. It
-                had one, which made "Onde dá pra usar" announce twice — once as
-                the visible text node, once as the list's accessible name. The
-                visible span already supplies the framing in DOM order.
-            */}
-            <div className={styles.venues}>
-              <span className={styles.venuesLead}>{t("venuesLabel")}</span>
-              <ul className={styles.venueList}>
-                {[t("chipBar"), t("chipParty"), t("chipCondo"), t("chipCompany")].map(
-                  (venue, i, all) => (
-                    <li key={venue}>
-                      <span>{venue}</span>
-                      {i < all.length - 1 && (
-                        <span className={styles.venueSep} aria-hidden="true">
-                          ·
-                        </span>
-                      )}
-                    </li>
-                  ),
-                )}
-              </ul>
-            </div>
+                <h1 id="landing-hero-title" data-testid="creator-hero">
+                  {t("creatorHeroTitle", { name: myRoom.name })}
+                </h1>
+                <p className={styles.heroSub}>{t("creatorHeroSub")}</p>
 
-            <h1 id="landing-hero-title">
-              {t.rich("heroTitle", { em: (chunks) => <em>{chunks}</em> })}
-            </h1>
-            <p className={styles.heroSub}>{t("heroSub")}</p>
+                <Link
+                  className={`btn-primary ${styles.cta}`}
+                  href={`/${myRoom.id}/admin`}
+                  data-testid="creator-hero-admin"
+                >
+                  {t("creatorHeroAdminCta")}
+                </Link>
+                <p className={styles.creatorLinks}>
+                  <Link href={`/${myRoom.id}/tv`} data-testid="creator-hero-tv">
+                    {t("creatorHeroTvLink")}
+                  </Link>
+                  <Link href={`/${myRoom.id}`} data-testid="creator-hero-room">
+                    {t("creatorHeroRoomLink")}
+                  </Link>
+                  <Link href="/new" data-testid="creator-hero-new">
+                    {t("creatorHeroNewLink")}
+                  </Link>
+                </p>
+              </>
+            ) : (
+              <>
+              {/*
+                Venue labels — deliberately NON-interactive. These were styled as
+                filter chips with one "selected", which promised per-venue
+                switching that does not exist (venue presets are TICKET-32, Phase
+                3). Now they are plain labels: no roles, no aria-selected, no
+                tabindex, nothing to activate.
 
-            <Link className={`btn-primary ${styles.cta}`} href="/new">
-              {t("createCta")}
-            </Link>
-            <p className={styles.fine}>{t("createFine")}</p>
+                Two a11y details, both VERIFIED against Chromium's accessibility
+                tree rather than assumed (an earlier version of this comment
+                claimed things that turned out to be false — see
+                e2e/render-and-links.spec.ts, which now asserts the accessible
+                names so the claim cannot rot again):
+
+                - The "·" separators are real `aria-hidden` spans, NOT a CSS
+                  `::after`. Chromium folds generated content INTO the accessible
+                  name, so the pseudo-element version made each listitem announce
+                  as "No bar·". Each name therefore sits in its own span, keeping
+                  the listitem's accessible name exactly the venue name.
+                - The lead-in carries NO `aria-labelledby` link to the list. It
+                  had one, which made "Onde dá pra usar" announce twice — once as
+                  the visible text node, once as the list's accessible name. The
+                  visible span already supplies the framing in DOM order.
+              */}
+              <div className={styles.venues}>
+                <span className={styles.venuesLead}>{t("venuesLabel")}</span>
+                <ul className={styles.venueList}>
+                  {[t("chipBar"), t("chipParty"), t("chipCondo"), t("chipCompany")].map(
+                    (venue, i, all) => (
+                      <li key={venue}>
+                        <span>{venue}</span>
+                        {i < all.length - 1 && (
+                          <span className={styles.venueSep} aria-hidden="true">
+                            ·
+                          </span>
+                        )}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </div>
+
+              <h1 id="landing-hero-title">
+                {t.rich("heroTitle", { em: (chunks) => <em>{chunks}</em> })}
+              </h1>
+              <p className={styles.heroSub}>{t("heroSub")}</p>
+
+              <Link className={`btn-primary ${styles.cta}`} href="/new">
+                {t("createCta")}
+              </Link>
+              <p className={styles.fine}>{t("createFine")}</p>
+              </>
+            )}
           </div>
 
           {/* Static product mock — one labelled image for assistive tech. */}

@@ -6,6 +6,8 @@ import {
   hostCookieOptions,
   roomIdFromRequest,
   HOST_COOKIE_PATH,
+  hostNoClaimCookieName,
+  noClaimCookieOptions,
 } from "@/lib/host-auth";
 
 /**
@@ -59,6 +61,12 @@ function noStore(res: NextResponse): NextResponse {
 /**
  * POST /api/host/session?room=<id> — log out by clearing the room's session
  * cookie.
+ *
+ * TICKET-104: it also sets the no-claim marker. Without it logout would be a
+ * no-op for a room's creator — their 2-year identity cookie would let the next
+ * admin page load auto-claim a fresh session immediately, defeating the only
+ * control that exists for the shared-venue-tablet case. Entering the host code
+ * clears the marker again (see POST /api/host/login).
  */
 export async function POST(req: NextRequest) {
   const roomId = roomIdFromRequest(req);
@@ -66,6 +74,7 @@ export async function POST(req: NextRequest) {
   if (roomId !== null) {
     // Path must match the set-path (HOST_COOKIE_PATH) or the browser won't clear it.
     res.cookies.set(hostCookieName(roomId), "", { path: HOST_COOKIE_PATH, maxAge: 0 });
+    res.cookies.set(hostNoClaimCookieName(roomId), "1", noClaimCookieOptions());
   }
   return res;
 }

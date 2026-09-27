@@ -77,6 +77,63 @@ describe("resolveIdentity (via createIdentityResolver)", () => {
     expect(result.uuid).toBe(B);
   });
 
+  // ── TICKET-104 adoption guard ──────────────────────────────────────────────
+  //
+  // `room.creatorUuid` now grants a host session (POST /api/host/claim), so
+  // adopting a uuid purely because the CALLER asserted it would be
+  // impersonation: POST /api/identity {legacyUuid: <a creator's uuid>} would
+  // mint an identity cookie for that creator and let the caller claim their
+  // room. Adoption is refused for any asserted uuid that already owns rooms.
+
+  it("refuses to adopt a client-asserted uuid that already OWNS rooms (impersonation)", async () => {
+    const store = new MemoryIdentityStore();
+    const resolve = createIdentityResolver(store);
+    await store.touch(A, "mobile");
+    await store.addRoom(A, "bar-do-ze"); // A is a room creator
+    const result = await resolve(fakeReq(), A); // attacker asserts A, has no cookie
+    expect(result.ok).toBe(true);
+    expect(result.uuid).not.toBe(A); // NOT adopted — a fresh identity was minted
+    expect(isValidUuid(result.uuid)).toBe(true);
+    expect(await store.listRooms(result.uuid)).toEqual([]);
+  });
+
+  it("still adopts a client-asserted uuid that owns NO rooms (patron continuity intact)", async () => {
+    const store = new MemoryIdentityStore();
+    const resolve = createIdentityResolver(store);
+    await store.touch(A, "mobile"); // known identity, but never created a room
+    const result = await resolve(fakeReq(), A);
+    expect(result.uuid).toBe(A);
+  });
+
+  it("the guard applies ONLY to the asserted branch — a cookie uuid that owns rooms is still reused", async () => {
+    const store = new MemoryIdentityStore();
+    const resolve = createIdentityResolver(store);
+    await store.touch(B, "desktop");
+    await store.addRoom(B, "bar-do-ze");
+    const result = await resolve(fakeReq({ cookie: B }));
+    expect(result.uuid).toBe(B); // we set that cookie ourselves; never re-litigated
+  });
+
+  it("refuses adoption when the ownership lookup FAILS but the store is otherwise up", async () => {
+    // Fail-closed on the impersonation axis: if we cannot establish that the
+    // asserted uuid owns no rooms, we do not hand out its identity cookie.
+    const store = new MemoryIdentityStore();
+    const blindStore: IdentityStore = {
+      ...store,
+      get: (uuid) => store.get(uuid),
+      touch: (uuid, ua) => store.touch(uuid, ua),
+      addRoom: (uuid, roomId) => store.addRoom(uuid, roomId),
+      clear: () => store.clear(),
+      listRooms: async () => {
+        throw new Error("rooms index down");
+      },
+    };
+    const resolve = createIdentityResolver(blindStore);
+    const result = await resolve(fakeReq(), A);
+    expect(result.ok).toBe(true); // touch succeeded, so this is a real registration
+    expect(result.uuid).not.toBe(A);
+  });
+
   it("an invalid legacy uuid is ignored — falls through to a fresh mint", async () => {
     const store = new MemoryIdentityStore();
     const resolve = createIdentityResolver(store);
