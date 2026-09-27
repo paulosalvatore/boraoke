@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-27T10:57:09Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-103", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/103-tv-focus", "short_sha": "30bd7b1", "message_slug": "test(TICKET-103): step 0 evidence - reproduce /tv states, confirm YouTub"}}
