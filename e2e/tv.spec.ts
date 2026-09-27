@@ -821,6 +821,40 @@ test.describe("/tv", () => {
     await expect(chrome).not.toHaveClass(/chromeHidden/);
   });
 
+  test("chrome buttons never overlap the join/QR card in the normal state at TV geometry (TICKET-109)", async ({ page }) => {
+    // `.chrome` (the auto-hiding "Pular"/"Tela cheia" bar) is `position: fixed`,
+    // independent of the in-flow `.rail` (up-next cards + the join/QR card) —
+    // in the normal (non-focus) state, at 1920x1080, the two used to collide
+    // squarely on the join card's text (work/evidence/TICKET-103/
+    // t103-1-normal-1080p.png, TICKET-109). A visual collision like this has
+    // no other reliable pass/fail signal than geometry, so this asserts the
+    // two elements' bounding boxes never intersect while chrome is visible —
+    // the state the TV spends most of its time in.
+    await drainQueue(page.request);
+    await seedShow(page);
+    await page.goto("/default/tv");
+
+    const chrome = page.getByTestId("tv-chrome");
+    const join = page.getByTestId("tv-powered-by");
+    await expect(chrome).toBeVisible({ timeout: 10_000 });
+    await expect(join).toBeVisible();
+
+    const chromeBox = await chrome.boundingBox();
+    const joinBox = await join.boundingBox();
+    expect(chromeBox).not.toBeNull();
+    expect(joinBox).not.toBeNull();
+    if (chromeBox && joinBox) {
+      const intersects =
+        chromeBox.x < joinBox.x + joinBox.width &&
+        chromeBox.x + chromeBox.width > joinBox.x &&
+        chromeBox.y < joinBox.y + joinBox.height &&
+        chromeBox.y + chromeBox.height > joinBox.y;
+      expect(intersects).toBe(false);
+    }
+
+    await drainQueue(page.request);
+  });
+
   /**
    * ---- TICKET-103: the app-owned focus state ------------------------------
    *

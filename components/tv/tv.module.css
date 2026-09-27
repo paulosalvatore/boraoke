@@ -51,7 +51,26 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding: 2.5vw 3vw;
+  /*
+   * TICKET-109: bottom padding is NOT symmetric with the top. `.chrome` below
+   * is a `position: fixed` overlay anchored `right: 3vw; bottom: 2.5vw` —
+   * independent of this box's own flow — and the bottom rail (`.rail`, the
+   * up-next cards + the join/QR card) is the LAST item in this flex column, so
+   * with a symmetric 2.5vw its bottom edge sits flush with the same 2.5vw
+   * inner edge `.chrome` floats in: the two z-index-stacked layers collided
+   * squarely on the join card's text at 1920x1080 (work/evidence/TICKET-103/
+   * t103-1-normal-1080p.png). 7vw here reserves a clear strip the height of
+   * `.chrome` (~3.3vw rendered) plus a margin, so the rail's bottom edge sits
+   * above `.chrome`'s top edge instead of behind it. Percentage units mean
+   * this holds at any resolution, not just the one it was caught at.
+   *
+   * The FOCUS STATE'S OWN `padding: 1vw 1.5vw` (TICKET-103, below) overrides
+   * ALL FOUR sides of this shorthand outright — same element, later rule in
+   * this file wins — so this reservation is normal-state only and leaves
+   * focus (where `.rail` is repositioned into its own absolute overlay)
+   * untouched, as intended.
+   */
+  padding: 2.5vw 3vw 7vw 3vw;
   background: var(--c-bg);
   color: var(--c-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
