@@ -29,3 +29,15 @@ The house already has the mechanism that avoids this: the **`vault`** skill read
 ## Acceptance
 
 An agent needing one boraoke production credential can obtain it through the `vault` skill without writing any secret to disk, and `vercel env pull` is no longer required for a single-credential read.
+
+## 2026-09-27 UPDATE — this is now BLOCKING a gate, and the obvious fix is the wrong one
+
+The TICKET-108 App Tester gate came back **BLOCKED** on this. With no `YOUTUBE_API_KEY` available locally, `/api/search` returns `{"degraded":true,"reason":"no-api-key"}`, so the held result pool is always empty, so local narrowing can only ever starve-and-refetch — the environment reproduces the *old* per-keystroke behaviour and the new behaviour is unreachable. The tester correctly refused to mock the backend rather than report on a simulation. So five of the six things that gate exists to check cannot be exercised at all.
+
+**The obvious unblock — enrol the production key and test with it — is a bad idea, and worth stating explicitly so nobody does it.** Every real search in a gate run spends from the **same 100-calls/day `search.list` bucket that is the bottleneck this whole line of work exists to relieve**. A gate run costing 10-20 calls is 10-20% of the daily cap, taken from the Tech Lead on a day he may be testing. Tests competing with production for the exact resource under conservation is a standing hazard, not a one-off inconvenience.
+
+**What is actually needed: a SEPARATE test/dev YouTube Data API key, in its own Google Cloud project, with its own 100/day bucket.** Then a gate run costs nothing that production needs, and the two budgets can never interfere. This requires a Google Cloud console action, so it is a Tech-Lead / credentials item rather than something an agent can provision.
+
+So this ticket now has two parts, and the second is the one blocking work:
+1. Enrol boraoke's existing production credentials in the Vault (the original scope) — Upstash REST URL + token, the production YouTube key.
+2. **Provision a separate test/dev YouTube Data API key and enrol that too**, and make it the key local/gate runs use. Until this exists, any gate touching live search is blocked-or-expensive, and "blocked" is the honest state rather than a gate that quietly tests nothing.
