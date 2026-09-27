@@ -1,5 +1,9 @@
 # TICKET-109 — Plan
 
+**APPROVED-BY:** auto-approved (no plan-gate escalation — pure CSS layout fix
+within an existing, already-approved design system, no product/design decision
+required) — validated downstream by gates + TL merge of PR #85
+
 ## Approach
 
 `.chrome` (the auto-hiding "Pular"/"Tela cheia" bar) is `position: fixed; right: 3vw;
