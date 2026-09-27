@@ -176,6 +176,46 @@ the full file again against a freshly restarted dev server: **17/17 passed**,
 no flake. Not a product or test defect — noting it here per the "prose is not
 proof" contract rather than omitting it.
 
+**Full repo-wide `npx playwright test` (all spec files, not just `tv.spec.ts`)**
+first came back **106 passed / 4 failed** — 2 in `e2e/advance-auth.spec.ts`, 2 in
+`e2e/tv-watchdog.spec.ts`, none in `tv.spec.ts` and none touching anything this
+diff changed. Root-caused rather than waved away (per "verify before relaying"):
+
+- **`advance-auth.spec.ts` (2 failures):** Playwright's own `webServer` sets
+  `ADVANCE_AUTH=enforce`, but `reuseExistingServer: !process.env.CI` (true
+  locally) meant it reused my already-running manual dev server on port 3095,
+  which I'd started plainly (`npx next dev -p 3095`, no env override) — so
+  enforcement was off and the 401-rejection assertions failed. Killed my manual
+  server and re-ran: **4/4 passed** (Playwright spawned its own server with the
+  correct env this time).
+- **`tv-watchdog.spec.ts` (2 failures, one being the slow 75s-budget "recreate
+  rung" test):** re-ran in isolation, still failed on THIS worktree, passed
+  cleanly on a disposable detached worktree checked out at the immediate parent
+  commit (`git worktree add --detach /tmp/... a727995`, same node_modules via
+  symlink). That looked like it might implicate the diff — so I went further:
+  copied the PARENT commit's `tv.module.css` byte-for-byte onto this worktree
+  (fully reverting the one line this ticket changes) and re-ran the SAME failing
+  test on THIS worktree: **it still failed**, proving the CSS change is not the
+  cause. Narrowed further by port: the failure was tied to port 3095 specifically
+  (used continuously for ~2 hours of manual testing this session) — a stale
+  `/tmp/boraoke-ls-3095.json` (the Node `--localstorage-file` polyfill Next
+  needs for SSR `localStorage`, keyed per-port by `playwright.config.ts`) was
+  the actual variable. Re-ran the same test, same worktree, same (restored) fix,
+  on a never-before-used port (3097): **passed cleanly (43.3s)**. Confirmed:
+  this was 100% an artifact of my own hours of manual ad-hoc testing on a reused
+  port/state-file, not a regression from this diff. Final full-suite run used a
+  fresh port (3098) with no prior state file — see below.
+
+**Final clean full-suite run** (`PORT=3098`, no prior localStorage file, no
+manually-run server for Playwright to accidentally reuse):
+
+```
+110 passed (6.6m)
+```
+
+All specs green, including all 17 in `tv.spec.ts` and both previously-flaky
+`tv-watchdog.spec.ts` tests. This is the number the gates checklist reflects.
+
 ## Gate note
 
 This repo (`boraoke`) has no `scripts/verify-green-local.sh` / Docker-gate wrapper
