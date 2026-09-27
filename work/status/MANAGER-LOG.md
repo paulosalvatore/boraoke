@@ -1,5 +1,73 @@
 # boraoke — Manager Log
 
+## 2026-09-27 (later) — 🟢 PR #82 MERGED (TICKET-106 spike). The quota problem is NOT a quota problem. Four tickets filed, three lanes in flight.
+
+**Written for a stranger.** `main` at `f5fc2fa`, clean. **Five worktrees, all intentional:** `t99-runtime` (#80) and `t101-landing` (#79) are the Global TM's, parked — **do not touch**; `t103-tv-focus`, `t104-creator-admin` (PR #81) and `t108-keystroke-billing` are live lanes.
+
+### THE FINDING THAT MATTERS MOST — the YouTube quota cap was never the problem
+
+Measured against production, not reasoned: `sb:2026-09-26 = 90` (budget genuinely exhausted), **124 searches → 90 billed calls → 24 songs queued = 3.75 billed `search.list` calls per song**, and the ratio holds on both busy days ever recorded (4.2, 5.2). **Cause: `SongSearch.tsx` searches as you type on a 400ms debounce, so every typing pause bills a call** — typing `escurinho do cinema` cost **12 of the platform's 90 daily calls for one title**. The 12h cache cannot help because every prefix is a string nobody has typed before (measured hit rate 27%).
+
+**The product has never needed more than ~25 songs/day. 90 calls/day is only "too few" because each song costs four to five.** So the fix is ~4x headroom for hours of work, no new dependency, no ToS surface — and it outranks every option in the original independence brief. Filed as **TICKET-108**, in flight, with a **ship/no-ship quality gate**: report billed-calls-per-song AND hit@10 against the spike's own 32 real production queries, prefix-filtered vs full-string. Quality holds → ship. Quality degrades → it becomes an as-you-type-vs-on-submit *feel* decision for the Tech Lead and goes up, because a billing win bought with worse results is a false win.
+
+**Second resolved question: the quota form is NOT a placebo**, contrary to TICKET-106's own suspicion. Primary source: the extension form carries a **dedicated per-day `youtube.search.list` field**. TICKET-85 read it as stale because Google's auto-generated page-summary layers still describe the pre-June-2026 model. **Nothing was filed** — that is the TL's call, now held by the Global TM alongside ToS-risk tolerance and self-host-vs-public-instance.
+
+**Deferred with evidence rather than dropped:** the harvested `playlistItems` index works (**741 units → 36,372 songs, zero `search.list`, hit@10 = 66%**, 0.96MB gzipped) and is kept as a **proven fallback** — its measured value was largely "the index exists", since a naive substring baseline beat the fuzzy matcher on partial words. `youtubei.js` is disqualified as a primary tier (untested from Vercel, maintainer documents datacenter-IP blocking as having "no known solution", and `/search` degrades to **silent empty results** under rate limiting). Piped/Invidious: 1 of 5 and 1 of 12 endpoints working; the August verdict stands.
+
+### A house-wide guard gap found by a control, not by noticing
+
+Running the pre-merge secret sweep on #82, the **positive control failed**: a planted Google API key produced `secret-scan: clean`. Four controls pinned the boundary — shape-only detection works for AWS, Stripe, GitHub and Slack, but **`secret-scan.sh` has no Google API-key (`AIza`) pattern at all**; such a key is caught only incidentally when it sits on a secret-named assignment. **Why that is high severity: the YouTube Data API takes its key as a URL query parameter**, so the natural leak position for this class — a captured request URL, a curl repro, a debug log, an error quoting the failing URL — is exactly the bare-literal position the scanner cannot see. boraoke's primary third-party credential is that shape.
+
+Filed as a framework note proposing the missing pattern **and a control-based self-test for the scanner itself**, since the real defect is that nothing proves the scanner detects what it declares. The commit guard then blocked that very note (it contained the fabricated specimens); the specimens were **rewritten as descriptions rather than using `ALLOW_SECRET_SCAN=1`** — normalising the escape hatch inside a note about scanner integrity would have been the wrong precedent. **Nothing leaked**: the real sweep was clean, with a grep control hitting 1 while the real diff hit 0.
+
+### Two standing facts for this product, learned today
+
+- **boraoke has NO code-review bot.** The only actor across PRs #75-78 and #82 is `vercel`, a deployment bot. The house's flip-to-ready-then-resolve-bot-threads step is therefore a genuine **no-op** here, not a gate being passed — the real gate is the out-of-band Reviewer/App-Tester subagent verdicts. Do not wait on threads that will never arrive.
+- **boraoke has NO Credential Vault entry** (**TICKET-107** filed). That is why the spike had to `vercel env pull` the whole production environment to read three values. It cleaned up correctly — nothing printed, file shredded, verified clean — but the safe outcome depended on the agent being careful.
+
+### The TV batch, corrected twice before any code was written
+
+The TL's "black screen with only the video, QR gone" was attributed by him to his TV's rest mode. **It is neither that nor our chrome-hide timer.** Step 0 evidence at 1920x1080: after the 4s chrome fade, video, meta panel, rail **and QR are all still painted** — so our timer was not it either (my own hypothesis, wrong). **YouTube-native fullscreen IS reachable despite `fs: 0`** — focus the iframe, press `F`, and the iframe becomes the fullscreen element, filling the viewport while **nothing of ours composites, QR included**. That matches his report literally, and his "used the remote, UI showed, then black again" is most likely **YouTube's own controls** auto-hiding.
+
+**The product insight: the state he likes is an accident of a YouTube keyboard shortcut, and it is the same event that took his QR away.** So TICKET-103 makes that state ours — close the native-fullscreen hazard first (while the iframe is the fullscreen element, a QR overlay is impossible, not merely hard), then an app-owned focus state with an always-painted QR and a timed queue overlay. **Item 2 has a hard baseline: `.video` is 35.6% of the viewport's area, identical in normal, chrome-hidden AND app-fullscreen states** — app fullscreen reclaims literally zero space today.
+
+**Nothing is deferred to real LG hardware**, and no device validation is needed — the vanishing QR is a reproducible in-PR bug fix.
+
+### PR #81 (TICKET-104) — in review, and the mechanism is better than the ticket proposed
+
+It keys admin re-entry on the **httpOnly, root-path, 2-year `boraoke_identity` cookie**, not the localStorage mirror the ticket guessed at — so **no new localStorage key at all** and `room-memory.ts`'s never-store-the-host-code invariant is untouched. There was no security trade to escalate; the outcome removed it. The gap was also worse than the ticket said: creation issued no host session, so a creator clicking "abrir painel" on the page that had just shown them the code hit the login gate — the cliff was at second zero, not day 30.
+
+Two findings, one of which must not be over-read: **a one-request room takeover that this PR would have CREATED, not one live in production** — `creatorUuid` was stored but authorized nothing until this PR made it grant a session (verified in the diff by the TM). No live exposure, no hotfix, no disclosure. Closed with a fail-closed adoption guard. Second: **auto-claim silently defeated logout**, and the Dev's own new spec plus all 939 unit tests were green while that control was broken — only the full e2e run caught it. That is now the review's focus.
+
+### Process notes worth keeping
+
+- **A worktree is a snapshot.** Two briefs pointed agents at ticket files written *after* their branches were cut. Caught in a minute, but the rule is: commit the ticket to `main` before creating the worktree.
+- **Standing rule for this tab, reaffirmed:** absolute paths for every file write, no `cd` chains, content assertion before any scripted in-place edit. It fired again today and the assertion held.
+
+
+## 2026-09-27 — ▶️ UNPAUSED. Tech-Lead batch of 2026-09-26 split into TICKET-103/104/105; two lanes dispatched. The TV "black screen" state does NOT exist in the code — read that before touching group A.
+
+**Written for a stranger.** Product resumed after the 2026-09-01 pause. `main` clean, ticket docs committed and pushed. Four worktrees, all intentional: `t99-runtime` (PR #80) and `t101-landing` (PR #79) are **parked and belong to the Global TM — do not touch either**; `t103-tv-focus` and `t104-creator-admin` are this batch's new lanes.
+
+**Access first, because it was the blocker.** The macOS layer had been denying filesystem reads to this repo from every process (confirmed earlier with a plain non-Claude shell, so it was never the Claude sandbox). Verified cleared by a content read of `README.md`, not a stat — a directory listing would have passed while reads still failed.
+
+**The batch.** The TL is live-testing TV mode in a regular browser and likes it ("very NICE"); this is polish on a working base, not a rescue. Eight items in three groups, filed as three tickets so each gets its own PR: **TICKET-103** TV focus state (always-visible QR, bigger video, QR-on-video, timed queue overlay), **TICKET-104** creator never types the room code + admin always reachable + returning-creator homepage hero, **TICKET-105** song form asks table+number once then title-only + bigger focused phone form. 103 and 104 run in parallel on disjoint file sets (`/tv` vs home/admin/api); 105 waits on 104 so it reuses whatever device-persistence mechanism 104 settles on instead of inventing a second one.
+
+**THE FINDING THAT MATTERS MOST, and it reframes group A before a line of code is written.** The TL describes "the screen goes black with only the video playing" and says the QR disappears. **That state does not exist in this codebase.** The only idle behaviour is `CHROME_HIDE_MS = 4000` (`components/tv/TvScreen.tsx:64`), which fades **only** the chrome bar — Skip, Fullscreen, the Esc hint — plus the cursor. It does not black the screen and **it never touches the QR**: both QR surfaces are queue-state-driven (bottom-rail join card while playing, full idle poster when empty).
+
+Two candidate explanations, with **opposite** consequences. The app's own affordance fullscreens `document.documentElement` (`TvScreen.tsx:703-712`), where everything still paints, QR included — so it cannot explain a vanishing QR. YouTube's own fullscreen makes the **iframe** the fullscreen element, and `TvScreen.tsx:164-166` records from measurement that this is exactly when "the TV shows a black screen" — which matches his report precisely. **Why that is load-bearing: nothing outside the fullscreen element paints, so if the iframe is the fullscreen element, a QR overlay on the video is not difficult, it is impossible.** Items 1 and 3 of the brief would be undeliverable in that state, and the only way to honour them is an app-owned focus state inside `documentElement` fullscreen, with QR and queue overlay as siblings that still render. The hazard was already known here — the player ships `fs: 0` to suppress YouTube's button (`TvScreen.tsx:553-557`) and `exitFullscreenIfPlayerIsFullscreen` actively escapes iframe-fullscreen on an emptying queue.
+
+So TICKET-103 leads with a **Step 0 reproduce-with-screenshots** before any code, and that is what is dispatched — an App Tester capturing the four reachable states and measuring the video's actual share of the viewport (item 2 is "make it bigger", so we need the starting number rather than an estimate). **Whether YouTube-native fullscreen is still reachable at all with `fs: 0` is the single fact that decides what group A can deliver.** Building against the guess was the alternative, and it would have produced either a focus state nobody reaches or an overlay that cannot paint.
+
+**Dispatched now:** App Tester on 103 Step 0 (evidence only, no product code, own port 3141 so 3040 stays free, headless so it cannot hijack the TL's screen); opus Dev on 104. TICKET-105 is filed and deliberately not started.
+
+**One judgment call handed to the 104 Dev rather than pre-decided.** Most of that machinery already exists — an httpOnly 30-day rolling session cookie, a remembered-created-rooms list, and a `SavedRooms` component that merely sits below the fold. The real gap is narrow and worth stating precisely: **the creator is fine for 30 rolling days on one browser, then falls off a cliff**, because the only recovery is typing a `hostCode` shown exactly once at creation and almost certainly not kept. The literal ask — persist an admin secret on the device — would weaken `lib/room-memory.ts`'s deliberate never-store-the-host-code invariant, so the Dev must choose between extending the cookie's reach, a `creatorUuid`-keyed claim (the room already stores `creatorUuid` and `RememberedRoom` carries an unused `claimable` flag, which suggests this was the intended design), or localStorage tokens — and justify it in the PR, since this is an authentication path, not a convenience feature.
+
+**A process slip caught and fixed, recorded rather than quietly patched.** Both worktrees were branched off `main` *before* the ticket files were written, so the briefs pointed the two agents at files that did not exist on their branches. Caught within a minute of dispatch, files copied in, and both agents sent a correction. Cheap this time; the general lesson is that a worktree is a snapshot and a brief referencing repo files must be written before the branch, not after.
+
+**Not touched, deliberately:** PRs #79 and #80 and their worktrees. #80's opus review was of code that has since been rewritten, so it needs re-review before any merge; #79 is patron-facing and held. Both, plus the TL's LG model/webOS version and the ship-the-globalThis-shim-to-everyone trade, are the Global TM's to surface.
+
+
 ## 2026-09-01 (end of night) — ⏸️ PRODUCT PAUSED by Tech-Lead structure change. Clean stop; this entry is the resume brief.
 
 **Written for a stranger — read this section alone and you can resume.** The TL narrowed active focus to Quiz ILP, Deixa Pronto and OT. boraoke pauses. Nothing is mid-flight, nothing is stranded, no agent is running.
