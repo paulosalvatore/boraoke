@@ -52,3 +52,32 @@ Note the player is already configured `fs: 0` (`TvScreen.tsx:553-557`) specifica
 - The QR-on-video placement is decided by captured evidence; if it reads badly, the reserved-strip fallback ships instead, with the screenshots that drove the call committed.
 - The queue overlay appears on a timer, is legible, disappears again, and does not permanently clutter the focus view.
 - The Chrome 68 CSS gate and the ES2019 bundle gate stay green.
+
+## 2026-09-27 UPDATE — the Tech Lead's own account, and why it does not close the question
+
+Asked directly what the black state was, the TL answered that it is **the TV's own rest/screensaver mode** (webOS hardware): *"everything black but the video for a while; used the remote, UI showed, then black again."* So neither of the two candidates above is his explanation.
+
+**Treat that as a symptom report, not a diagnosis.** He described what he saw accurately; the attribution to rest mode is a hypothesis, and he has no reason to know what our own timers do. Two things argue against it, and one argues for us:
+
+- A hardware screensaver does not re-arm every few seconds, and it would not leave the video painted — he specifically says everything went black **but the video**.
+- **"Used the remote, UI showed, then black again" is the exact signature of `CHROME_HIDE_MS = 4000`.** `pokeChrome()` (`TvScreen.tsx:786-804`) listens on `mousemove` and `pointerdown`, and a webOS magic remote emits pointer events. Remote input → chrome reappears → hides again four seconds later is precisely what that code does.
+
+**Why this is not a quibble.** If it is the TV's rest mode, the disappearing QR is a device limitation, only validatable on real hardware. **If it is our timer, the disappearing QR is our bug — reproducible headless and fixable in this PR.** Item 1 is the one the TL cared most about ("it must ALWAYS be visible"), so which of these is true decides whether this ticket can deliver it at all.
+
+**The wrinkle that keeps it open rather than settled in our favour.** The chrome-hide timer provably does not touch either QR surface. So either something else hides the QR at TV geometry, or he saw the idle-poster↔join-card QR swap and read that as a disappearance. Both are testable; neither is assumed.
+
+### Step 0, retargeted
+
+Reproducing a TV hardware rest mode headless is impossible, so that is dropped. What replaces it:
+
+- **Run at 1920x1080**, the TL's actual geometry — not a desktop default. The difference may be entirely geometric.
+- After the fade, report **element by element** what is still painted (video, meta panel, up-next rail, join card, QR) and judge whether a venue across a room would call that "everything black but the video".
+- **Reproduce the cycle**: dispatch a pointer event, confirm the chrome returns, confirm it hides again ~4s later. Class-based polling, never a sleep.
+- Keep the video's viewport-share measurement (item 2 needs the real starting number) and the reachable in-browser states.
+- Confirm in one line whether YouTube-native fullscreen is reachable at all with `fs: 0`.
+
+### Build direction (settled, and independent of the above)
+
+Build the **app-owned focus state** — large video, an **always-painted** QR, and the periodic queue overlay as siblings inside our own DOM — so it is excellent in a normal browser, which is where the TL is testing and where he already says TV mode looks good. **Do not block this PR on the television.** Whether the TV's rest mode preserves those overlays is a **validate-on-real-device follow-up**, not something provable headless — file it as such rather than leaving it implied.
+
+The LG model / webOS version is now load-bearing, since rest-mode behaviour is model-specific.
