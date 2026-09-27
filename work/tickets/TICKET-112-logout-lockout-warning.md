@@ -1,4 +1,4 @@
-# TICKET-111 — Host logout is now a permanent self-inflicted lockout, and nothing warns the creator
+# TICKET-112 — Host logout is now a permanent self-inflicted lockout, and nothing warns the creator
 
 **Filed:** 2026-09-27, from the opus review of PR #81 (TICKET-104), finding NB-5.
 **Priority:** MEDIUM — no data loss, but it is the most likely way a real user reaches the dead end TICKET-104 was filed to remove.

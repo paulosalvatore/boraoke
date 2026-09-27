@@ -216,7 +216,7 @@ Fixed by asserting it *before* the `clearCookies()`, and — per the standing in
 
 Applied inline above, so this file reads as the current record: **NB-1** (M3c is KILLED, and my "belt-and-suspenders" conclusion was unsound and would have invited someone to delete the one guard preventing an HTTP 500 on legacy rooms), **NB-2** (the guard fires on a second case, the affected population was misidentified, and the `listRooms`-error path was destroying the device's real uuid — now returns `ok: false` instead), **NB-4** (stale counts; reverse-check evidence for the two logout tests supplied below).
 
-I also accepted **NB-6** (warm-up), and **NB-3** is recorded as confirmed with the reviewer's stronger argument: `clientKnown` is by construction either the caller's own cookie or the uuid the caller itself just asserted, so the echo cannot disclose anything *independently* of the `ok`-gating on cookie-setting and `creatorUuid` writes. **NB-5** is filed as `work/tickets/TICKET-111-logout-lockout-warning.md` — logout is now a permanent self-inflicted lockout behind a bare `Confirmar`, and the wording is a Tech-Lead call, so I did not choose it.
+I also accepted **NB-6** (warm-up), and **NB-3** is recorded as confirmed with the reviewer's stronger argument: `clientKnown` is by construction either the caller's own cookie or the uuid the caller itself just asserted, so the echo cannot disclose anything *independently* of the `ok`-gating on cookie-setting and `creatorUuid` writes. **NB-5** is filed as `work/tickets/TICKET-112-logout-lockout-warning.md` — logout is now a permanent self-inflicted lockout behind a bare `Confirmar`, and the wording is a Tech-Lead call, so I did not choose it.
 
 ## Round-2 mutation table — the marker mechanism, and B1
 
