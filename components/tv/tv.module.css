@@ -518,11 +518,22 @@
 .focus .rail {
   position: absolute;
   bottom: 1.2vw;
-  left: 1.2vw;
   right: 1.2vw;
+  /* `left: auto` on purpose, NOT a matching left offset. Pinning both edges
+     stretches the overlay across the whole video, and because the QR card is
+     right-aligned within it, the "A SEGUIR" label ends up marooned in the
+     opposite corner with the full width of the screen between it and the cards
+     it labels — caught in the first evidence capture
+     (work/evidence/TICKET-103/). Shrink-to-fit keeps the label, the cards and
+     the QR together as one composed panel, which is what makes the timed reveal
+     read as designed rather than as debris. */
+  left: auto;
   z-index: 12;
-  justify-content: flex-end;
-  align-items: flex-end;
+  /* Centre, not flex-end: bottom-aligning left the "A SEGUIR" label sitting on
+     the overlay's bottom edge, reading as though it were falling off the screen
+     (first evidence capture). Centring aligns it against the tallest item — the
+     QR card — so the label, the cards and the QR read as one row. */
+  align-items: center;
   pointer-events: none;
 }
 /*
@@ -568,6 +579,15 @@
 .focus .nextCard {
   background: rgba(26, 20, 36, 0.9);
   box-shadow: 0 0 1.5vw rgba(0, 0, 0, 0.45);
+}
+/* The muted label colour is sized for a flat dark page background. Over video it
+   can land on a blown-out sky and effectively disappear (seen in the evidence
+   capture), so in the focus state it gets the same dark plate the cards have. */
+.focus .railLabel {
+  color: var(--c-text);
+  background: rgba(13, 10, 20, 0.82);
+  border-radius: 999px;
+  padding: 0.6vw 1.1vw;
 }
 
 /* ---- auto-hiding chrome (fullscreen + skip) ---- */
