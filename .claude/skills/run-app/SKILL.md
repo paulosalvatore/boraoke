@@ -38,6 +38,10 @@ Under `next dev` with the in-memory store, a route's **first compile** re-evalua
 
 The trap is that this includes routes **nobody navigates to on purpose**. `app/` ships `icon.png`, `apple-icon.png`, `robots.ts` and `sitemap.ts`, which the browser requests from `<head>` on its own schedule. During TICKET-103's Step 0 the room + queue were wiped mid-test twice, once by `/apple-icon.png` compiling several seconds after the page loaded.
 
+**"First compile" undersells it — warming once is not always enough.** During TICKET-103's visual gate, `next dev` **evicted and RE-compiled** `/apple-icon.png` roughly every 25s of idle time, wiping the store three more times in a session where every route had already been warmed. So the reset is not a once-per-session event you can warm past; it recurs whenever the dev server decides to evict. Treat any idle gap longer than ~20s as a point where your seeded state may already be gone.
+
+The reliable pattern is therefore not "warm, then work at leisure" but **warm, then do create-room → seed-queue → navigate → capture as one uninterrupted burst**, with no idle pause in the middle. If you must pause, re-verify the state still exists rather than assuming it.
+
 Warm everything first, then create state:
 
 ```bash
