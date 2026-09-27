@@ -1,6 +1,7 @@
 # TICKET-104 — Plan: creator admin re-entry without the room code
 
-**Status:** implementing (dispatch brief authorized implementation directly; this file is the record, not a gate request)
+**Status:** implemented and delivered as PR #81 (draft)
+**APPROVED-BY:** auto-approved (no plan-gate escalation) — validated downstream by gates + TL merge of PR #81
 **Worktree:** `.worktrees/t104-creator-admin`, branch `ticket/104-creator-admin`
 
 ## Mechanism chosen: (ii) creator-claim — but keyed on the httpOnly identity cookie, not on localStorage

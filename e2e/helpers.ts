@@ -111,6 +111,12 @@ export async function warmModerationRoutes(request: APIRequestContext) {
   // is exactly the accidental coupling that made rotation-modes fragile, so
   // both are warmed explicitly here rather than left to a caller's side effects.
   await request.get("/api/host/session");
+  // TICKET-104: `/api/host/claim` is POSTed by AdminRoom whenever the session
+  // probe fails — i.e. on EVERY login-gate render — so from now on it compiles
+  // mid-test in any spec that reaches the gate, wiping the memory store and the
+  // room the spec just created. Exactly the "happens to be compiled" coupling
+  // this helper exists to remove, so it is warmed explicitly here.
+  await request.post("/api/host/claim");
   await request.get("/api/queue");
   await request.get("/api/host/pending");
   await request.post("/api/host/pending/approve", { data: { pendingId: "warmup" } });

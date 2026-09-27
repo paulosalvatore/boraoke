@@ -1,6 +1,6 @@
 # TICKET-104 — Dev report
 
-**Status:** implemented; unit suite green; new e2e spec green; full e2e + floor gates in progress at time of writing (updated below).
+**Status:** implemented and delivered as draft PR #81. ALL gates I can run myself are green: jest 53/53 suites, full Playwright 113/113, ES2019 bundle check OK, CSS-target TV surface OK.
 **Worktree:** `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t104-creator-admin`, branch `ticket/104-creator-admin`
 **Plan:** `work/plans/TICKET-104-plan.md`
 
@@ -50,14 +50,17 @@ Accepted cost: a device whose identity predates the cookie, which created rooms 
 | File | Change |
 |---|---|
 | `lib/identity.ts` | adoption guard (+ fail-open return now echoes the client's own best-known uuid) |
-| `lib/host-auth.ts` | `verifyCreatorClaim`; separate claim throttle bucket |
-| `app/api/host/claim/route.ts` | **new** route, cookie-only, throttled |
+| `lib/host-auth.ts` | `verifyCreatorClaim`; separate claim throttle bucket; the no-claim marker (name/options/detector) |
+| `app/api/host/claim/route.ts` | **new** route, cookie-only, throttled, refuses after logout |
+| `app/api/host/session/route.ts` | logout also sets the no-claim marker |
+| `app/api/host/login/route.ts` | a successful code login clears the no-claim marker |
+| `e2e/helpers.ts` + 4 existing specs | `dropCreatorIdentity` helper; claim route warmed; gate-reaching specs present as non-creators |
 | `app/(patron)/[room]/admin/AdminRoom.tsx` | one claim attempt before the gate |
 | `lib/room-memory.ts` | `primaryCreatedRoom` pure helper (no new storage, no new key) |
 | `app/page.tsx`, `app/page.module.css` | returning-creator hero; generic hero unchanged when no created room |
 | `messages/{pt-BR,en,es}.json` | 7 new `Landing.*` keys (parity gate green) |
 
-`lib/store/types.ts` untouched. No `cantai_*` key renamed. No new storage key introduced at all.
+`lib/store/types.ts` untouched. No `cantai_*` key renamed. **No new localStorage key** — the only new client-side state is the httpOnly `boraoke_noclaim_<room>` cookie that makes logout stick, which is server-set and unreadable from JS.
 
 ## prove-your-test-can-fail
 
@@ -137,8 +140,8 @@ Stated for the record, with the borderline call shown rather than hidden: `verif
 |---|---|
 | `npx jest` (full) | **53 suites passed, 939 passed / 5 skipped / 944 total** (52 suites before this ticket; `host-claim.test.ts` is the 53rd). The dispatch brief said 54 — the real count is 53, reported as measured. |
 | `PORT=3044 npx playwright test e2e/creator-reentry.spec.ts` | **5 passed (26.4s)** |
-| `PORT=3044 npx playwright test` (full) | see the update section below |
-| `npm run build` → ES2019 bundle check + `check-css-target.mjs` | see the update section below |
+| `PORT=3044 npx playwright test` (full) | **113 passed (6.5m), 0 failed** — after the two fixes described below |
+| `npm run build` → ES2019 bundle check + `check-css-target.mjs` | both **OK**, verbatim: `bundle-es-target: OK — all 49 chunk(s) parse at ES2019.` / `css-target: OK — the TV surface uses nothing newer than Chrome 68 (13 stylesheet(s) scanned).` The CSS gate also printed 15 **advisory** (non-build-blocking, non-TV) findings, pre-existing in kind; my one added line contributes a single `gap inside display:flex` in `app/page.module.css`, the same vocabulary that file already uses 8 times. |
 | `npx tsc --noEmit`, filtered to `app/ lib/ components/` | clean (the unfiltered run reports pre-existing jest-types noise in `__tests__/**`, unrelated to this branch) |
 
 E2E ran on `PORT=3044`, not the default 3040, so it could never touch the dev servers of the sibling worktrees (`t99-runtime`, `t101-landing`, `t103-tv-focus`). Playwright's chromium headless shell had to be installed (`npx playwright install chromium`) — it was absent, so the first e2e attempt failed on a missing browser rather than on anything in the diff.
@@ -151,3 +154,15 @@ E2E ran on `PORT=3044`, not the default 3040, so it could never touch the dev se
 ## Deferred, not done (deliberately out of scope)
 
 Room creation could also issue the host session directly, saving the claim round-trip on the very first hop. I left it alone on purpose: the claim path already covers that moment, and two mechanisms minting the same session is more surface for no behavioural gain. Worth a follow-up only if the extra request shows up as a real latency problem.
+
+## What the full e2e run caught (and why running it mattered)
+
+The first full-suite run failed **12** existing specs. Neither failure class was visible from the unit suite or from my own new spec, and one of them was a real defect rather than a stale expectation.
+
+**1. A real regression: auto-claim silently defeated LOGOUT.** Three `render-and-links.spec.ts` logout tests failed because the creator's 2-year identity cookie let the next admin load claim straight back in after logout. That destroys the one control `lib/host-auth.ts` names as the mitigation for the shared-venue-tablet case — "the next person to pick it up is host for 30 days", with logout as the answer. Fixed with a no-claim marker: logout sets `boraoke_noclaim_<room>` (httpOnly, `/api/host`-scoped, 3-year so it outlives the identity cookie it suppresses), the claim route refuses while it is present, and a successful host-code login clears it so the marker is not a one-way door. Both halves have e2e tests (`deliberate LOGOUT is not undone by auto-claim`, `entering the host code after a logout restores frictionless re-entry`) plus unit coverage of the marker's naming, per-room scoping, and lifetime-vs-identity-cookie ordering.
+
+**2. Stale expectations: nine specs reached the code gate by creating a room.** That is precisely the flow this ticket abolishes, so a creator no longer sees the gate. Rather than weaken those assertions, I made each spec present as the device the gate actually serves — a **non-creator** holding the code — via a new `dropCreatorIdentity(page)` helper that clears only the identity cookie. The specs still test the code path they were written to test.
+
+**3. One more, found by fixing the above:** `/api/host/claim` is POSTed on **every** login-gate render, so its first compile happened mid-test and reset the in-process memory store, wiping the room the spec had just created (`contrast.spec.ts` failed on the login that followed). Warmed in `warmModerationRoutes`, which exists for exactly this documented hazard.
+
+This is the part I would flag to the next Dev: my own new spec was green and the unit suite was green while a security control was broken. Only the full suite said so.
