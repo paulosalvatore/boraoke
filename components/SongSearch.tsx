@@ -457,6 +457,14 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       // debounce away — the cost a debounce exists to amortise is exactly the
       // API call we are not making — so narrowing is applied immediately and the
       // list reacts as the patron types.
+      //
+      // Bump the sequence first. A local narrowing is a NEWER answer than any
+      // search still in flight, and `runSearch` already discards a response whose
+      // seq has been superseded. Without this, a fetch started for an earlier
+      // query (e.g. after a backspace) could land afterwards and replace the
+      // narrowed rows with its own page while the patron's input says otherwise —
+      // stale results with no effect left to re-narrow them.
+      seqRef.current++;
       setResults(plan.rows);
       setVisible(PAGE_SIZE);
       filterQueryRef.current = trimmed;

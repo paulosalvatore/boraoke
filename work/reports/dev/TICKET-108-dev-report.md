@@ -16,6 +16,7 @@ Every number below is labelled **[MEASURED]** (produced by a command in this ses
 4. **Measured at zero quota cost.** The whole before/after comparison spent **0** `search.list` calls, because the oracle is the production search cache itself — 80 real production queries and 3,919 real YouTube rows, read read-only. **[MEASURED]**
 5. **Two extra savings the measurement found that nobody had noticed:** production billed *two separate calls* for `mana` vs `maná`, and two more for `cerol na mao` vs `cerol na mão`. They fold to one query. And a 3-character query was measured to be worth nothing at all (production's real page for `esc` contains no "Escurinho do Cinema" anywhere in its 50 rows), so `MIN_CHARS` is 3 → 4. **[MEASURED]**
 6. **8/8 mutants killed; the reverse-check fails 8 unit tests and 2 e2e tests against the pre-fix implementation.** Verbatim output below.
+7. **One real bug found in self-review, not by a gate:** a local narrowing did not supersede a search already in flight, so an older fetch could land and replace the narrowed rows with a page for a query the patron had already moved past — no spinner, and nothing left to re-narrow it. Fixed, tested, and the test is proven able to fail.
 
 ---
 
@@ -220,7 +221,7 @@ Test Suites: 1 passed, 1 total
 Tests:       22 passed, 22 total
 ```
 
-e2e — **2 of the 3 new tests fail**: **[MEASURED]**
+e2e — **2 of the (then) 3 new tests fail**: **[MEASURED]**
 
 ```
 ===== E2E REVERSE-CHECK vs PRE-FIX (always fetch) =====
@@ -271,16 +272,16 @@ The new `normalizeQuery` / `filterResults` are normalisation over user input, bu
 
 | Gate | Result |
 |---|---|
-| `npm test` | **GREEN** — `Test Suites: 53 passed, 53 total` / `Tests: 5 skipped, 940 passed, 945 total` **[MEASURED]** |
+| `npm test` (945 tests) | **GREEN** — `Test Suites: 53 passed, 53 total` / `Tests: 5 skipped, 940 passed, 945 total` **[MEASURED]** |
+| `npm run test:e2e` | **GREEN** — `110 passed (9.0m)`, exit 0, on a clean run of the FULL suite (`PORT=3066`) **[MEASURED]** |
 | `npm run build` → ES2019 bundle check | **GREEN** — `bundle-es-target: OK — all 47 chunk(s) parse at ES2019.` **[MEASURED]** |
 | `npm run build` → `check-css-target.mjs` | **GREEN** — `css-target: OK — the TV surface uses nothing newer than Chrome 68 (13 stylesheet(s) scanned).` The 15 advisory findings outside the TV surface are pre-existing and explicitly not build-blocking. **[MEASURED]** |
-| `npm run test:e2e` (`PORT=3062`) | **107 passed / 2 failed**, then both failures **pass in isolation** — see below. |
 
-`e2e/search.spec.ts` alone: **15 passed (43.6s)** — all 12 pre-existing tests plus the 3 new ones. **[MEASURED]**
+`e2e/search.spec.ts` alone: **16 passed** — the 12 pre-existing tests plus the 4 new ones. **[MEASURED]**
 
-**The 2 full-suite failures, stated plainly rather than rounded up:** `render-and-links.spec.ts › legacy /admin and /tv redirect into the default room` and `served-lang.spec.ts › the venue TV serves the ROOM's language, never the visitor's`. Re-run together in isolation (`PORT=3063`): **23 passed (1.8m)**. Neither touches `SongSearch`, `/api/search`, or anything in this diff — they exercise route redirects and served `<html lang>`. This is consistent with the flake `playwright.config.ts` documents in its own comment (the in-memory store/room-registry singletons reset on each route's first compile, which serial-order-dependent specs race). **I am reporting it as a flake I did not fix and did not cause, not as green.** A second full run's result is appended below.
+**An earlier full run was not green, and it was my own fault — recording it rather than deleting it.** A first full run (`PORT=3062`) reported 107 passed / 2 failed (`render-and-links › legacy /admin and /tv redirect`, `served-lang › the venue TV serves the ROOM's language`), both of which passed when re-run in isolation. A second full run I started in the background then reported **seven** failures, almost all `/tv` — and its log carries `⨯ [TypeError: Cannot read properties of undefined (reading '/_app')]`, the signature of **two `next dev` servers sharing one `.next` build directory**. I had started a second spec run on another port while that full run was in flight. Different ports do not give you a different build cache.
 
----
+So: that second run is **void, not a finding**, and the first run's two failures are confounded by the same class. The authoritative result is the run above — `rm -rf .next`, one dev server, nothing else running, **110/110, exit 0**. Lesson worth carrying: in a shared-checkout worktree, an extra `PORT=` does not isolate a Next dev server; the build cache is the shared resource.
 
 ## 8. Implementation log
 
@@ -297,6 +298,7 @@ Key design points, all of which exist for a measured reason:
 - **A freshly-fetched page is NEVER filtered by its own query.** YouTube legitimately returns rows whose titles do not contain the query — production: "escurinho do cinema" surfaces Rita Lee's "Flagra", a lyric match the spike recorded. Self-filtering would throw those away. Narrowing applies only to a strict extension.
 - **The `filter` path has no debounce.** A debounce exists to amortise a network call; there is no call to amortise, so narrowing is immediate and the list reacts as the patron types. This is a UX improvement that falls out of the fix.
 - **A backspace refetches.** Held rows are Google's answer to the *longer* string, so they are not a superset of what the shorter one would return; filtering them would quietly serve a narrower list than the patron asked for. Production traces are overwhelmingly monotonic, so the cost is negligible.
+- **A local narrowing bumps `seqRef`, so it SUPERSEDES a search still in flight.** Found in self-review, not by a gate, and it is a real staleness bug: backspacing starts a fetch for the shorter query, and if the patron then types forward again the held page answers them instantly — but the older fetch is still coming, and `runSearch` would have applied it on arrival. The patron would be left looking at a page for a query they had already moved past, with no spinner and nothing left to re-narrow it (the effect only runs on input change). `runSearch` already discards a superseded response; the narrowing just has to declare itself newer. Covered by a new e2e test with a deliberately slow mock, and **proven able to fail**: with the one-line bump removed, `expect(...Borbu Stale Page...).toHaveCount(0)` fails with `locator resolved to 8 elements`. **[MEASURED]**
 - **`load more` appends to the held pool, then re-applies the narrowing**, and pages against the HELD query — the cursor belongs to that query, and pairing it with a narrowed string would be a guaranteed cache miss, i.e. a daily call spent on junk (the TICKET-83 reviewer's finding 2, preserved under the new semantics).
 
 ---

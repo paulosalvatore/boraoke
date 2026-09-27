@@ -627,3 +627,58 @@ test("load more pages against the HELD query while narrowing locally (TICKET-108
   expect(deep.q).toBe("escu karaoke");
   expect(deep.pageToken).toBe("CURSOR_2");
 });
+
+/**
+ * TICKET-108 — a local narrowing must SUPERSEDE a search still in flight.
+ *
+ * Found in self-review, not by a gate. Backspacing starts a fetch for the shorter
+ * query; if the patron then types forward again, the held page can answer them
+ * locally and does so immediately — but the older fetch is still coming. It must
+ * not land and replace the narrowed rows, because nothing would re-narrow them
+ * afterwards: the patron would be left looking at a page for a query they had
+ * already moved past, with no spinner and no way to tell.
+ */
+test("a local narrowing supersedes a search already in flight (TICKET-108)", async ({ page }) => {
+  await page.route("**/api/search**", async (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q") ?? "";
+    // The SHORT query is slow, so it is still in flight while the patron types on.
+    if (q === "borbu karaoke") {
+      await new Promise((r) => setTimeout(r, 2500));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ results: pageMatching("Borbu Stale Page", 20) }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: pageMatching("Borbulhas de Amor", 20) }),
+    });
+  });
+
+  await joinAs(page, "SupersedeUser");
+  const input = page.getByLabel(/Buscar música/i);
+
+  // 1. Fetch a page for the long query.
+  await typeInChunks(page, ["borbulhas"]);
+  await expect(page.getByRole("button", { name: /Borbulhas de Amor - versão 0/ })).toBeVisible();
+
+  // 2. Backspace to a shorter query — that is NOT an extension, so it fetches
+  //    (and this mock makes that fetch slow).
+  await input.fill("borbu");
+  await page.waitForTimeout(700); // past the debounce: the slow fetch is now in flight
+
+  // 3. Type forward again. The held page answers this locally and instantly.
+  await input.fill("borbulhas de");
+  await expect(page.getByRole("button", { name: /Borbulhas de Amor - versão 0/ })).toBeVisible();
+
+  // 4. Let the stale response land.
+  await page.waitForTimeout(2500);
+
+  // The narrowed rows are still what the patron sees; the superseded page never
+  // appears, and the input still matches what is on screen.
+  await expect(page.getByRole("button", { name: /Borbu Stale Page/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Borbulhas de Amor - versão 0/ })).toBeVisible();
+});
