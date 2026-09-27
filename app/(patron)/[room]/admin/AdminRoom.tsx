@@ -47,6 +47,12 @@ export default function AdminRoom({
   // created room's host cookie has lapsed — surface honest recovery copy on the
   // gate. Read from location to avoid the useSearchParams Suspense boundary.
   const [sessionExpired, setSessionExpired] = useState(false);
+  // TICKET-104 (PR #81 review, B1): a 429 from the creator-claim probe is NOT a
+  // rejection. Collapsing it into the gate told the room's own owner "wrong
+  // credentials" when the honest answer was "come back in a minute" — and the
+  // code it then asks for is unrecoverable. Tracked separately so the gate can
+  // say which one it is.
+  const [claimThrottled, setClaimThrottled] = useState(false);
 
   // Login gate state
   const [token, setToken] = useState("");
@@ -111,10 +117,11 @@ export default function AdminRoom({
         setAuth("authed");
         return;
       }
-      const claimed = await fetch(`/api/host/claim${roomQuery}`, { method: "POST" })
-        .then((r) => r.ok)
-        .catch(() => false);
-      setAuth(claimed ? "authed" : "gate");
+      const claim = await fetch(`/api/host/claim${roomQuery}`, { method: "POST" })
+        .then((r) => ({ ok: r.ok, status: r.status }))
+        .catch(() => ({ ok: false, status: 0 }));
+      setClaimThrottled(claim.status === 429);
+      setAuth(claim.ok ? "authed" : "gate");
     } catch {
       setAuth("gate");
     }
@@ -358,7 +365,12 @@ export default function AdminRoom({
       <main className={styles.gate}>
         <h1>🎤 {t("adminTitle")}</h1>
         <p style={{ marginBottom: "0.25rem" }}>{venueName ?? roomId}</p>
-        {sessionExpired && configured && (
+        {claimThrottled && configured && (
+          <p data-testid="claim-throttled-notice" style={{ color: "#fbbf24", fontSize: "0.9rem", marginBottom: "0.25rem" }}>
+            {t("claimThrottled")}
+          </p>
+        )}
+        {sessionExpired && configured && !claimThrottled && (
           <p data-testid="session-expired-notice" style={{ color: "#fbbf24", fontSize: "0.9rem", marginBottom: "0.25rem" }}>
             {t("sessionExpired")}
           </p>

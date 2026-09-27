@@ -22,7 +22,9 @@ import {
   noClaimCookieOptions,
   NO_CLAIM_MAX_AGE_SECONDS,
 } from "@/lib/host-auth";
-import type { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
+import { POST as claimRoute } from "@/app/api/host/claim/route";
+import { IDENTITY_COOKIE } from "@/lib/identity";
 import { createRoom, hashHostCode, roomBackend, type Room } from "@/lib/rooms";
 
 const CREATOR = "123e4567-e89b-42d3-a456-426614174000";
@@ -166,27 +168,124 @@ describe("claim throttle — its OWN bucket, never the login one", () => {
     _clearLoginThrottle();
   });
 
+  // NOTE the deliberately SHARED key string in these three. Claim now buckets on
+  // an identity uuid and login on an IP, so passing two different strings would
+  // make the tests vacuous — they would pass with both namespaces collapsed into
+  // one. Using the same string for both is what actually proves the key prefixes
+  // differ (`hostclaim:` vs `login:`).
+  const SHARED = "123e4567-e89b-42d3-a456-4266141740aa";
+
   it("spending the claim budget does NOT throttle the host-code login path", async () => {
-    const ip = "198.51.100.7";
-    for (let i = 0; i < 10; i++) await registerClaimFailure(ip);
-    expect(await isClaimThrottled(ip)).toBe(true);
-    // The creator must still be able to fall back to typing the code. If claim
-    // shared login's bucket, ordinary session-less admin visits would lock this.
-    expect(await isLoginThrottled(ip)).toBe(false);
+    for (let i = 0; i < 10; i++) await registerClaimFailure(SHARED);
+    expect(await isClaimThrottled(SHARED)).toBe(true);
+    // The creator must still be able to fall back to typing the code.
+    expect(await isLoginThrottled(SHARED)).toBe(false);
   });
 
   it("spending the login budget does not throttle claims", async () => {
-    const ip = "198.51.100.8";
-    for (let i = 0; i < 10; i++) await registerLoginFailure(ip);
-    expect(await isLoginThrottled(ip)).toBe(true);
-    expect(await isClaimThrottled(ip)).toBe(false);
+    for (let i = 0; i < 10; i++) await registerLoginFailure(SHARED);
+    expect(await isLoginThrottled(SHARED)).toBe(true);
+    expect(await isClaimThrottled(SHARED)).toBe(false);
   });
 
   it("a successful claim resets its own bucket", async () => {
-    const ip = "198.51.100.9";
-    for (let i = 0; i < 10; i++) await registerClaimFailure(ip);
-    expect(await isClaimThrottled(ip)).toBe(true);
-    await resetClaimThrottle(ip);
-    expect(await isClaimThrottled(ip)).toBe(false);
+    for (let i = 0; i < 10; i++) await registerClaimFailure(SHARED);
+    expect(await isClaimThrottled(SHARED)).toBe(true);
+    await resetClaimThrottle(SHARED);
+    expect(await isClaimThrottled(SHARED)).toBe(false);
+  });
+});
+
+/**
+ * B1 regression (PR #81 review) — the throttle must never be able to deny the
+ * feature to the very person it exists for.
+ *
+ * As shipped, `POST /api/host/claim` charged a per-IP failure even with NO
+ * identity cookie, and `AdminRoom` POSTs it on every session-less admin render.
+ * So ten ordinary admin-URL opens from a venue's shared IP inside a minute 429'd
+ * the CREATOR's own claim — and a 429 rendered as the code gate, i.e. exactly
+ * the unrecoverable-code dead end this ticket removes. Measured, not theorised:
+ * 3 failures in 7 full-suite runs as shipped.
+ *
+ * These are route-level tests (same style as `__tests__/host-api.test.ts`)
+ * because the defect lived in the route's charging decision, not in the counter.
+ */
+describe("claim route — incidental traffic can never 429 the creator (B1)", () => {
+  const VENUE_IP = "203.0.113.42";
+
+  function claimReq(
+    roomId: string,
+    opts: { identity?: string; ip?: string } = {},
+  ): NextRequest {
+    const headers: Record<string, string> = {};
+    if (opts.identity) headers.cookie = `${IDENTITY_COOKIE}=${opts.identity}`;
+    headers["x-forwarded-for"] = opts.ip ?? VENUE_IP;
+    return new NextRequest(
+      `http://127.0.0.1:3040/api/host/claim?room=${encodeURIComponent(roomId)}`,
+      { method: "POST", headers },
+    );
+  }
+
+  beforeEach(() => {
+    _clearLoginThrottle();
+  });
+
+  it("a flood of session-less renders from the venue IP does not block the creator", async () => {
+    const room = await mustCreateRoom("bar venue nat", CREATOR);
+    // 40 patrons/bookmarks open /<room>/admin with no identity cookie — four
+    // times the failure ceiling, all from the one public IP the creator is on.
+    for (let i = 0; i < 40; i++) {
+      const res = await claimRoute(claimReq(room.id));
+      expect(res.status).toBe(401); // no identity → nothing to claim with
+    }
+    // The creator, on that SAME IP, still gets in without typing anything.
+    const res = await claimRoute(claimReq(room.id, { identity: CREATOR }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ authed: true });
+  });
+
+  it("another DEVICE's failed claims do not block the creator, even on the same IP", async () => {
+    const room = await mustCreateRoom("bar shared wifi", CREATOR);
+    // A real device with its own identity, probing repeatedly.
+    for (let i = 0; i < 20; i++) {
+      await claimRoute(claimReq(room.id, { identity: OTHER }));
+    }
+    // That device is now bounded...
+    expect(await isClaimThrottled(OTHER)).toBe(true);
+    // ...and the creator's budget is untouched.
+    expect(await isClaimThrottled(CREATOR)).toBe(false);
+    expect((await claimRoute(claimReq(room.id, { identity: CREATOR }))).status).toBe(200);
+  });
+
+  it("a garbage identity cookie is not charged either, and cannot become a bucket key", async () => {
+    const room = await mustCreateRoom("bar garbage cookie", CREATOR);
+    for (let i = 0; i < 15; i++) {
+      const res = await claimRoute(claimReq(room.id, { identity: "not-a-uuid" }));
+      expect(res.status).toBe(401);
+    }
+    expect(await isClaimThrottled("not-a-uuid")).toBe(false);
+    expect((await claimRoute(claimReq(room.id, { identity: CREATOR }))).status).toBe(200);
+  });
+
+  it("a genuinely exhausted identity gets 429 — DISTINGUISHABLE from a 401 rejection", async () => {
+    const room = await mustCreateRoom("bar exhausted", CREATOR);
+    for (let i = 0; i < 12; i++) {
+      await claimRoute(claimReq(room.id, { identity: OTHER }));
+    }
+    const res = await claimRoute(claimReq(room.id, { identity: OTHER }));
+    expect(res.status).toBe(429);
+    // The client keys off this to say "wait a minute" instead of "wrong code".
+    expect(await res.json()).toEqual({ authed: false, throttled: true });
+  });
+
+  it("a successful claim clears the claiming identity's own budget", async () => {
+    const room = await mustCreateRoom("bar reset", CREATOR);
+    // Creator fails against a room it does not own, spending some budget...
+    const foreign = await mustCreateRoom("bar alheio", OTHER);
+    for (let i = 0; i < 5; i++) {
+      await claimRoute(claimReq(foreign.id, { identity: CREATOR }));
+    }
+    expect((await claimRoute(claimReq(room.id, { identity: CREATOR }))).status).toBe(200);
+    expect(await isClaimThrottled(CREATOR)).toBe(false);
   });
 });

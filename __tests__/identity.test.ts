@@ -114,9 +114,15 @@ describe("resolveIdentity (via createIdentityResolver)", () => {
     expect(result.uuid).toBe(B); // we set that cookie ourselves; never re-litigated
   });
 
-  it("refuses adoption when the ownership lookup FAILS but the store is otherwise up", async () => {
+  it("refuses adoption when the ownership lookup FAILS — without DESTROYING the device's uuid", async () => {
     // Fail-closed on the impersonation axis: if we cannot establish that the
     // asserted uuid owns no rooms, we do not hand out its identity cookie.
+    //
+    // But "unknown" must not be answered with a SUBSTITUTE uuid (PR #81 review,
+    // NB-2): `ok: true` + a different uuid makes PatronRoom overwrite
+    // `cantai_patron_uuid` and irreversibly discard the device's real identity
+    // over a transient rooms-index error. So the contract is `ok: false` (no
+    // cookie set, nothing registered) while echoing the client's OWN uuid back.
     const store = new MemoryIdentityStore();
     const blindStore: IdentityStore = {
       ...store,
@@ -130,8 +136,10 @@ describe("resolveIdentity (via createIdentityResolver)", () => {
     };
     const resolve = createIdentityResolver(blindStore);
     const result = await resolve(fakeReq(), A);
-    expect(result.ok).toBe(true); // touch succeeded, so this is a real registration
-    expect(result.uuid).not.toBe(A);
+    expect(result.ok).toBe(false); // nothing persisted, so no cookie is set
+    expect(result.uuid).toBe(A); // the device keeps its own uuid
+    // And crucially: no identity was registered under a substitute uuid.
+    expect(await store.get(A)).toBeNull();
   });
 
   it("an invalid legacy uuid is ignored — falls through to a fresh mint", async () => {

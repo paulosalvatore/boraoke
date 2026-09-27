@@ -116,7 +116,10 @@ export async function warmModerationRoutes(request: APIRequestContext) {
   // mid-test in any spec that reaches the gate, wiping the memory store and the
   // room the spec just created. Exactly the "happens to be compiled" coupling
   // this helper exists to remove, so it is warmed explicitly here.
-  await request.post("/api/host/claim");
+  // NB-6 (PR #81 review): warm with a DELIBERATELY MALFORMED room id. It compiles
+  // the route just the same but returns 400 before the throttle or the store is
+  // touched, so the warm-up never spends a claim budget of its own.
+  await request.post("/api/host/claim?room=!!");
   await request.get("/api/queue");
   await request.get("/api/host/pending");
   await request.post("/api/host/pending/approve", { data: { pendingId: "warmup" } });

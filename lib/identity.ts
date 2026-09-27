@@ -115,20 +115,36 @@ export interface IdentityRequestLike {
  * by us and is never re-checked. Accepted cost: a device whose identity predates
  * the cookie, which created rooms and then lost the cookie, can no longer
  * re-adopt its uuid by asserting it; it falls back to the host code. That is the
- * safe side of an ambiguity an attacker impersonates, and it is the ONLY case
- * the guard fires on (a patron-only legacy uuid owns no rooms and still adopts).
+ * safe side of an ambiguity an attacker impersonates. Note the affected device is
+ * a POST-TICKET-26 one that created rooms and then lost its cookie while keeping
+ * localStorage — a genuinely pre-cookie uuid owns no rooms (`addRoom` only began
+ * at TICKET-26) and so cannot trigger the guard at all. The guard fires on one
+ * other case too: a `listRooms` ERROR, which refuses adoption for everyone until
+ * the index recovers — see `adoptable`, which keeps that case from destroying the
+ * device's own uuid.
  */
 export function createIdentityResolver(store: IdentityStore) {
   /**
-   * Whether a CLIENT-ASSERTED uuid may be adopted: only if it owns no rooms.
-   * A failed lookup refuses adoption (fail-closed on the impersonation axis —
-   * identity continuity is best-effort, host access is not).
+   * Whether a CLIENT-ASSERTED uuid may be adopted.
+   *
+   *  - `"yes"`    — it owns no rooms, so adopting it cannot hand over a room.
+   *  - `"owns"`   — it owns rooms: refuse, mint a fresh uuid instead.
+   *  - `"unknown"`— the lookup itself failed, so we cannot tell.
+   *
+   * `"unknown"` is kept DISTINCT from `"owns"` on purpose (PR #81 review, NB-2).
+   * Both must refuse adoption — fail-closed on the impersonation axis — but they
+   * must fail differently: minting a substitute uuid on a transient rooms-index
+   * error makes `PatronRoom.tsx` overwrite `cantai_patron_uuid` with it and
+   * IRREVERSIBLY discard the device's real uuid, costing that patron their
+   * own-row highlighting and pending-submissions view for good. On `"unknown"`
+   * the caller therefore registers nothing and sets no cookie, so the client
+   * keeps its own uuid and simply retries on the next load.
    */
-  async function adoptable(uuid: string): Promise<boolean> {
+  async function adoptable(uuid: string): Promise<"yes" | "owns" | "unknown"> {
     try {
-      return (await store.listRooms(uuid)).length === 0;
+      return (await store.listRooms(uuid)).length === 0 ? "yes" : "owns";
     } catch {
-      return false;
+      return "unknown";
     }
   }
 
@@ -142,11 +158,18 @@ export function createIdentityResolver(store: IdentityStore) {
     // first, else the asserted legacy uuid. Used only for the fail-open return
     // below, never as the adoption decision.
     const clientKnown = isValidUuid(cookieUuid) ? cookieUuid : asserted;
-    const candidate = isValidUuid(cookieUuid)
-      ? cookieUuid
-      : asserted && (await adoptable(asserted))
-        ? asserted
-        : uuidv4();
+    let candidate: string;
+    if (isValidUuid(cookieUuid)) {
+      candidate = cookieUuid;
+    } else if (asserted) {
+      const verdict = await adoptable(asserted);
+      // Cannot establish ownership → register nothing, set no cookie, destroy
+      // nothing. See `adoptable`'s `"unknown"` case.
+      if (verdict === "unknown") return { uuid: asserted, ok: false };
+      candidate = verdict === "yes" ? asserted : uuidv4();
+    } else {
+      candidate = uuidv4();
+    }
     const userAgentClass = classifyUserAgent(req.headers.get("user-agent"));
     try {
       await store.touch(candidate, userAgentClass);

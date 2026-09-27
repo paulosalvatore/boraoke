@@ -181,6 +181,7 @@
     "languageLabel": "Idioma da sala",
     "languageHint": "A TV e o padrão do público seguem este idioma.",
     "sessionExpired": "Sua sessão expirou — entre com o código da sala.",
+    "claimThrottled": "Muitas tentativas deste dispositivo — espere um minuto e recarregue a página. Você não precisa do código para isso.",
     "moderationLabel": "Moderação de músicas",
     "moderationHint": "Com isso ligado, cada música entra numa fila de aprovação e só vai pro telão depois que você aprovar.",
     "moderationOn": "ligada",

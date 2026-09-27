@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  clientIpFrom,
   hasNoClaimMarker,
   hostCookieName,
   hostCookieOptions,
@@ -11,7 +10,7 @@ import {
   roomIdFromRequest,
   verifyCreatorClaim,
 } from "@/lib/host-auth";
-import { IDENTITY_COOKIE } from "@/lib/identity";
+import { IDENTITY_COOKIE, isValidUuid } from "@/lib/identity";
 
 /**
  * POST /api/host/claim?room=<id> — no-typing admin re-entry for the room's
@@ -28,7 +27,7 @@ import { IDENTITY_COOKIE } from "@/lib/identity";
  * server-side only and never returned by any endpoint. See
  * `verifyCreatorClaim` in `lib/host-auth.ts` for the full reasoning.
  *
- * SECURITY CONTRACT (all four lines are load-bearing):
+ * SECURITY CONTRACT (all five lines are load-bearing):
  *   1. The identity uuid is read ONLY from the cookie. This route reads no body
  *      and no query parameter other than `room`, so the localStorage mirror
  *      `cantai_patron_uuid` is not a credential for anything here.
@@ -40,16 +39,19 @@ import { IDENTITY_COOKIE } from "@/lib/identity";
  *   4. A device that deliberately LOGGED OUT of this room is refused until the
  *      host code is entered again (`hasNoClaimMarker`). Otherwise logout would
  *      be meaningless for a creator: their identity cookie outlives it by years.
- *   5. Failures burn a per-IP budget so a caller cannot sweep room ids looking
- *      for a claimable one. It is claim's OWN bucket, never login's: every
- *      session-less visit to an admin URL costs one claim attempt, so sharing
- *      the login budget would let ordinary traffic 429 the creator's own code
- *      gate (see the note beside `isClaimThrottled` in `lib/host-auth.ts`).
+ *   5. The failure budget is charged to the CALLER'S OWN IDENTITY, and only when
+ *      a valid identity cookie was actually presented. A caller without one
+ *      learns nothing from the 401, so it is not an attempt at anything and must
+ *      not be charged — charging it (and charging it per-IP) meant ordinary
+ *      session-less admin renders from a venue's shared IP could 429 the
+ *      creator's own claim, which is the very dead end this route removes. See
+ *      the long note beside `isClaimThrottled` in `lib/host-auth.ts`.
  *
- * Responses: 200 `{ authed: true }` + the room's session cookie on a match; 400 on a
- * malformed room id; 401 on any non-match (no cookie, wrong uuid, no creator on
- * record) with no cookie set and no detail about which of those it was; 429 when
- * the IP's failure budget is spent; 503 when host controls are unconfigured.
+ * Responses: 200 `{ authed: true }` + the room's session cookie on a match; 400
+ * on a malformed room id; 401 on any non-match (no cookie, wrong uuid, no
+ * creator on record, logged out) with no cookie set and no detail about which of
+ * those it was; 429 `{ throttled: true }` when this identity's own budget is
+ * spent; 503 when host controls are unconfigured.
  */
 export async function POST(req: NextRequest) {
   const roomId = roomIdFromRequest(req);
@@ -57,38 +59,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid room id" }, { status: 400 });
   }
 
-  const ip = clientIpFrom(req);
-  if (await isClaimThrottled(ip)) {
-    return NextResponse.json(
-      { error: "Too many failed attempts — try again in a minute." },
-      { status: 429 },
-    );
+  // Cookie ONLY — never a body/query uuid (contract line 1 above).
+  const identityUuid = req.cookies.get(IDENTITY_COOKIE)?.value;
+
+  // No identity presented → nothing to claim with, nothing learned, nothing
+  // charged (contract line 5). This is the ordinary case for every patron who
+  // ever opens an admin URL, so it must stay free.
+  if (!isValidUuid(identityUuid)) {
+    return NextResponse.json({ authed: false }, { status: 401 });
   }
 
-  // Deliberate logout wins over auto-claim (contract line 4 above). Not a
-  // failed attempt — an opt-out, so it does not charge the throttle.
+  // Deliberate logout wins over auto-claim (contract line 4). Not a failed
+  // attempt — an opt-out, so it does not charge the budget either.
   if (hasNoClaimMarker(req, roomId)) {
     return NextResponse.json({ authed: false }, { status: 401 });
   }
 
-  // Cookie ONLY — never a body/query uuid (contract line 1 above).
-  const identityUuid = req.cookies.get(IDENTITY_COOKIE)?.value;
+  if (await isClaimThrottled(identityUuid)) {
+    // Distinguishable from a rejection on purpose: the client must not render
+    // "wrong credentials" (i.e. the code gate) for "come back in a minute".
+    return NextResponse.json({ authed: false, throttled: true }, { status: 429 });
+  }
 
   if (!(await verifyCreatorClaim(roomId, identityUuid))) {
-    await registerClaimFailure(ip);
+    await registerClaimFailure(identityUuid);
     return NextResponse.json({ authed: false }, { status: 401 });
   }
 
   const session = await issueSession(roomId);
   if (!session) {
     // Host controls locked for this room (production with nothing configured).
-    // Not a failed attempt — don't charge the throttle.
+    // Not a failed attempt — don't charge the budget.
     return NextResponse.json(
       { error: "Host controls are not configured for this venue." },
       { status: 503 },
     );
   }
-  await resetClaimThrottle(ip);
+  await resetClaimThrottle(identityUuid);
 
   const res = NextResponse.json({ authed: true });
   res.cookies.set(hostCookieName(roomId), session, hostCookieOptions());

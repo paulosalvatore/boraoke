@@ -181,6 +181,7 @@
     "languageLabel": "Idioma de la sala",
     "languageHint": "La TV y el idioma por defecto del público siguen este idioma.",
     "sessionExpired": "Tu sesión expiró — entra con el código de la sala.",
+    "claimThrottled": "Demasiados intentos desde este dispositivo — espera un minuto y recarga la página. No necesitas el código para esto.",
     "moderationLabel": "Moderación de canciones",
     "moderationHint": "Con esto activado, cada canción entra en una lista de aprobación y solo va a la TV después de que la apruebes.",
     "moderationOn": "activada",

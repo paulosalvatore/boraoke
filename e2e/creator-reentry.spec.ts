@@ -156,6 +156,16 @@ test.describe("creator admin re-entry", () => {
     await page.getByRole("button", { name: /^entrar$/i }).click();
     await expect(dashboard(page)).toBeVisible();
 
+    // The property this test is NAMED for, asserted rather than assumed (PR #81
+    // review, B2): the login must have CLEARED the marker. Without this line the
+    // `clearCookies()` below destroys the marker itself, so deleting the
+    // marker-clearing block in POST /api/host/login left this test green — the
+    // suite could not tell the fixed code from the broken code. A path mismatch
+    // on the clear also fails here, since the stale cookie would survive.
+    expect((await page.context().cookies()).map((c) => c.name)).not.toContain(
+      `boraoke_noclaim_${id}`,
+    );
+
     // ...and auto-claim works again: drop the host session, keep only identity.
     const context = page.context();
     const identity = (await context.cookies()).find((c) => c.name === IDENTITY_COOKIE);

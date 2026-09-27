@@ -181,6 +181,7 @@
     "languageLabel": "Room language",
     "languageHint": "The TV and the guest default follow this language.",
     "sessionExpired": "Your session expired — sign in with the room code.",
+    "claimThrottled": "Too many attempts from this device — wait a minute and reload the page. You do not need the code for this.",
     "moderationLabel": "Song moderation",
     "moderationHint": "With this on, every song lands in an approval list and only hits the TV once you approve it.",
     "moderationOn": "on",

@@ -309,36 +309,60 @@ function loginKey(ip: string): string {
   return `login:${ip}`;
 }
 
-// ─── Creator-claim throttle (TICKET-104) ─────────────────────────────────────
+// ─── Creator-claim throttle (TICKET-104, rescoped after the PR #81 review) ───
 //
-// `POST /api/host/claim` gets its OWN bucket, deliberately NOT the login one.
-// Sharing it would let claim failures spend the budget a legitimate host needs
-// for the code gate: any visitor landing on `/<room>/admin` without a live
-// session triggers one claim attempt, so a patron who opened an admin URL a few
-// times would have 429'd the creator's own login on that shared IP (a venue
-// tablet, a café NAT). Separate buckets cap claim probing without ever being
-// able to lock out the code path. Same window/ceiling — it's the same class of
-// online guessing, just a different secret.
+// Two things about this bucket are deliberate, and the SECOND one was a shipped
+// availability defect the opus review measured before it reached production.
+//
+// 1. It is NOT the login bucket. Sharing it would let claim failures spend the
+//    budget a legitimate host needs for the code gate.
+//
+// 2. It is keyed on the caller's IDENTITY, not on their IP, and only a caller
+//    who actually presented a valid identity cookie is ever charged. Keyed on IP
+//    it did the exact damage separation was meant to prevent, one layer down:
+//    `AdminRoom` POSTs claim on EVERY session-less admin render, and the route
+//    charged a failure even with no identity cookie at all, so ten ordinary
+//    session-less loads from one public IP inside a minute 429'd the CREATOR's
+//    own claim — and a 429 renders as the code gate, i.e. precisely the
+//    unrecoverable-code dead end this ticket exists to remove. Measured on a
+//    venue-shaped IP: 3 failures in 7 full-suite runs as shipped, 0 in 3 with
+//    the ceiling raised and nothing else changed.
+//
+// Why identity-keyed bucketing is sound HERE, where it would be naive elsewhere:
+// this route has no guessable secret. The caller cannot supply a uuid (the route
+// reads the cookie and nothing else), so the only "attack" is sweeping room ids
+// hoping one has `creatorUuid` equal to your own uuid — a v4 collision. Rotating
+// to a fresh identity therefore buys an attacker nothing, because a fresh
+// identity owns nothing and matches nothing. The bucket is not an anti-guessing
+// control; it is a cheap bound on one device's pointless retry loop. A caller
+// with no identity cookie is not charged and is not bounded here, which matches
+// the posture of the app's other unauthenticated single-store-read endpoints
+// (`GET /api/rooms?id=`, `GET /api/host/session`); the expensive write path has
+// its own throttle (`lib/room-create-throttle.ts`).
 const CLAIM_THROTTLE_OPTS: CounterOptions = LOGIN_THROTTLE_OPTS;
 
-/** Namespaced counter key for a claim-failure IP. */
-function claimKey(ip: string): string {
-  return `hostclaim:${ip}`;
+/**
+ * Namespaced counter key for a claim-failure bucket. The argument is the
+ * caller's own identity uuid — NEVER an IP, so one device can never spend
+ * another device's budget (see the note above).
+ */
+function claimKey(identityUuid: string): string {
+  return `hostclaim:${identityUuid}`;
 }
 
-/** True when this IP has exhausted its creator-claim failure budget. */
-export function isClaimThrottled(ip: string): Promise<boolean> {
-  return isThrottled(claimKey(ip), CLAIM_THROTTLE_OPTS);
+/** True when this IDENTITY has exhausted its creator-claim failure budget. */
+export function isClaimThrottled(identityUuid: string): Promise<boolean> {
+  return isThrottled(claimKey(identityUuid), CLAIM_THROTTLE_OPTS);
 }
 
-/** Record one failed creator-claim attempt for this IP. */
-export function registerClaimFailure(ip: string): Promise<void> {
-  return registerFailure(claimKey(ip), CLAIM_THROTTLE_OPTS);
+/** Record one failed creator-claim attempt for this IDENTITY. */
+export function registerClaimFailure(identityUuid: string): Promise<void> {
+  return registerFailure(claimKey(identityUuid), CLAIM_THROTTLE_OPTS);
 }
 
-/** Clear the creator-claim failure bucket for this IP (successful claim). */
-export function resetClaimThrottle(ip: string): Promise<void> {
-  return resetKey(claimKey(ip));
+/** Clear the creator-claim failure bucket for this IDENTITY (successful claim). */
+export function resetClaimThrottle(identityUuid: string): Promise<void> {
+  return resetKey(claimKey(identityUuid));
 }
 
 /**
