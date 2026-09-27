@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-27T12:26:37Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-108", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/108-keystroke-billing", "short_sha": "4c14570", "message_slug": "perf(search): narrow held results locally instead of billing a search pe"}}
