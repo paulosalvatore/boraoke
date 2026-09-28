@@ -51,6 +51,40 @@ Added by the TICKET-108 Dev while re-gating PR #84. This section exists so whoev
 Five runs of `e2e/search.spec.ts` alone, on **pure `origin/main`** (its `SongSearch.tsx`, its `search.spec.ts`, its `helpers.ts` — no PR #84 code present), with `rm -rf .next` before **every** run:
 
 | run | failures | failing tests | duration |
+
+## 2026-09-28 UPDATE — ROOT CAUSE FOUND, and it is not a product regression. It is one defect behind a whole family of flakes.
+
+A read-only diagnosis (no suite run — two latency measurements were in flight) establishes this is **neither a product regression nor test drift**, and that **it predates 103/106/109** — none of those three touches the served-lang path, and `git log` over `middleware.ts`, `i18n/`, `app/layout.tsx` and `app/(patron)/[room]/tv/` ends at TICKET-79 itself.
+
+**The mechanism.** Both in-memory stores are **plain module-level singletons, not pinned to `globalThis`**:
+
+- `lib/rooms.ts:278` — `export const roomBackend: RoomBackend = createBackend();`
+- `lib/store.ts:39` — `export const store: QueueStore = createStore();`
+
+Under `next dev`, **any module re-evaluation discards every room and every queue entry.** The served-lang test seeds a room and then loads `/{room}/tv`; if a route compiles in between, the room is gone and `getRoomLanguage` falls back to `pt-BR`, failing an assertion that expects the room's `en`. The visitor's `Accept-Language` is structurally unreachable on the TV branch (`i18n/resolve-request-locale.ts:46-48` returns `getRoomLanguage(room)` and never reads the header), so a *product* explanation for the failure does not exist.
+
+**`served-lang.spec.ts` is the only seed-then-load spec that calls no warm-up helper.** That is why it is the one that fails.
+
+**One observation refines the diagnosis and makes the fix more urgent.** The hypothesis was that a full-suite run protects this spec by accident, because alphabetically earlier specs compile `/[room]/tv` first — but **the observed failure occurred in a full-suite run.** The reconciling explanation is the separately-measured dev-server behaviour: `next dev` **evicts and recompiles** routes after roughly 25 seconds of idle (documented in the `run-app` skill after `/apple-icon.png` wiped three testers' state). So the store is wiped not only on *first* compile but on **any** recompile, at arbitrary points in a long run. That makes the hazard **ordering-independent**: no amount of warm-up sequencing fully closes it.
+
+**Therefore the real fix is to pin the dev singletons to `globalThis`**, the standard Next.js dev pattern, so module re-evaluation cannot discard state. That eliminates the entire class rather than another instance of it. Consider what this class has already cost: three warm-up helpers in `e2e/helpers.ts`, the TICKET-88 / TICKET-92 / TICKET-65 / TICKET-68 deflaking work, a warm-up being added to `search.spec.ts` right now under TICKET-108, four agents losing time to vanished state in a single day, and this red `main`.
+
+**Production is not affected, and the reason is structural:** production runs the Upstash driver (`lib/rooms.ts:257-278`), where no module re-evaluation can lose a record. The middleware and i18n files are byte-identical to the TICKET-79 merge that was verified against production.
+
+### Revised scope
+
+1. **Pin both memory singletons to `globalThis`** (dev/test only — the Upstash path is stateless and unaffected). Check first whether any spec *relies* on the store resetting between files; if one does, that dependency is itself a defect to record.
+2. **Confirm the mechanism before fixing**, cheaply: run `served-lang.spec.ts` **alone with a clean `.next`** and capture the **received** value. `pt-BR` confirms the store-reset mechanism. **`es` would instead mean the pathname header is not reaching the request config — a genuine regression with production impact**, and that must be ruled out rather than assumed. The diagnosis argues strongly for `pt-BR` (an `es` result would also have failed the `/default/tv` and patron-chain assertions in the same file, which passed), but the value settles it and nobody has read it yet — the original error context was not retained.
+3. **Then re-assess the warm-up helpers.** With a `globalThis`-pinned store they become belt-and-braces rather than load-bearing; leave them, but stop treating "add another warm-up" as the answer to this class.
+4. **The gate gap stands unchanged** and remains the durable half: nothing in this house runs boraoke's e2e suite, which is why a red `main` went unnoticed.
+
+**Do not run the confirming suite while a latency-sensitive measurement is in flight** — a concurrent suite shares the `.next` cache and has already corrupted one measurement on this product.
+
+## 2026-09-28 SECOND UPDATE — measured: `main`'s e2e suite fails 4 out of 4 cold runs. The cause is that we test a DEV SERVER.
+
+Measured on **pure `origin/main`**, cold `.next` before every run, no PR code present:
+
+| run | failures | failing tests | wall-clock |
 |---|---|---|---|
 | 1 | 1 | `:37` | 2.9m |
 | 2 | 2 | `:329`, `:386` | 2.6m |
@@ -108,3 +142,42 @@ Both were true numbers, honestly obtained, describing a condition other than the
 - **The TICKET-108 Dev made the same error in round 2.** A second `next dev` was started on another port while a full suite run was in flight; `PORT=` does not isolate the `.next` cache, and the resulting 7 failures (`⨯ [TypeError: Cannot read properties of undefined (reading '/_app')]`) were nearly reported as findings.
 
 **Unresolved, flagged rather than explained away:** the ~2 genuinely cold control runs in the re-gate passed, while 5 of 5 cold runs here failed. Within these runs, contention clearly modulates *severity* (fast runs 2.6–2.9m averaged 1.33 failures; slow runs 5.8–6.4m averaged 4.00 — 3.0×), but **zero of five cold runs passed, including the fastest**, so load does not explain the existence of a clean cold run. Both samples are small. The true cold-failure rate is high but is not established as 100%, and the discrepancy between the two environments is **probable-but-unconfirmed**.
+
+
+**4 of 4 cold runs failed. Seven of `main`'s twelve `search.spec` tests failed at least once, and the failing set changes every run.** The flake also scales with machine load — the slower runs failed harder.
+
+This is not a property of any test. **It is the suite being run against a development server.**
+
+### The actual root cause
+
+`playwright.config.ts:34` — `webServer.command` is **`npx next dev -p ${PORT}`**.
+
+Everything we have been patching for weeks follows from that one line:
+
+1. **Routes compile lazily, during the tests.** First-compile latency lands inside assertion windows — hence `page.goto: net::ERR_ABORTED` on `/default` at a 30s timeout, and 5s `toBeVisible` timeouts. This is the **timeout** family.
+2. **Module re-evaluation discards the in-memory singletons** (`lib/rooms.ts:278`, `lib/store.ts:39`), wiping every room and queue entry mid-test. This is the **vanished state** family, and the deterministic `served-lang` failure.
+3. **Routes are evicted and recompiled after ~25s idle**, so (1) and (2) recur at arbitrary points rather than only at startup — which is why no warm-up ordering fully closes it.
+4. **`workers: 1` exists solely because of (2)** — see the comment at `playwright.config.ts:14-16`. The suite is serialised to work around a dev-server artefact.
+
+### The fix that closes the whole class
+
+**Run e2e against a production build — `next build` then `next start` — instead of `next dev`.** A built server does not compile lazily, does not re-evaluate modules, and does not evict routes. That removes every mechanism above at once:
+
+- no first-compile latency, so the timeout family disappears;
+- no module re-evaluation, so state survives and the `globalThis` pinning becomes belt-and-braces rather than load-bearing;
+- no eviction, so the ~25s recompile hazard disappears;
+- **`workers: 1` can likely be lifted**, making the suite substantially faster rather than merely more reliable;
+- the three warm-up helpers become unnecessary (leave them; stop adding more).
+
+It is also **more correct, not just more stable**: e2e would exercise what production actually runs. A dev server differs from a production build in ways that matter (React strict-mode double-invocation, minification, bundling), so today's suite can both fail on working code *and* pass on code that breaks when built.
+
+Cost: one `next build` (~1-4 min) before the suite. Against a suite that currently takes ~11 minutes warm, fails 4 of 4 cold, and has consumed days of agent time across TICKET-65/68/88/92 and today's work, that is trivially worth it.
+
+### Revised recommendation, in priority order
+
+1. **Switch `playwright.config.ts` to build-and-start.** This is the fix; everything else is mitigation. Verify by re-running the arm-E measurement — 4-of-4-failing should become 0-of-4.
+2. **Pin the memory singletons to `globalThis`** anyway (cheap, and it protects hand-testing against `next dev`, which is a real workflow the `run-app` skill documents).
+3. **Then confirm the served-lang value**, which should simply pass once (1) lands. If it still fails against a built server, *that* is a genuine product regression and gets escalated — the built-server run is the clean experiment this ticket has been missing.
+4. **Close the gate gap**: with a suite that is actually reliable, running it automatically becomes worthwhile, which is what makes a red `main` detectable at all.
+
+**Until (1) lands, treat every "e2e green" claim on this product as conditional on a warm cache**, and say so when reporting one.
