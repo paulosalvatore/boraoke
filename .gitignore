@@ -15,3 +15,25 @@ cdk.out/
 /playwright-report/
 .vercel
 .env*.local
+.next-e2e/
+
+# TICKET-116 — next-env.d.ts is generated, and with two build directories in play
+# it CHURNS. Next rewrites its `/// <reference path="./<distDir>/types/routes.d.ts" />`
+# line to whichever build ran most recently, so the file says `.next-e2e` after an
+# e2e run and flips back to `.next` after `next dev`/`npm run build`. That is a
+# permanently dirty tree and a merge conflict on every future branch. There is no
+# config switch to stop it: Next REWRITES that line (unlike tsconfig.json's
+# `include`, which it only APPENDS to — which is why tsconfig carries BOTH type
+# directories above and is stable).
+#
+# Untracking is safe here, measured rather than assumed:
+#   - it is pure generated output: ONE commit in this repo's entire history (the
+#     initial scaffold), never hand-edited since;
+#   - `next build` recreates it byte-identically when absent, and a full
+#     `npm run build` (type check + es-target + css-target) is GREEN without it;
+#   - `npx tsc --noEmit` reports the IDENTICAL error count with and without it
+#     (2965 either way) — the route types reach the program through tsconfig's
+#     `include` globs, not through this file's reference line.
+# Residual cost: a fresh clone has no next-env.d.ts until the first `next`
+# command generates one. This is a deliberate deviation from the Next.js default.
+next-env.d.ts

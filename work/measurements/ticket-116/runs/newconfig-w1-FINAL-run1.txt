@@ -1,0 +1,160 @@
+=== TICKET-116 cold run: newconfig-w1-FINAL #1 ===
+root:      /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-e2e-built-server
+head:      27ac203
+port:      3160
+workers:   -
+started:   2026-09-28T21:27:21Z
+loadavg:   { 9.59 11.32 15.13 }
+---
+
+[WebServer]  ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+[WebServer]  We detected multiple lockfiles and selected the directory of /Users/paulosalvatore/Documents/GitHub/boraoke/package-lock.json as the root directory.
+[WebServer]  To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+[WebServer]    See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+[WebServer]  Detected additional lockfiles: 
+[WebServer]    * /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-e2e-built-server/package-lock.json
+[WebServer] 
+
+[WebServer]  ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+[WebServer]  We detected multiple lockfiles and selected the directory of /Users/paulosalvatore/Documents/GitHub/boraoke/package-lock.json as the root directory.
+[WebServer]  To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+[WebServer]    See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+[WebServer]  Detected additional lockfiles: 
+[WebServer]    * /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-e2e-built-server/package-lock.json
+[WebServer] 
+
+Running 126 tests using 1 worker
+
+[1/126] [chromium] › e2e/_canary.spec.ts:22:7 › run-triage canary (not a product test) › the runner evaluates constants correctly
+[2/126] [chromium] › e2e/_canary.spec.ts:28:7 › run-triage canary (not a product test) › the runner's async primitives complete
+[3/126] [chromium] › e2e/advance-auth.spec.ts:11:7 › advance auth (enforce mode) › a bare (patron-context) advance is rejected 401
+[4/126] [chromium] › e2e/advance-auth.spec.ts:16:7 › advance auth (enforce mode) › a stale / wrong screen token is rejected 401
+[5/126] [chromium] › e2e/advance-auth.spec.ts:23:7 › advance auth (enforce mode) › an advance carrying the valid room screen token succeeds
+[6/126] [chromium] › e2e/advance-auth.spec.ts:41:7 › advance auth (enforce mode) › the screen token helper matches what the TV page renders (sanity)
+[7/126] [chromium] › e2e/contrast.spec.ts:164:7 › contrast math sanity (proves the function before it's trusted) › black text on white background resolves to 21:1 (the canonical WCAG max)
+[8/126] [chromium] › e2e/contrast.spec.ts:179:7 › contrast math sanity (proves the function before it's trusted) › known-bad pair (surface-on-surface, the original TICKET-20 bug) computes ~1:1, well under AA
+[9/126] [chromium] › e2e/contrast.spec.ts:204:7 › contrast math sanity (proves the function before it's trusted) › transparent-background element resolves against the real ancestor paint, not black/white default
+[10/126] [chromium] › e2e/contrast.spec.ts:297:7 › landing page contrast › hero h1 and join-by-code section heading meet AA
+[11/126] [chromium] › e2e/contrast.spec.ts:315:7 › landing page contrast › create-room CTA button text meets AA (--accent-strong #d92330 under #fff = 4.96:1)
+[12/126] [chromium] › e2e/contrast.spec.ts:327:7 › landing page contrast › join-code input: typed text is legible against its OWN fill, not the card behind it
+[13/126] [chromium] › e2e/contrast.spec.ts:362:7 › landing page contrast › Direction-2 hero, TV mock, chips and bullets all meet AA (TICKET-69)
+[14/126] [chromium] › e2e/contrast.spec.ts:405:7 › landing page contrast › last-room quick-entry link meets AA on the --surface join strip (TICKET-69)
+[15/126] [chromium] › e2e/contrast.spec.ts:423:7 › landing page contrast › footer copy meets AA against the page background
+[16/126] [chromium] › e2e/contrast.spec.ts:443:7 › patron room contrast › post-join essentials: add-song heading, inputs, live-queue heading, player hint
+[17/126] [chromium] › e2e/contrast.spec.ts:459:7 › patron room contrast › live queue entry: title, meta line, and mode badge meet AA once seeded
+[18/126] [chromium] › e2e/contrast.spec.ts:487:7 › admin room contrast › dashboard controls and customer-screen links meet AA
+[19/126] [chromium] › e2e/contrast.spec.ts:511:7 › admin room contrast › active mode-switcher label meets AA (--accent-text #ee5a64 on the accent tint = 5.45:1)
+[20/126] [chromium] › e2e/contrast.spec.ts:532:7 › admin room contrast › admin queue row: accent-coloured remove button on a dark card meets AA (latent C3)
+[21/126] [chromium] › e2e/contrast.spec.ts:545:7 › admin room contrast › admin mode-switcher active chip: accent-as-text meets AA (latent C3)
+[22/126] [chromium] › e2e/contrast.spec.ts:553:7 › admin room contrast › login gate: host-code input text is legible against its own fill
+[23/126] [chromium] › e2e/contrast.spec.ts:566:7 › tv screen contrast › idle state: wordmark + call-to-action text meet AA
+[24/126] [chromium] › e2e/contrast.spec.ts:574:7 › tv screen contrast › now-playing state: hero title meets AA (large-text threshold) once seeded
+[25/126] [chromium] › e2e/creator-reentry.spec.ts:86:7 › creator admin re-entry › the creator reaches admin straight from creation, typing nothing
+[26/126] [chromium] › e2e/creator-reentry.spec.ts:96:7 › creator admin re-entry › re-entry works with ONLY the claim cookie left (host session gone)
+[27/126] [chromium] › e2e/creator-reentry.spec.ts:117:7 › creator admin re-entry › deliberate LOGOUT is not undone by auto-claim
+[28/126] [chromium] › e2e/creator-reentry.spec.ts:142:7 › creator admin re-entry › entering the host code after a logout restores frictionless re-entry
+[29/126] [chromium] › e2e/creator-reentry.spec.ts:187:7 › creator admin re-entry › a device that did NOT create the room still hits the code gate
+[30/126] [chromium] › e2e/creator-reentry.spec.ts:209:7 › returning-creator homepage hero › the hero leads with the created room and links into admin
+[31/126] [chromium] › e2e/creator-reentry.spec.ts:229:7 › returning-creator homepage hero › a first-time visitor sees the generic hero, unchanged
+[32/126] [chromium] › e2e/creator-reentry.spec.ts:251:7 › the claim credential cannot be exfiltrated and replayed (B-S1) › everything page JS can see is NOT enough to claim the room
+[33/126] [chromium] › e2e/creator-reentry.spec.ts:366:7 › a third-party page cannot lock the creator out (B-S2) › a cross-site top-level POST to logout changes nothing
+[34/126] [chromium] › e2e/creator-reentry.spec.ts:397:7 › a third-party page cannot lock the creator out (B-S2) › the owner's OWN logout still works, and still sticks
+[35/126] [chromium] › e2e/feedback-widget-safe-area.spec.ts:139:7 › feedback pill never covers queue content (TICKET-71) › 25-row queue: no overlap swept across scroll fractions 0.0 / 0.2 / 0.5 / 0.8 / 1.0
+[36/126] [chromium] › e2e/feedback-widget-safe-area.spec.ts:183:7 › feedback pill never covers queue content (TICKET-71) › populated queue (short, 5 rows): pill does not cover the queue, unscrolled AND scrolled to bottom
+[37/126] [chromium] › e2e/feedback-widget-safe-area.spec.ts:209:7 › feedback pill never covers queue content (TICKET-71) › pending-approval state: pill does not cover the queue below it, unscrolled AND scrolled to bottom
+[38/126] [chromium] › e2e/feedback-widget-safe-area.spec.ts:266:7 › feedback pill never covers queue content (TICKET-71) › home-indicator safe-area inset: mobile spacer grows by the inset amount
+[39/126] [chromium] › e2e/feedback-widget-safe-area.spec.ts:328:7 › feedback pill never covers queue content (TICKET-71) › TICKET-72 — header trigger is visible without scrolling AND never overlaps a 25-row queue
+[40/126] [chromium] › e2e/feedback-widget-safe-area.spec.ts:443:7 › feedback pill never covers queue content (TICKET-71) › TICKET-72 — landing page: header trigger is on screen at 390px and 320px without scrolling
+[41/126] [chromium] › e2e/feedback-widget-safe-area.spec.ts:499:7 › feedback pill never covers queue content (TICKET-71) › TICKET-72 — desktop keeps only the fixed pill: no header trigger is rendered
+[42/126] [chromium] › e2e/feedback-widget-safe-area.spec.ts:516:7 › feedback pill never covers queue content (TICKET-71) › desktop: no dead space is introduced at the bottom of the page, pill stays fixed
+[43/126] [chromium] › e2e/feedback.spec.ts:18:5 › feedback button is present on the patron page and submits in 2 taps
+[44/126] [chromium] › e2e/feedback.spec.ts:37:5 › feedback button does NOT render on /tv
+[45/126] [chromium] › e2e/host-controls.spec.ts:68:5 › host logs in, removes, reorders, and pauses
+[46/126] [chromium] › e2e/host-controls.spec.ts:121:5 › host API routes reject unauthenticated callers
+[47/126] [chromium] › e2e/identity.spec.ts:15:5 › fresh device's first page load sets exactly one identity cookie
+[48/126] [chromium] › e2e/identity.spec.ts:34:5 › repeat visit reuses the same identity cookie (cookie survives reload)
+[49/126] [chromium] › e2e/identity.spec.ts:56:5 › own pending/rejected panel still resolves via the (now-registered) patronUuid
+[50/126] [chromium] › e2e/language-switcher.spec.ts:22:7 › language switcher › switches locale, persists on reload, no URL change
+[51/126] [chromium] › e2e/language-switcher.spec.ts:71:7 › language switcher › cookie persists the choice across a fresh navigation
+[52/126] [chromium] › e2e/language-switcher.spec.ts:93:7 › first-visit Accept-Language detection › en-US browser with no cookie resolves to English
+[53/126] [chromium] › e2e/language-switcher.spec.ts:106:7 › first-visit Accept-Language detection (es) › es-MX browser with no cookie resolves to Español
+[54/126] [chromium] › e2e/moderation.spec.ts:89:5 › moderation OFF (default): submission goes straight to the queue
+[55/126] [chromium] › e2e/moderation.spec.ts:97:5 › moderation ON: submit → pending → approve → appears in queue
+[56/126] [chromium] › e2e/moderation.spec.ts:125:5 › moderation ON: reject → patron sees the polite rejected state
+[57/126] [chromium] › e2e/render-and-links.spec.ts:108:5 › landing renders create CTA + a working join-code input
+[58/126] [chromium] › e2e/render-and-links.spec.ts:131:5 › landing venue labels are visible but NOT interactive (no promised filter)
+[59/126] [chromium] › e2e/render-and-links.spec.ts:181:5 › landing venue labels expose clean accessible names (no separator, no double-announce)
+[60/126] [chromium] › e2e/render-and-links.spec.ts:241:5 › /new renders the create form
+[61/126] [chromium] › e2e/render-and-links.spec.ts:247:5 › /new?name= prefills the venue name (recreate path)
+[62/126] [chromium] › e2e/render-and-links.spec.ts:252:5 › /[room] renders join form, then song input + queue + player-hint
+[63/126] [chromium] › e2e/render-and-links.spec.ts:272:5 › room-404: valid slug shows recreate path; unknown text present
+[64/126] [chromium] › e2e/render-and-links.spec.ts:282:5 › /[room]/tv renders the YT iframe host with a seeded queue
+[65/126] [chromium] › e2e/render-and-links.spec.ts:291:5 › /[room]/tv renders a sane idle state with an empty queue
+[66/126] [chromium] › e2e/render-and-links.spec.ts:300:5 › /[room]/admin: login → controls + mode switcher + customer-screen links
+[67/126] [chromium] › e2e/render-and-links.spec.ts:337:5 › /[room]/admin: HOST_TOKEN-authed session (default room) shows the Analytics link
+[68/126] [chromium] › e2e/render-and-links.spec.ts:353:5 › /[room]/admin: logout control is absent on the login gate (unauthenticated)
+[69/126] [chromium] › e2e/render-and-links.spec.ts:367:5 › /[room]/admin: logout control clears the session on the wire (confirm → 401 on re-probe)
+[70/126] [chromium] › e2e/render-and-links.spec.ts:406:5 › /[room]/admin: logout negative control — a failed clear leaves the host authed
+[71/126] [chromium] › e2e/render-and-links.spec.ts:441:5 › legacy /admin and /tv redirect into the default room (no dead routes)
+[72/126] [chromium] › e2e/render-and-links.spec.ts:478:5 › link-crawler: landing, /new, and a live room's pages have no 404 links
+[73/126] [chromium] › e2e/rooms.spec.ts:65:5 › two rooms stay isolated and the TV shows the room's song
+[74/126] [chromium] › e2e/rooms.spec.ts:91:5 › landing join-by-code navigates into the room
+[75/126] [chromium] › e2e/rooms.spec.ts:103:5 › an unknown room shows a not-found landing, not a broken page
+[76/126] [chromium] › e2e/rotation-modes.spec.ts:72:5 › host switches rotation mode → the queue reorders (per-table fairness)
+[77/126] [chromium] › e2e/saved-rooms.spec.ts:39:5 › a created room appears under Suas salas with working links
+[78/126] [chromium] › e2e/saved-rooms.spec.ts:61:5 › joining a room as a patron remembers it (joined role)
+[79/126] [chromium] › e2e/saved-rooms.spec.ts:82:5 › the ✕ control forgets a room
+[80/126] [chromium] › e2e/search.spec.ts:37:5 › search → select a result → submit queues the picked video
+[81/126] [chromium] › e2e/search.spec.ts:65:5 › select a result jumps focus to the add-to-queue CTA (TICKET-40 §1)
+[82/126] [chromium] › e2e/search.spec.ts:90:5 › sing mode appends 'karaoke' to the search query (TICKET-40 §2)
+[83/126] [chromium] › e2e/search.spec.ts:115:5 › changing the mode fires NO search (TICKET-83 §1)
+[84/126] [chromium] › e2e/search.spec.ts:165:5 › load more pages through results, revealing fetched rows for free
+[85/126] [chromium] › e2e/search.spec.ts:239:5 › a short result set shows no load-more affordance
+[86/126] [chromium] › e2e/search.spec.ts:254:5 › degraded search shows fallback copy but paste-link still works
+[87/126] [chromium] › e2e/search.spec.ts:292:5 › degraded search has no pagination and the mode chooser still works
+[88/126] [chromium] › e2e/search.spec.ts:329:5 › load more withdraws once the query is edited (no stale-cursor search)
+[89/126] [chromium] › e2e/search.spec.ts:386:5 › a cursor-less short page does not claim the results are exhausted
+[90/126] [chromium] › e2e/search.spec.ts:425:5 › daily search budget spent: honest copy + paste-link still queues a song
+[91/126] [chromium] › e2e/search.spec.ts:462:5 › budget spent mid-session retires load-more instead of failing silently
+[92/126] [chromium] › e2e/search.spec.ts:540:5 › typing a title in chunks bills ONE search, not one per pause (TICKET-108)
+[93/126] [chromium] › e2e/search.spec.ts:561:5 › a prefix whose page cannot answer the longer query DOES refetch (TICKET-108 guardrail)
+[94/126] [chromium] › e2e/search.spec.ts:593:5 › load more pages against the HELD query while narrowing locally (TICKET-108)
+[95/126] [chromium] › e2e/search.spec.ts:641:5 › a local narrowing supersedes a search already in flight (TICKET-108)
+[96/126] [chromium] › e2e/served-lang.spec.ts:93:7 › served <html lang> per route (TICKET-79) › app-wide routes follow the visitor: cookie, then Accept-Language, then pt-BR
+[97/126] [chromium] › e2e/served-lang.spec.ts:105:7 › served <html lang> per route (TICKET-79) › the venue TV serves the ROOM's language, never the visitor's
+[98/126] [chromium] › e2e/served-lang.spec.ts:123:7 › served <html lang> per route (TICKET-79) › the legacy /default screen stays pt-BR for any visitor
+[99/126] [chromium] › e2e/served-lang.spec.ts:129:7 › served <html lang> per route (TICKET-79) › the TICKET-75 client-side lang patch is gone from the served HTML
+[100/126] [chromium] › e2e/served-lang.spec.ts:135:7 › served <html lang> per route (TICKET-79) › the patron room keeps its full chain: cookie → room → Accept-Language → pt-BR
+[101/126] [chromium] › e2e/served-lang.spec.ts:148:7 › served <html lang> per route (TICKET-79) › the host console follows the host's cookie, not the room
+[102/126] [chromium] › e2e/served-lang.spec.ts:153:7 › served <html lang> per route (TICKET-79) › metadata still renders alongside the lang fix (TICKET-74 guard)
+[103/126] [chromium] › e2e/submit-song.spec.ts:11:5 › patron submits a song and it appears in the queue
+[104/126] [chromium] › e2e/telemetry.spec.ts:13:5 › beacon accepts a client-allowed event with 202
+[105/126] [chromium] › e2e/telemetry.spec.ts:21:5 › beacon rejects server-observable and unknown events with 400
+[106/126] [chromium] › e2e/telemetry.spec.ts:32:5 › beacon rejects malformed bodies and the patron page still works
+[107/126] [chromium] › e2e/tv-watchdog.spec.ts:96:7 › /tv watchdog (TICKET-41) › onError 150 (embedding disabled): pt-BR notice + auto-advance, no human action
+[108/126] [chromium] › e2e/tv-watchdog.spec.ts:137:7 › /tv watchdog (TICKET-41) › onError 100 (video removed) also skips; non-fatal codes do not
+[109/126] [chromium] › e2e/tv-watchdog.spec.ts:180:7 › /tv watchdog (TICKET-41) › the stall ladder's recreate rung rebuilds a player that is actually in the document (TICKET-82)
+[110/126] [chromium] › e2e/tv.spec.ts:46:7 › /tv › idle state renders the recruitment poster without errors (AC3, AC6)
+[111/126] [chromium] › e2e/tv.spec.ts:64:7 › /tv › playing state: hero scale, max-3 rail, nothing under 28px (AC1)
+[112/126] [chromium] › e2e/tv.spec.ts:173:7 › /tv › up-next: realistic Brazilian nicknames render in full on a long room slug (TICKET-70)
+[113/126] [chromium] › e2e/tv.spec.ts:214:7 › /tv › up-next: an 11-char Brazilian nickname still fits at the narrower 1440x900 width (TICKET-70)
+[114/126] [chromium] › e2e/tv.spec.ts:238:7 › /tv › up-next: a pathologically long nickname degrades gracefully without breaking the layout (TICKET-70)
+[115/126] [chromium] › e2e/tv.spec.ts:302:7 › /tv › fullscreen affordance enters fullscreen and hides after (AC2)
+[116/126] [chromium] › e2e/tv.spec.ts:491:7 › /tv › player survives a queue update while fullscreen — no remount, no black screen (TICKET-82)
+[117/126] [chromium] › e2e/tv.spec.ts:534:7 › /tv › player survives the queue emptying and refilling — the reported black screen (TICKET-82)
+[118/126] [chromium] › e2e/tv.spec.ts:579:7 › /tv › a real track change loads the new video in the SAME player (TICKET-82)
+[119/126] [chromium] › e2e/tv.spec.ts:663:7 › /tv › the venue's fullscreen survives the queue emptying and refilling (TICKET-89)
+[120/126] [chromium] › e2e/tv.spec.ts:708:7 › /tv › an idle screen is SILENT — the player is stopped, not merely hidden (TICKET-89)
+[121/126] [chromium] › e2e/tv.spec.ts:740:7 › /tv › a YouTube-fullscreened player never leaves a black 0x0 fullscreen while idle (TICKET-89)
+[122/126] [chromium] › e2e/tv.spec.ts:800:7 › /tv › chrome auto-hides and the cursor goes with it
+[123/126] [chromium] › e2e/tv.spec.ts:824:7 › /tv › chrome buttons never overlap the join/QR card in the normal state at TV geometry (TICKET-109)
+[124/126] [chromium] › e2e/tv.spec.ts:942:7 › /tv › focus state: the video grows, the meta panel collapses, and the QR stays painted ON the video (TICKET-103 items 1-3)
+[125/126] [chromium] › e2e/tv.spec.ts:1029:7 › /tv › focus state: the up-next queue reveals on a timer, hides again, and comes back (TICKET-103 item 4)
+[126/126] [chromium] › e2e/tv.spec.ts:1084:7 › /tv › YouTube's own fullscreen is caught and redirected out of, so our overlays are never un-paintable (TICKET-103)
+  126 passed (3.8m)
+---
+exit-code: 0
+wall-clock-seconds: 230
+finished:  2026-09-28T21:31:11Z
+loadavg-end: { 8.82 10.21 13.74 }
+# --- END OF RUN ---

@@ -395,8 +395,21 @@ function createBackend(): RoomBackend {
   return new MemoryRoomBackend();
 }
 
-/** Process-wide room backend singleton (mirrors the queue store singleton). */
-export const roomBackend: RoomBackend = createBackend();
+/**
+ * Process-wide room backend singleton (mirrors the queue store singleton) —
+ * pinned to `globalThis` (TICKET-116), for the reason documented at length on
+ * `store` in `lib/store.ts`: an unpinned module-level singleton is DISCARDED on
+ * module re-evaluation, which under `next dev` happens on first compile of every
+ * route and again after each ~25s idle eviction. A room seeded by a test was
+ * gone by the time the next request arrived, and `getRoomLanguage` fell back to
+ * the app default — which is exactly how `served-lang.spec.ts:105` failed while
+ * the product was correct. Pinning makes re-evaluation rebind to the SAME
+ * instance. Unconditional: the e2e suite runs a production build on the memory
+ * driver, and the Upstash backend holds no local state.
+ */
+const globalForRooms = globalThis as unknown as { __boraokeRoomBackend?: RoomBackend };
+export const roomBackend: RoomBackend =
+  globalForRooms.__boraokeRoomBackend ?? (globalForRooms.__boraokeRoomBackend = createBackend());
 
 /**
  * The active room-store driver ("memory" | "upstash"), TICKET-20. Mirrors the

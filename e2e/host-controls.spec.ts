@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { advanceOnce, warmModerationRoutes } from "./helpers";
+import { advanceOnce, drainQueue, warmModerationRoutes } from "./helpers";
 
 /**
  * E2E: host controls (TICKET-7) — login → remove → reorder → pause.
@@ -36,12 +36,17 @@ async function warmUp(page: import("@playwright/test").Page, request: APIRequest
   await page.getByLabel("Código do host").waitFor();
 }
 
+/**
+ * TICKET-116: this used to be its own bare advance loop, a private copy of the
+ * trap documented on `drainQueue` — past the 12-per-room-per-minute advance cap
+ * the advances 429 silently and the loop exits with the queue still full. Under
+ * `next dev` that was invisible because the store was wiped by recompilation a
+ * moment later; against a production build it surfaced immediately as
+ * `toHaveCount(3)` receiving 7. Delegate to the shared helper, which now falls
+ * back to host-authed removal when advancing stops making progress.
+ */
 async function drain(request: APIRequestContext) {
-  for (let i = 0; i < 40; i++) {
-    const data = await (await request.get("/api/queue")).json();
-    if (!data.items?.length) break;
-    await advanceOnce(request); // authenticated advance — TICKET-45
-  }
+  await drainQueue(request);
   await request.post("/api/host/login", { data: { token: DEV_TOKEN } });
   await request.post("/api/host/pause", { data: { paused: false } });
 }

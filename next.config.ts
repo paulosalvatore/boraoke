@@ -7,6 +7,19 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
 const nextConfig: NextConfig = {
+  // TICKET-116 — build isolation. `next build` and `next dev` share `.next/` by
+  // default, so a build started while a dev server is running corrupts the
+  // artefacts that server depends on (missing `app-paths-manifest.json`,
+  // `Cannot find module './vendor-chunks/*.js'`, `__webpack_modules__[id] is not
+  // a function`). That was a live failure family on this product, and moving the
+  // e2e suite onto a production build would have made it ROUTINE — the suite
+  // would build in the same tree where agents run `next dev` for hand-testing.
+  //
+  // So the build directory is overridable: the e2e suite sets
+  // NEXT_DIST_DIR=.next-e2e (playwright.config.ts) and therefore never touches
+  // the `.next/` a dev server is serving from. Unset — every other invocation,
+  // `npm run dev`, `npm run build`, Vercel — it stays `.next`, unchanged.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // TICKET-98 — the LG TV failure of 2026-08-27. Next.js transpiles OUR source
   // to the browserslist target but does NOT downlevel node_modules, so a
   // dependency's own published syntax goes into the client bundle untouched.
