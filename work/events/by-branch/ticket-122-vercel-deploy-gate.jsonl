@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-28T21:44:57Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-122", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/122-vercel-deploy-gate", "short_sha": "5680377", "message_slug": "chore(vercel): disable preview deployments for non-main branches"}}
