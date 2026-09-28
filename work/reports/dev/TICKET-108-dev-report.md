@@ -322,3 +322,57 @@ Two cheap follow-ups this surfaced, neither in scope here:
 
 - `git show ticket/106-search-quota:<path>` worked four times and then failed with `fatal: invalid object name` — the local branch and its worktree were removed by another tab mid-session. `origin/ticket/106-search-quota` works and is the more durable reference; worth preferring the remote ref when reading across branches in a shared multi-worktree checkout.
 - The repo has no ESLint config, so `npx next lint` drops into an interactive setup prompt. Not a gate here; noted so nobody mistakes it for a lint failure.
+
+---
+
+## 10. Re-gate against a synced `main` (2026-09-28) — the corrected measurement record
+
+PR #84 was held after a re-gate against a freshly-synced `main` suggested this change had made a pre-existing test flaky (`e2e/search.spec.ts:425`, *"daily search budget spent"* — byte-identical on `main`, untouched by this diff). **It had not.** This section records how that was established, and the two flawed measurements — one on each side — that produced the false signal. Both are kept in full, because the failure mode is more reusable than the conclusion.
+
+### The proposed mechanism was refutable by reading, and was refuted
+
+The hypothesis was that `:425` exhausts the daily budget by performing N searches, so a change that *reduces* billed calls might stop it reliably exhausting. It does not work that way: `:425` calls `page.route("**/api/search**")` and `route.fulfill`s `{degraded:true, reason:"daily-limit"}` for **every** matching request. The real handler is never reached, `reserveSearchCall` never runs, and the `sb:` counter is never touched. `/usr/bin/grep -c "reserveSearchCall\|search-budget\|sb:" e2e/search.spec.ts` → **0** for the whole file. There is no coupling to this planner's call count. **[MEASURED]**
+
+The ordering hypothesis was also structurally impossible *within* a run: `playwright.config.ts` pins `workers: 1` and the four new tests sit at lines 540–641, all **after** `:425`.
+
+### Arm E — the decisive control: pure `main` cannot pass a cold-cache run
+
+`e2e/search.spec.ts` alone, on **pure `origin/main`** (its `SongSearch.tsx`, `search.spec.ts` and `helpers.ts` — no code from this PR), `rm -rf .next` before **every** run: **[MEASURED]**
+
+| run | failures | failing tests | duration |
+|---|---|---|---|
+| 1 | 1 | `:37` | 2.9m |
+| 2 | 2 | `:329`, `:386` | 2.6m |
+| 3 | 4 | `:37`, `:65`, `:254`, `:329` | 5.8m |
+| 4 | 4 | `:37`, `:65`, `:115`, `:165` | 6.4m |
+| 5 | 1 | `:37` | 2.8m |
+
+**5 of 5 cold runs failed; seven of twelve tests failed at least once; the set changed every run.** Twelve *warm* runs of the same file were 12/12 clean. The attribution question is settled by a tree containing none of this PR's code.
+
+`:425` did not happen to fail in these five runs, and that is the same point from the other side rather than a counter-argument: the casualty is whichever test is unlucky when a route compiles. It was `:425` in the re-gate, `:540` in this session's first cold run, and seven others here.
+
+### The two flawed measurements
+
+Both produced true numbers, honestly obtained, describing a condition other than the one implied — the same class as a `113 passed / 0 failed` report.
+
+- **The re-gate's control was miscompared, and this is what held the PR.** Its loops never cleared `.next`; only the merged-tree loop had `rm -rf .next` per iteration. So the "8 clean `main` runs" were roughly **2 cold and 6 warm**, presented as comparable to cold merged-tree runs, and used to attribute a defect to this change. Arm E is what corrected it. Recorded here at the coordinator's explicit instruction, in their words: it was the comparison that was flawed, not the code.
+- **The same error was made in this report in round 2**, and is already recorded in §7: a second `next dev` started on another port during a full-suite run, `PORT=` not isolating the shared `.next`, and seven resulting failures nearly written up as findings.
+
+**Unresolved, and flagged rather than explained away:** the ~2 genuinely cold control runs in the re-gate passed, while 5 of 5 cold runs here failed. Within this session's runs, contention clearly modulates *severity* — fast runs (2.6–2.9m) averaged 1.33 failures, slow runs (5.8–6.4m) averaged 4.00, a 3.0× difference — but **zero of five cold runs passed, including the fastest at 2.6m**, so load does not explain the existence of a clean cold run. Both samples are small; the true cold-failure rate is high but not established as 100%. The reconciliation is **probable-but-unconfirmed**, not settled.
+
+### A warm-up fix was written, measured, and REVERTED out of this PR
+
+`search.spec.ts` was one of nine specs that warm nothing while asserting on 5s timeouts, so a `warmPatronRoutes()` helper was written in the repo's own idiom (`warmModerationRoutes` / `warmTvRoutes` / `warmFeedbackRoute`) and measured cold: **[MEASURED]**
+
+| variant | cold runs | result |
+|---|---|---|
+| `beforeEach` | 5 | **4 failed** (two were hook timeouts — the mitigation's own defect) |
+| `beforeAll` + `test.setTimeout(180_000)` in the hook | 3 | **1 failed** |
+
+Better than `main`'s 5/5 and **not good enough to ship**, so it was reverted rather than left in as a half-working artefact inside an unrelated PR. The findings were moved to **TICKET-116**, which already carries `next build` + `next start` as the primary fix — including the two that bound how much any warm-up can ever achieve: a fire-to-compile POST with an invalid body compiles the route but never warms the success-path modules (the surviving failure was exactly that, on `POST /api/queue`), and one cold run failed with `Timed out waiting 120000ms from config.webServer`, where no hook runs at all.
+
+`test.slow()` was also tried on the four new tests and removed: it raises a budget rather than removing a cost, and would have protected these four while leaving the eleven pre-existing tests in the same file exposed.
+
+### What this PR ends up containing
+
+**Only the quota change.** No test-infrastructure changes beyond the four new TICKET-108 tests themselves. The flake is pre-existing, reproduces at 5/5 on `main` without this code, and belongs to TICKET-116.
