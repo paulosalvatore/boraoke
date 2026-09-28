@@ -1,5 +1,32 @@
 # boraoke — Manager Log
 
+## 2026-09-28 (end) — PR #81 MERGED on an APPROVED security re-gate. FIVE merges today. Only #79/#80 remain, both the Global TM's.
+
+`main` at `59a3813`+. **Two worktrees, both intentional and both the Global TM's: `t99-runtime` (#80), `t101-landing` (#79). Plus `t116-e2e-built-server`, newly cut for the next piece of work.**
+
+**Merged today: 103** (TV focus state — live and production-verified), **106** (quota spike), **109** (join-card overlap), **84** (search quota: 3.75 → 2.25 billed calls per queued song, quality held), **81** (creator admin re-entry).
+
+### PR #81 — what the re-gate established, and why the controls mattered
+
+**APPROVED, 0 blockers**, both original attack chains re-run **by execution**. The detail worth keeping: the gate's **first two attempts at the exfiltration chain were void in a way that looked exactly like a passing security test** — attacker 401, but the positive control also 401, because the dev server had dropped its in-memory room store on a first compile. Without a control in the same run it would have reported a pass on a harness that could not detect success. **Every conclusion in that report therefore carries its own control.**
+
+### The lesson TICKET-104 should be remembered for
+
+**Every mechanism that WRITES on the authentication path recreated the lockout the ticket exists to remove — three times.** Round 3's capped token list evicted another device's credential; round 4's first rotation let two concurrent rolls each delete the presented hash, so a device could be **locked out by its own successful re-entry**; and the surviving cap behaviour evicts the owner when five staff members log in (TICKET-120). **The shipped design writes nothing at all** — rotation was never what secured this credential; server-side revocation is.
+
+**Second lesson: a confidently-worded sentence outran the code FOUR times on one PR** — the "cookie page JS cannot read" contract line, the O4 over-credit, the "server-derived" throttle key, and the "devices, not issues" docblock. The code improved every round; that habit did not. **Two were corrected in the PR body at merge time**, which is the only reason they will not be believed later. The first one had already been relayed upward by this TM as fact before the gate disproved it.
+
+### Open follow-ups on the auth surface (all pre-existing or not-worsened)
+- **TICKET-118 (HIGH)** — logout revokes the claim credential but **not a session already minted from it**; the session value is a deterministic HMAC with **no rotation lever**, so **a compromised venue has no recovery path** and re-entering the host code returns the byte-identical session. **Never describe this feature as providing recovery.**
+- **TICKET-119 (MED)** — throttle key is client-controlled (`x-real-ip`/`x-forwarded-for`); whether Vercel's edge overwrites those in production is unverified and decides severity.
+- **TICKET-120 (MED-HIGH)** — the claim-token cap counts **issues, not devices** on the login path: five staff logins silently evict the owner's phone back onto a code they were shown once.
+
+### Next work
+**TICKET-116** (e2e against `next build` + `next start`, **with build isolation**) is dispatched — highest leverage on this product, because until it lands **every "e2e green" here is conditional on a warm cache**. Then TICKET-118 and TICKET-120.
+
+**TICKET-117 closed benign**: production does not set `FEEDBACK_ADMIN_TOKEN` (established by a **names-only** env listing — no value read, printed or written to disk). That same listing enumerated boraoke's 12 production credentials for free, which completes TICKET-107's "enumerate before enrolling" step.
+
+
 ## 2026-09-28 (later) — FOUR merged today (103, 106, 109, 84). The session's biggest finding is that our e2e suite tests a DEV SERVER and cannot pass a cold run.
 
 **Read this before trusting any "e2e green" on this product.** `main` at `6658fb9`. Three worktrees: `t99-runtime` (#80) and `t101-landing` (#79) are the Global TM's, parked; `t104-creator-admin` (#81) is mid-distribution.
