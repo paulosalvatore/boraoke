@@ -269,30 +269,50 @@ export function claimTokenFrom(req: NextRequest, roomId: string): string | undef
 export async function attachClaimCookie(
   res: { cookies: { set(name: string, value: string, opts: ReturnType<typeof claimCookieOptions>): unknown } },
   roomId: string,
-  opts: { replacing?: string } = {},
 ): Promise<boolean> {
-  const token = await issueRoomClaimToken(roomId, opts);
+  const token = await issueRoomClaimToken(roomId);
   if (!token) return false;
   res.cookies.set(claimCookieName(roomId), token, claimCookieOptions());
   return true;
 }
 
 /**
- * Roll the claim credential this request already presents: mint a fresh token and
- * drop the presented one, so the device keeps ONE entry in the room's capped list
- * rather than consuming a new slot on every roll.
+ * Extend the window on the claim credential this request ALREADY holds, by
+ * re-sending that same value with a fresh `Max-Age`. No new token, no store
+ * write.
  *
- * Use this at every ROLL site (a successful claim, a verified session probe) and
- * plain `attachClaimCookie` only where a device is getting its FIRST token (room
- * creation, host-code login). Getting this backwards is not cosmetic — appending
- * on a roll evicts other devices, which is the defect this exists to prevent.
+ * PRECONDITION: callers must have verified the presented token first. Both call
+ * sites do (`POST /api/host/claim` after `verifyClaim`, and `GET /api/host/session`
+ * inside an `if (await verifyClaim(...))`), so this re-sends a known-good value
+ * and can never mint authority for a caller that did not prove it.
+ *
+ * This is deliberately the SAME shape as the TICKET-76 rolling host session
+ * above, which likewise re-sets the very cookie it just verified rather than
+ * issuing a new one, and for the same reason: the goal is to extend a lifetime,
+ * and minting is a strictly larger operation than that goal needs.
+ *
+ * Two defects came from getting this wrong, both measured and both recorded in
+ * the dev report, because "roll" sounds like it ought to mean "rotate":
+ *   - Minting-and-APPENDING on every roll grew the room's capped hash list, so an
+ *     active device silently evicted other devices — the bar tablet dropped back
+ *     onto the shown-once host code, the exact dead end TICKET-104 removes.
+ *   - Minting-and-REPLACING fixed that but introduced a lost-update race: two
+ *     concurrent rolls (a double-mounted effect, two tabs, SavedRooms racing
+ *     AdminRoom) both deleted the presented hash, so whichever response the
+ *     browser kept could be the dead one. Measured directly: `aLives=false`.
+ * Re-sending the verified value has neither problem because it writes nothing.
+ * Rotation is not what secures this credential — server-side revocation on logout
+ * is, and that is unaffected.
  */
-export async function rollClaimCookie(
+export function rollClaimCookie(
   res: { cookies: { set(name: string, value: string, opts: ReturnType<typeof claimCookieOptions>): unknown } },
   req: NextRequest,
   roomId: string,
-): Promise<boolean> {
-  return attachClaimCookie(res, roomId, { replacing: claimTokenFrom(req, roomId) });
+): boolean {
+  const token = claimTokenFrom(req, roomId);
+  if (!token) return false;
+  res.cookies.set(claimCookieName(roomId), token, claimCookieOptions());
+  return true;
 }
 
 /**

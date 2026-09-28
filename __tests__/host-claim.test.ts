@@ -130,6 +130,13 @@ describe("the claim credential is NEVER handed to a client (B-S1)", () => {
     // THE property: the raw token appears nowhere a client can read it.
     expect(JSON.stringify(body)).not.toContain(token!);
     expect(Object.values(body)).not.toContain(token);
+    // The window the device actually receives, asserted on the ROUTE's output
+    // rather than on `claimCookieOptions()`. Testing the options object only
+    // proves the constant is right; it says nothing about what this route put on
+    // the wire, and a first issue with a short window would silently break
+    // re-entry for every creator. Found by a mis-aimed mutant that set a
+    // 1-minute Max-Age here and passed the whole suite.
+    expect(res.cookies.get(claimCookieName(body.id))?.maxAge).toBe(CLAIM_MAX_AGE_SECONDS);
     // And the cookie carrying it is httpOnly + path-scoped.
     const raw = (res.headers.getSetCookie?.() ?? []).find((c) =>
       c.startsWith(`${claimCookieName(body.id)}=`),
@@ -193,16 +200,27 @@ describe("the capped list holds DEVICES, so one device's re-entry never evicts a
     expect((await getRoom(room.id))!.claimTokenHashes).toHaveLength(2);
   });
 
-  it("a rolled-away token is dead — rotation still revokes the value it replaced", async () => {
-    // The flip side: replacing in place must not accidentally keep the old token
-    // alive. This is what makes the roll a rotation rather than an accumulation.
-    const { room, token } = await roomWithClaim("Bar Rotacao");
-    const res = await claimRoute(claimReq(room.id, { token }));
-    expect(res.status).toBe(200);
-    const rolled = setCookie(res, claimCookieName(room.id))!;
-    expect(rolled).not.toBe(token);
-    expect(await verifyRoomClaimToken(room.id, rolled)).toBe(true);
-    expect(await verifyRoomClaimToken(room.id, token)).toBe(false);
+  it("CONCURRENT re-entries on one device both leave it with a working credential", async () => {
+    // The defect this replaces a test for, and the reason the roll no longer
+    // mints. A double-mounted effect, two tabs, or SavedRooms racing AdminRoom
+    // sends two claims at once carrying the SAME cookie. When the roll minted and
+    // replaced, both deleted the presented hash and one of the two new tokens was
+    // already dead by the time its response reached the browser — measured
+    // directly as `aLives=false bLives=true t1Lives=false`, i.e. a device locked
+    // out by its own successful re-entry. Whichever response the browser keeps
+    // must work, so all three values are asserted live.
+    const { room, token } = await roomWithClaim("Bar Corrida");
+    const [a, b] = await Promise.all([
+      claimRoute(claimReq(room.id, { token })),
+      claimRoute(claimReq(room.id, { token })),
+    ]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    const av = a.cookies.get(claimCookieName(room.id))?.value;
+    const bv = b.cookies.get(claimCookieName(room.id))?.value;
+    expect(await verifyRoomClaimToken(room.id, av!)).toBe(true);
+    expect(await verifyRoomClaimToken(room.id, bv!)).toBe(true);
+    expect(await verifyRoomClaimToken(room.id, token)).toBe(true);
   });
 
   it("the SESSION PROBE's roll does not evict another device either", async () => {
@@ -462,14 +480,21 @@ describe("claim cookie shape — bounded and rolling, not a lifetime comparison 
     expect(CLAIM_MAX_AGE_SECONDS).toBeLessThan(400 * DAYS);
   });
 
-  it("a successful claim ROLLS the credential, so an active venue never ages out", async () => {
+  it("a successful claim EXTENDS the credential's window, so an active venue never ages out", async () => {
+    // RE-POINTED (round 4). This used to assert `rolled !== token`, i.e. that the
+    // roll minted a NEW value. That is no longer the mechanism — and the old
+    // assertion would now be actively wrong rather than merely vacuous, so it
+    // could not just be left alone. Minting on a roll was tried and reverted: it
+    // evicted other devices, and replacing-on-roll then raced. What the roll must
+    // do is EXTEND, so that is what this asserts: the cookie comes back with the
+    // full Max-Age, carrying the value the caller already had, still usable.
     const { room, token } = await roomWithClaim("Bar Rolando");
     const res = await claimRoute(claimReq(room.id, { token }));
     expect(res.status).toBe(200);
-    const rolled = setCookie(res, claimCookieName(room.id));
-    expect(rolled).toBeTruthy();
-    expect(rolled).not.toBe(token);
-    expect((await claimRoute(claimReq(room.id, { token: rolled! }))).status).toBe(200);
+    const cookie = res.cookies.get(claimCookieName(room.id));
+    expect(cookie?.value).toBe(token);
+    expect(cookie?.maxAge).toBe(CLAIM_MAX_AGE_SECONDS);
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
   });
 
   it("the session probe rolls it too, but only for a caller that ALREADY holds one", async () => {

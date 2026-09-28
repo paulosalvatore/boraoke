@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   // session, and only when the device already presents a live claim token: this
   // path must never MINT authority for a caller, merely extend what it proved.
   if (await verifyClaim(req, roomId)) {
-    await rollClaimCookie(res, req, roomId);
+    rollClaimCookie(res, req, roomId);
   }
   return res;
 }

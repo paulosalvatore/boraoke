@@ -96,10 +96,10 @@ export async function POST(req: NextRequest) {
 
   const res = NextResponse.json({ authed: true });
   res.cookies.set(hostCookieName(roomId), session, hostCookieOptions());
-  // Roll the claim credential too, so an active venue's device never ages out of
-  // the bounded window. A ROLL, not a fresh issue: it replaces this device's own
-  // entry in the room's capped list, so re-entry on one device can never push
-  // another device's credential off the end (see `rollClaimCookie`).
-  await rollClaimCookie(res, req, roomId);
+  // Extend the claim credential's window too, so an active venue's device never
+  // ages out of it. This re-sends the value just verified above with a fresh
+  // Max-Age rather than minting a new one — see `rollClaimCookie` for why minting
+  // here was wrong twice over (it evicted other devices, then it raced).
+  rollClaimCookie(res, req, roomId);
   return res;
 }
