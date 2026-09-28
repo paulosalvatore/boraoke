@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { advanceOnce, drainQueue, warmTvRoutes } from "./helpers";
 
 /**
@@ -819,5 +819,342 @@ test.describe("/tv", () => {
     // activity brings it back
     await page.mouse.move(960, 540);
     await expect(chrome).not.toHaveClass(/chromeHidden/);
+  });
+
+  test("chrome buttons never overlap the join/QR card in the normal state at TV geometry (TICKET-109)", async ({ page }) => {
+    // `.chrome` (the auto-hiding "Pular"/"Tela cheia" bar) is `position: fixed`,
+    // independent of the in-flow `.rail` (up-next cards + the join/QR card) —
+    // in the normal (non-focus) state, at 1920x1080, the two used to collide
+    // squarely on the join card's text (work/evidence/TICKET-103/
+    // t103-1-normal-1080p.png, TICKET-109). A visual collision like this has
+    // no other reliable pass/fail signal than geometry, so this asserts the
+    // two elements' bounding boxes never intersect while chrome is visible —
+    // the state the TV spends most of its time in.
+    await drainQueue(page.request);
+    await seedShow(page);
+    await page.goto("/default/tv");
+
+    const chrome = page.getByTestId("tv-chrome");
+    const join = page.getByTestId("tv-powered-by");
+    await expect(chrome).toBeVisible({ timeout: 10_000 });
+    await expect(join).toBeVisible();
+
+    const chromeBox = await chrome.boundingBox();
+    const joinBox = await join.boundingBox();
+    expect(chromeBox).not.toBeNull();
+    expect(joinBox).not.toBeNull();
+    if (chromeBox && joinBox) {
+      const intersects =
+        chromeBox.x < joinBox.x + joinBox.width &&
+        chromeBox.x + chromeBox.width > joinBox.x &&
+        chromeBox.y < joinBox.y + joinBox.height &&
+        chromeBox.y + chromeBox.height > joinBox.y;
+      expect(intersects).toBe(false);
+    }
+
+    await drainQueue(page.request);
+  });
+
+  /**
+   * ---- TICKET-103: the app-owned focus state ------------------------------
+   *
+   * The Tech Lead liked a state where "the screen goes black with only the video
+   * playing", and reported the join QR disappearing in it. Step 0
+   * (work/reports/testing/TICKET-103-test-report.md) measured what that state
+   * actually was: YouTube's OWN fullscreen, reached by a keyboard shortcut that
+   * `fs: 0` does not suppress. The IFRAME becomes the fullscreen element, so the
+   * video fills the viewport and NOTHING of ours composites — which is both why
+   * he liked it and exactly why the QR vanished. A DOM overlay on a fullscreen
+   * cross-origin iframe is impossible, so the QR cannot be rescued in that state.
+   *
+   * These tests cover the replacement: an app-owned focus state in our own DOM
+   * (big video, QR always painted, queue on a timer), plus the redirect that
+   * makes the accidental iframe-fullscreen unreachable-for-long.
+   */
+
+  /**
+   * Effective PAINTED opacity — the element's own times every ancestor's, and 0
+   * for anything hidden outright.
+   *
+   * `toBeVisible()` is not the right instrument for this ticket: Playwright calls
+   * an `opacity: 0` element visible (it has a box), and "does the venue see it"
+   * is precisely the question. Step 0's measurements were made this way too, so
+   * these assertions are directly comparable to the numbers in that report.
+   */
+  const paintedOpacity = (locator: Locator) =>
+    locator.evaluate((el) => {
+      let effective = 1;
+      let node: Element | null = el;
+      while (node) {
+        const s = getComputedStyle(node);
+        if (s.visibility === "hidden" || s.display === "none") return 0;
+        effective *= Number(s.opacity);
+        node = node.parentElement;
+      }
+      return effective;
+    });
+
+  const videoLocator = (page: Page) => page.locator('[class*="video"]').first();
+
+  const videoArea = async (page: Page) => {
+    const box = await videoLocator(page).boundingBox();
+    return box ? box.width * box.height : 0;
+  };
+
+  /**
+   * Read `.video`'s area once it has stopped moving.
+   *
+   * The focus state animates `max-width`/`max-height` over ~0.4s, so a single
+   * measurement taken the instant the class lands catches a mid-transition
+   * number. Polling until two consecutive readings agree is the web-first way to
+   * wait for that (the alternative — `waitForTimeout(500)` then one assert — is
+   * the exact pattern TICKET-65 removed from this file).
+   */
+  const settledVideoArea = async (page: Page, opts: { keepAwake: boolean }) => {
+    let last = -1;
+    await expect
+      .poll(
+        async () => {
+          if (opts.keepAwake) {
+            // Baseline measurement only: keep poking the chrome so the 4s idle
+            // timer never flips us into the focus state mid-measurement.
+            //
+            // A KEY press, not a mouse move. The first version moved the mouse to
+            // the middle of the screen, which is INSIDE the player iframe — a
+            // pointer event there goes to the cross-origin iframe and never
+            // reaches the app, so the poke did nothing and the baseline was
+            // silently measured in the focus state instead. It passed when run
+            // alone and failed in the full suite, purely on machine speed. An
+            // arrow key reaches the window listener regardless of geometry.
+            await page.keyboard.press("ArrowDown");
+          }
+          const area = await videoArea(page);
+          const stable = area > 0 && area === last;
+          last = area;
+          return stable;
+        },
+        { timeout: 15_000 }
+      )
+      .toBe(true);
+    return last;
+  };
+
+  test("focus state: the video grows, the meta panel collapses, and the QR stays painted ON the video (TICKET-103 items 1-3)", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    // Stub the player, like every other long test in this file. Not cosmetic:
+    // the real embed's `onError` auto-skip fires on these video ids within ~10s
+    // (Step 0's friction note recorded the same thing), which drains the queue
+    // out from under a test that has to sit idle for the 4s chrome-hide window.
+    // A drained queue leaves the focus state — so an unstubbed version of this
+    // test measures the wrong layout and fails for a reason unrelated to it.
+    await stubYouTubeReplacingNode(page);
+    const room = upnextRoom("t103-focus");
+    await drainQueue(page.request, room);
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Garota de Ipanema", nickname: "Ana", table: "1", mode: "sing" });
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Evidências", nickname: "Bruno", table: "2", mode: "sing" });
+    await page.goto(`/${room}/tv`);
+
+    const root = page.getByTestId("tv-root");
+    const hero = page.getByTestId("tv-hero");
+    await expect(hero).toHaveText("Garota de Ipanema", { timeout: 15_000 });
+
+    // ---- baseline: the NORMAL state, with the chrome kept awake -------------
+    await expect(root).not.toHaveClass(/focus/);
+    const normalArea = await settledVideoArea(page, { keepAwake: true });
+    expect(normalArea).toBeGreaterThan(0);
+    // The baseline is only a baseline if the screen was still in the NORMAL state
+    // when it was taken — see settledVideoArea for how that went wrong once.
+    await expect(root).not.toHaveClass(/focus/);
+    // Step 0 measured this as 35.6% of a 1920x1080 viewport. Pin the baseline
+    // loosely so this test reports a REAL comparison rather than trusting a
+    // number from a prior report.
+    expect(normalArea / (1920 * 1080)).toBeLessThan(0.45);
+
+    // ---- idle for the chrome-hide window -> the focus state ----------------
+    await expect(root).toHaveClass(/focus/, { timeout: 8000 });
+    const focusArea = await settledVideoArea(page, { keepAwake: false });
+
+    // Item 2, "the video should be bigger", as a measurement. Step 0 established
+    // that NO state in the pre-change code gave `.video` more room — normal,
+    // chrome-hidden and app-fullscreen were pixel-identical — so any ratio above
+    // 1 is new behaviour. The bar is set at 2x because the reclaimed space (meta
+    // column + top bar + rail + most of the page padding) is most of the screen;
+    // a regression that only nudged the video would be a failure, not a partial
+    // pass.
+    expect(focusArea / normalArea).toBeGreaterThan(2);
+    expect(focusArea / (1920 * 1080)).toBeGreaterThan(0.75);
+
+    // The meta panel is genuinely gone from the venue's view (not just moved).
+    await expect.poll(() => paintedOpacity(hero), { timeout: 5000 }).toBe(0);
+
+    // ---- item 1: the QR is STILL PAINTED, and is over the video ------------
+    const qr = page.getByTestId("qr-img");
+    expect(await paintedOpacity(qr)).toBe(1);
+    const qrBox = (await qr.boundingBox())!;
+    expect(qrBox.width).toBeGreaterThan(0);
+    expect(qrBox.height).toBeGreaterThan(0);
+    // There is exactly ONE QR node on a playing screen — the focus state
+    // repositions the existing join card rather than rendering a second copy, so
+    // there is no state where one copy paints and the other does not.
+    await expect(page.getByTestId("qr-img")).toHaveCount(1);
+    // Item 3: the placement under test is on-video. Assert it really is inside
+    // the video's box, so the committed screenshots are showing the overlay this
+    // test measured and not some other layout.
+    const videoBox = (await videoLocator(page).boundingBox())!;
+    expect(qrBox.x).toBeGreaterThanOrEqual(videoBox.x);
+    expect(qrBox.y).toBeGreaterThanOrEqual(videoBox.y);
+    expect(qrBox.x + qrBox.width).toBeLessThanOrEqual(videoBox.x + videoBox.width + 1);
+    expect(qrBox.y + qrBox.height).toBeLessThanOrEqual(videoBox.y + videoBox.height + 1);
+
+    // ---- activity restores the full UI (the TL's own described cycle) ------
+    //
+    // A KEY press, not a mouse move over the video. In the focus state the player
+    // iframe covers ~97% of the screen, and a pointer event over a cross-origin
+    // iframe is delivered to that iframe — it never reaches our window listener.
+    // Moving the mouse to the centre of the screen here therefore woke nothing,
+    // which is how this gap was found; a remote's D-pad is a key event and does
+    // reach us. (The first version of this test asserted the mouse path and
+    // failed for that reason, not because the focus state was wrong.)
+    await page.keyboard.press("ArrowRight");
+    await expect(root).not.toHaveClass(/focus/);
+    await expect.poll(() => paintedOpacity(hero), { timeout: 5000 }).toBe(1);
+    // ...and the QR never stopped being painted across the whole round trip.
+    expect(await paintedOpacity(qr)).toBe(1);
+
+    await drainQueue(page.request, room);
+  });
+
+  test("focus state: the up-next queue reveals on a timer, hides again, and comes back (TICKET-103 item 4)", async ({
+    page,
+  }) => {
+    // Deliberately long: item 4 is a PERIODIC behaviour, and the only honest
+    // proof that the cycle re-arms (rather than firing once) is observing a
+    // second reveal a full period later. Raising this test's own budget is the
+    // right trade — trimming the product's timings to suit the harness would
+    // mean the shipped cadence is not the one under test.
+    test.setTimeout(120_000);
+    // Mandatory here, not merely prudent: this test idles for over a minute, and
+    // the real embed's auto-skip empties the queue in ~10s — which drops the
+    // focus state and returns the up-next cards to their normal opacity 1. That
+    // is exactly how the first version of this test failed: `not.toHaveClass(peek)`
+    // passed because the whole focus state had gone, not because the overlay hid.
+    await stubYouTubeReplacingNode(page);
+    const room = upnextRoom("t103-peek");
+    await drainQueue(page.request, room);
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Garota de Ipanema", nickname: "Ana", table: "1", mode: "sing" });
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Evidências", nickname: "Bruno", table: "2", mode: "sing" });
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Como Nossos Pais", nickname: "Carla", table: "3", mode: "sing" });
+    await page.goto(`/${room}/tv`);
+
+    const root = page.getByTestId("tv-root");
+    await expect(page.getByTestId("tv-hero")).toHaveText("Garota de Ipanema", { timeout: 15_000 });
+    await expect(page.getByTestId("tv-rail")).toBeVisible();
+    // 3 seeded entries -> 1 playing + 2 on the rail.
+    await expect(page.locator('[class*="nextCard"]')).toHaveCount(2);
+    const card = page.locator('[class*="nextCard"]').first();
+
+    await expect(root).toHaveClass(/focus/, { timeout: 8000 });
+
+    // First reveal (after the short lead-in).
+    await expect(root).toHaveClass(/peek/, { timeout: 15_000 });
+    await expect.poll(() => paintedOpacity(card), { timeout: 5000 }).toBeGreaterThan(0.9);
+
+    // ...then it hides again — item 4 is explicit that it must NOT be permanent.
+    await expect(root).not.toHaveClass(/peek/, { timeout: 15_000 });
+    // Guard, and a diagnostic for whoever reads the next failure: losing the
+    // FOCUS state also removes the peek class and returns the cards to their
+    // normal opacity 1, so without this the assertion below could pass-then-fail
+    // for a reason that has nothing to do with the peek timer.
+    await expect(root).toHaveClass(/focus/);
+    await expect.poll(() => paintedOpacity(card), { timeout: 5000 }).toBeLessThan(0.1);
+
+    // ...and it comes BACK, which is what makes it periodic rather than a
+    // one-shot reveal that happened to fire once on entering the focus state.
+    await expect(root).toHaveClass(/peek/, { timeout: 40_000 });
+    await expect.poll(() => paintedOpacity(card), { timeout: 5000 }).toBeGreaterThan(0.9);
+
+    // Throughout every phase of the cycle, the QR stayed painted.
+    expect(await paintedOpacity(page.getByTestId("qr-img"))).toBe(1);
+
+    await drainQueue(page.request, room);
+  });
+
+  test("YouTube's own fullscreen is caught and redirected out of, so our overlays are never un-paintable (TICKET-103)", async ({
+    page,
+  }) => {
+    await stubYouTubeReplacingNode(page);
+    /**
+     * Reproduce the Step 0 hazard as OUR contract rather than as YouTube's.
+     *
+     * Step 0 reached the real thing by clicking inside the live embed and
+     * pressing `F`; that needs the real cross-origin player and real keyboard
+     * focus, neither of which belongs in a deterministic suite (and the file's
+     * existing fullscreen tests are stubbed for the same reason). What we own,
+     * and what this asserts, is the response: when the fullscreen element turns
+     * out to be inside the player host, we leave it — immediately, on any path
+     * that produced it.
+     */
+    await page.addInitScript(() => {
+      const w = window as unknown as { __exitCalls: number; __fsOn: boolean };
+      w.__exitCalls = 0;
+      w.__fsOn = false;
+      Object.defineProperty(document, "fullscreenElement", {
+        configurable: true,
+        get: () => (w.__fsOn ? document.querySelector("iframe[data-yt-instance]") : null),
+      });
+      document.exitFullscreen = function () {
+        w.__exitCalls += 1;
+        w.__fsOn = false;
+        // The real API fires this on the way out; firing it keeps the app's own
+        // listener on the same code path it takes in a browser.
+        document.dispatchEvent(new Event("fullscreenchange"));
+        return Promise.resolve();
+      };
+    });
+
+    const room = upnextRoom("t103-ytfs");
+    await drainQueue(page.request, room);
+    await seedRoom(page, room, { videoId: "dQw4w9WgXcQ", title: "Garota de Ipanema", nickname: "Ana", table: "1", mode: "sing" });
+    await page.goto(`/${room}/tv`);
+
+    const root = page.getByTestId("tv-root");
+    await expect(page.locator(`iframe[${YT_MARK}]`)).toHaveCount(1, { timeout: 15_000 });
+    await expect(root).toHaveAttribute("data-native-fs-redirects", "0");
+
+    // The hazard: YouTube's keyboard shortcut makes the IFRAME the fullscreen
+    // element. `fs: 0` removes the button, not the shortcut.
+    await page.evaluate(() => {
+      (window as unknown as { __fsOn: boolean }).__fsOn = true;
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    // We notice and pull the screen straight back out of it.
+    await expect(root).toHaveAttribute("data-native-fs-redirects", "1", { timeout: 5000 });
+    expect(await page.evaluate(() => (window as unknown as { __exitCalls: number }).__exitCalls)).toBe(1);
+    expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+
+    // And it is not a one-shot: a venue that keeps hitting the shortcut keeps
+    // getting pulled back, which is the difference between a guard and a fuse.
+    await page.evaluate(() => {
+      (window as unknown as { __fsOn: boolean }).__fsOn = true;
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await expect(root).toHaveAttribute("data-native-fs-redirects", "2", { timeout: 5000 });
+    expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+
+    // The player itself was never disturbed — a remount would kill playback
+    // (TICKET-82), so the redirect must not cost what it is protecting.
+    const snap = await playerSnapshot(page);
+    expect(snap.created).toBe(1);
+    expect(snap.destroyed).toBe(0);
+    expect(snap.present).toBe(true);
+
+    // Our own DOM is paintable again, which is the whole point of the redirect:
+    // in iframe-fullscreen the QR has a box but is not composited (Step 0).
+    expect(await paintedOpacity(page.getByTestId("qr-img"))).toBe(1);
+
+    await drainQueue(page.request, room);
   });
 });
