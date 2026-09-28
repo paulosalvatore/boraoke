@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { drainQueue, warmModerationRoutes } from "./helpers";
+import { drainQueue, warmModerationRoutes, dropCreatorIdentity } from "./helpers";
 
 /**
  * E2E (TICKET-71): the floating "Enviar feedback" pill must never cover
@@ -227,6 +227,7 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
     // the UI path.)
     await seedQueue(page, roomId, 5, "Fila");
 
+    await dropCreatorIdentity(page); // TICKET-104 — exercise the code gate, not auto-claim
     await page.goto(`/${roomId}/admin`);
     await page.getByLabel("Código do host").fill(hostCode);
     await page.getByRole("button", { name: /entrar/i }).click();

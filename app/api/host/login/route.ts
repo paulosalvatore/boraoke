@@ -10,6 +10,7 @@ import {
   isLoginThrottled,
   registerLoginFailure,
   resetLoginThrottle,
+  attachClaimCookie,
 } from "@/lib/host-auth";
 
 const MAX_BODY_BYTES = 1024;
@@ -78,5 +79,13 @@ export async function POST(req: NextRequest) {
 
   const res = NextResponse.json({ ok: true });
   res.cookies.set(hostCookieName(roomId), session, hostCookieOptions());
+  // TICKET-104: presenting the host code proves possession, so this device earns
+  // the no-typing path — a FRESH admin claim token, minted server-side and put in
+  // an httpOnly cookie. This is also how a device recovers after a logout (which
+  // revoked every token server-side) and how a room created before this design
+  // acquires one at all. It is deliberately a new token rather than the
+  // resurrection of an old one: a revoked credential must stay dead, including
+  // any copy an attacker took.
+  await attachClaimCookie(res, roomId);
   return res;
 }

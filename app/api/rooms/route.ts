@@ -5,7 +5,7 @@ import {
   isValidRoomId,
   isEphemeralRoomStore,
 } from "@/lib/rooms";
-import { clientIpFrom } from "@/lib/host-auth";
+import { attachClaimCookie, clientIpFrom } from "@/lib/host-auth";
 import {
   isRoomCreateThrottled,
   registerRoomCreation,
@@ -161,5 +161,18 @@ export async function POST(req: NextRequest) {
     { status: 201 },
   );
   if (identity.ok) applyIdentityCookie(res, identity.uuid);
+  // TICKET-104: hand the creator's device the room's ADMIN CLAIM TOKEN, as an
+  // httpOnly cookie. This is what makes admin re-entry possible without ever
+  // typing the shown-once host code.
+  //
+  // Note what is NOT happening: the token is not in the JSON above, and it never
+  // will be. It is a credential precisely because no page JS has seen it — unlike
+  // `creatorUuid`, which is a non-secret label that the identity echo and the
+  // localStorage mirror publish to the client by design. Adding it to this body
+  // would recreate exactly the hole the security gate found.
+  //
+  // Best-effort: a failure here costs the creator the no-typing path (they still
+  // have the code, shown right now on this page), never the room they just made.
+  await attachClaimCookie(res, created.room.id);
   return res;
 }

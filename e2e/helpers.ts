@@ -20,7 +20,7 @@
  * shown once at /new) so the helper can hash it into the room secret.
  */
 import { createHmac } from "crypto";
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 
 /** Mirror of lib/host-auth.ts DEV_FALLBACK_TOKEN — the default-room dev secret. */
 const DEV_FALLBACK_TOKEN = "cantai-dev-host";
@@ -111,6 +111,15 @@ export async function warmModerationRoutes(request: APIRequestContext) {
   // is exactly the accidental coupling that made rotation-modes fragile, so
   // both are warmed explicitly here rather than left to a caller's side effects.
   await request.get("/api/host/session");
+  // TICKET-104: `/api/host/claim` is POSTed by AdminRoom whenever the session
+  // probe fails — i.e. on EVERY login-gate render — so from now on it compiles
+  // mid-test in any spec that reaches the gate, wiping the memory store and the
+  // room the spec just created. Exactly the "happens to be compiled" coupling
+  // this helper exists to remove, so it is warmed explicitly here.
+  // NB-6 (PR #81 review): warm with a DELIBERATELY MALFORMED room id. It compiles
+  // the route just the same but returns 400 before the throttle or the store is
+  // touched, so the warm-up never spends a claim budget of its own.
+  await request.post("/api/host/claim?room=!!");
   await request.get("/api/queue");
   await request.get("/api/host/pending");
   await request.post("/api/host/pending/approve", { data: { pendingId: "warmup" } });
@@ -218,4 +227,34 @@ export async function drainQueue(
     if (!data.items?.length) return;
     await advanceOnce(request, roomId, rawHostCode);
   }
+}
+
+/**
+ * The httpOnly identity cookie (`lib/identity.ts`). Since the TICKET-104 security
+ * redesign this is a non-secret LABEL, not a credential — kept named here only so
+ * specs can assert that dropping or forging it changes nothing.
+ */
+export const IDENTITY_COOKIE = "boraoke_identity";
+
+/**
+ * Make this browser stop being the room's CREATOR, so the host-code login gate is
+ * reachable again (TICKET-104).
+ *
+ * Since TICKET-104 a creator never sees the gate: `POST /api/host/claim`
+ * re-authenticates them off a credential their device holds, which is the whole
+ * point. Specs that exist to exercise the CODE path therefore have to present
+ * themselves as a different device — a venue tablet typing the code a host created
+ * elsewhere, which is exactly the scenario the gate serves.
+ *
+ * WHICH cookie this drops is load-bearing and changed in the security round: the
+ * credential is now the purpose-built `boraoke_claim_<room>` token, NOT the
+ * identity uuid. Dropping the identity cookie alone no longer makes a device a
+ * non-creator, and a helper that did so would silently stop reaching the gate —
+ * which is exactly how four specs broke when the credential was replaced. Both are
+ * cleared: the claim cookie because it is the credential, the identity cookie so a
+ * spec that wants a genuinely fresh device gets one.
+ */
+export async function dropCreatorIdentity(page: Page) {
+  await page.context().clearCookies({ name: /^boraoke_claim_/ });
+  await page.context().clearCookies({ name: IDENTITY_COOKIE });
 }

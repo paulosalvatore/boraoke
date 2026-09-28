@@ -20,7 +20,11 @@
 
 import "server-only";
 
-import { createHmac, randomBytes as nodeRandomBytes } from "crypto";
+import {
+  createHmac,
+  randomBytes as nodeRandomBytes,
+  timingSafeEqual as nodeTimingSafeEqual,
+} from "crypto";
 import { Redis } from "@upstash/redis";
 import { DEFAULT_ROOM } from "./store";
 import {
@@ -79,6 +83,28 @@ export interface Room {
    * bookkeeping only: deliberately NOT part of `PublicRoom` below.
    */
   creatorUuid?: string;
+  /**
+   * Hashes of the room's live ADMIN CLAIM TOKENS (TICKET-104, security round).
+   *
+   * This is the credential behind `POST /api/host/claim` — the no-typing way
+   * back into admin. It is a purpose-built secret, deliberately NOT the
+   * `creatorUuid` above: the security gate on PR #81 demonstrated that the
+   * identity uuid is published to page JS (`POST /api/identity` echoes it, and
+   * `cantai_patron_uuid` mirrors it in localStorage), which made it a portable,
+   * unrevokable bearer token for host control. One value cannot be both
+   * client-readable and secret, so the claim now has its own.
+   *
+   * Only HASHES are stored, like `hostCodeHash` — a store leak yields nothing
+   * usable. The raw token exists only in the httpOnly `boraoke_claim_<room>`
+   * cookie and is never returned in any response body.
+   *
+   * An ARRAY so a venue can hold the credential on more than one device (the
+   * tablet and the owner's phone), capped at `MAX_CLAIM_TOKENS`. Clearing it is
+   * the SERVER-SIDE revocation that logout performs — the property a marker
+   * cookie in the victim's own jar could never provide, since it left a copied
+   * token working for the attacker while locking the owner out.
+   */
+  claimTokenHashes?: string[];
 }
 
 /** Client-safe room view — never leaks the host-code hash. */
@@ -100,6 +126,101 @@ export type PublicRoom = Pick<Room, "id" | "name" | "createdAt"> & {
  */
 export function hashHostCode(code: string): string {
   return createHmac("sha256", "cantai-hostcode-v1").update(code).digest("hex");
+}
+
+/**
+ * How many admin-claim tokens one room may hold at once (TICKET-104).
+ *
+ * More than one because a venue legitimately has more than one device: the room
+ * is created on a phone and later the code is entered on the bar tablet, and
+ * BOTH should keep frictionless re-entry. Small because each is a standing
+ * credential; once more than this many DEVICES hold one, the oldest falls off.
+ * Logout clears them all.
+ *
+ * "Devices", not "issues", and that distinction is what keeps this cap safe to
+ * hold small. It is enforced by NOT minting on a roll at all: a device extending
+ * its window re-sends the token it already holds with a fresh Max-Age
+ * (`rollClaimCookie`), so the list only ever grows when a genuinely new device
+ * earns a credential. An earlier round-4 attempt instead minted-and-replaced on
+ * every roll; that is recorded in the dev report as a defect, because two
+ * concurrent rolls both deleted the presented hash and a lost update left the
+ * device holding a dead cookie (measured: `aLives=false bLives=true`). There are
+ * regression tests for both the eviction property and the concurrency one.
+ */
+export const MAX_CLAIM_TOKENS = 5;
+
+/**
+ * Hash an admin-claim token for storage / comparison. Its own HMAC key, distinct
+ * from `hashHostCode`'s, so a claim token can never be confused with a host code
+ * and neither hash is usable in the other's comparison. Brand-new in TICKET-104,
+ * so it uses the current `boraoke` brand (no frozen-name constraint applies).
+ */
+export function hashClaimToken(token: string): string {
+  return createHmac("sha256", "boraoke-claim-token-v1").update(token).digest("hex");
+}
+
+/**
+ * Mint a fresh admin-claim token for a room, persist its HASH, and return the
+ * RAW token for the caller to put in an httpOnly cookie. Returns null when the
+ * room does not exist.
+ *
+ * 256 bits from the CSPRNG: unlike the 8-character host code (a human types it)
+ * nothing has to read this out loud, so there is no reason for it to be
+ * guessable at all.
+ */
+export async function issueRoomClaimToken(roomId: string): Promise<string | null> {
+  const room = await getRoom(roomId);
+  if (!room) return null;
+  const token = nodeRandomBytes(32).toString("base64url");
+  const next = [...(room.claimTokenHashes ?? []), hashClaimToken(token)].slice(
+    -MAX_CLAIM_TOKENS,
+  );
+  await roomBackend.update({ ...room, claimTokenHashes: next });
+  return token;
+}
+
+/**
+ * Whether `token` is one of the room's live claim tokens. Constant-time against
+ * every stored hash, and false for a room that holds none — which is the state
+ * after a logout (revoked), for every room created before TICKET-104, and for
+ * any room whose mint failed.
+ */
+export async function verifyRoomClaimToken(
+  roomId: string,
+  token: unknown,
+): Promise<boolean> {
+  if (typeof token !== "string" || token.length === 0) return false;
+  const room = await getRoom(roomId);
+  const hashes = room?.claimTokenHashes;
+  if (!Array.isArray(hashes) || hashes.length === 0) return false;
+  const candidate = hashClaimToken(token);
+  // Compare against all of them, without short-circuiting on the first miss.
+  let match = false;
+  for (const stored of hashes) {
+    if (typeof stored === "string" && timingSafeHexEqual(candidate, stored)) match = true;
+  }
+  return match;
+}
+
+/**
+ * Revoke EVERY claim token for a room (logout). This is server-side state, so a
+ * token already copied off the device stops working too — the whole point.
+ * Re-entering the host code mints a fresh one (`POST /api/host/login`).
+ */
+export async function revokeRoomClaimTokens(roomId: string): Promise<void> {
+  const room = await getRoom(roomId);
+  if (!room) return;
+  if (!room.claimTokenHashes?.length) return;
+  const next = { ...room };
+  delete next.claimTokenHashes;
+  await roomBackend.update(next);
+}
+
+/** Constant-time comparison of two hex strings (mirrors lib/host-auth.ts). */
+function timingSafeHexEqual(a: string, b: string): boolean {
+  const ha = createHmac("sha256", "cmp").update(a).digest();
+  const hb = createHmac("sha256", "cmp").update(b).digest();
+  return nodeTimingSafeEqual(ha, hb);
 }
 
 /** Redis key for a room's metadata record (sits beside `room:<id>:queue`). */
