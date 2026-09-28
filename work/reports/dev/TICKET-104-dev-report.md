@@ -451,3 +451,50 @@ Round 3's reverse-check of the two e2e blocker tests against the round-2 (vulner
 `triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path`
 
 `isCrossSiteRequest` reads two headers and compares a URL host. It parses nothing the app then uses as data, normalises no user input, and computes no money/quantity/identity value — the `new URL()` call is a validity test whose failure is treated as hostile, not a parse whose output is retained. M1-M4 mutate it regardless, because it is auth code.
+
+## A fifth finding, found by reading the design claim back against the code
+
+Round 3's report says, of the capped token list: "Tokens are a capped list (`MAX_CLAIM_TOKENS = 5`) so a venue can hold the credential on the tablet *and* the owner's phone — which one hash could not do without silently killing the other device."
+
+**That was false as implemented, and it fails in the direction that matters.** Every roll *appended* a hash, so `slice(-MAX_CLAIM_TOKENS)` pushed the OLDEST entry off — and the oldest entry belongs to a different device. I probed it before changing anything:
+
+```
+  ✘ PROBE: does rolling one device's token evict another device's?
+    expect(await verifyRoomClaimToken(id, tablet)).toBe(true)
+    Expected: true
+    Received: false
+```
+
+Concretely: the room is created on the owner's phone, the bar tablet is set up with the host code, and then the owner opens `/admin` five more times. The tablet's credential is gone, and it lands on the shown-once unrecoverable host code — **the exact dead end this ticket exists to remove, delivered by the mechanism whose stated purpose was to prevent it.** The cap read as protecting multi-device support while destroying it. It is not a security hole (nothing gains access; a device loses it), which is why neither the reviewer nor the security gate would have been looking for it — but it breaks the ticket's own acceptance criterion for any venue with two devices.
+
+Worth naming the general shape, because it is the third time on this PR: **the report asserted a property the code did not have, in a sentence confident enough that nobody re-derived it.** B-S1 was that ("a cookie the client cannot read"), O4 was that ("what keeps the answer zero"), and this was that. The fix each time is the same — assert the property in a test that can fail.
+
+**The fix is rotate-in-place.** `issueRoomClaimToken` takes `replacing`: on a roll it drops the presented token's hash and writes the new one, so a device reuses its own slot rather than consuming a new one. `rollClaimCookie` is the roll-site helper (`POST /api/host/claim`, and a verified `GET /api/host/session`); room creation and host-code login keep plain `attachClaimCookie`, because those are a device's *first* token. The cap still binds across distinct devices, and a rolled-away token is still dead.
+
+### Mutations for it — 5 run, 5 killed, but only after fixing a real gap
+
+| # | Mutation | Result |
+|---|---|---|
+| R1 | rotation **appends** instead of replacing (= the pre-fix implementation) | **KILLED** — 3 failed / 31 passed |
+| R2 | the claim route rolls with `attachClaimCookie` again (wrong helper at a roll site) | **KILLED** — 2 failed |
+| R3 | the **session probe** rolls with `attachClaimCookie` again | **initially SURVIVED — real gap**, now **KILLED** |
+| R4 | rotation replaces but the cap is removed | **KILLED** — 2 failed, incl. the pre-existing cap test |
+| R5 | rotation drops the **whole** list rather than this device's entry | **KILLED** — 2 failed |
+
+**R3 was a SURVIVED-real-gap and is the most important line in this table.** My first three tests all drove the *claim route*, so a regression that hit only the session-probe roll site passed the entire suite — and the probe is the busier of the two sites by a wide margin (every admin page load and every landing-page `SavedRooms` check), so it is the one that would actually evict a venue's tablet in production. Closed with a test that drives `GET /api/host/session` directly; R3 now fails 1 test. Per the skill this is blocking rather than a nit, so it is fixed in-PR, not deferred.
+
+**(b) Reverse-check for this fix** is R1 — the append-always implementation is literally the pre-fix code:
+
+```
+=== R1 rotation APPENDS instead of replacing (the pre-fix implementation = reverse-check)
+    Tests:       3 failed, 31 passed, 34 total
+    ● the capped list holds DEVICES, so one device's re-entry never evicts another › a phone re-entering many times does not push the bar tablet's credential off
+    ● the capped list holds DEVICES, so one device's re-entry never evicts another › a rolled-away token is dead — rotation still revokes the value it replaced
+    ● the capped list holds DEVICES, so one device's re-entry never evicts another › the SESSION PROBE's roll does not evict another device either
+```
+
+**(c) Hollowing-out, second pass.** `issueRoomClaimToken`'s list-maintenance primitive changed (append → replace-then-append), so I re-read every assertion over `claimTokenHashes`. The pre-existing `holds the credential for several devices, capped, and logout clears them ALL` still fails under R4, so it is live rather than true-by-construction; it exercises distinct-device issues, which the fix deliberately leaves unchanged. The `a successful claim ROLLS the credential` test is unaffected in meaning (it asserts the new token works and differs), and R2 confirms it is not the thing covering eviction — that needed the new tests.
+
+**(d)** `triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path`. The `replacing` path hashes an opaque token and filters a list of hashes; it parses and normalises nothing.
+
+One judgment call recorded: I also corrected two comments that overstated what the code did — the claim route's SECURITY CONTRACT listed only two write sites (there are now two more via the roll helper) and `MAX_CLAIM_TOKENS`' docblock said "the oldest falls off" without saying oldest *device*. Both are the same defect class as B-S1's false contract line, so I did not leave them for a later round.
