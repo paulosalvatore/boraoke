@@ -269,11 +269,30 @@ export function claimTokenFrom(req: NextRequest, roomId: string): string | undef
 export async function attachClaimCookie(
   res: { cookies: { set(name: string, value: string, opts: ReturnType<typeof claimCookieOptions>): unknown } },
   roomId: string,
+  opts: { replacing?: string } = {},
 ): Promise<boolean> {
-  const token = await issueRoomClaimToken(roomId);
+  const token = await issueRoomClaimToken(roomId, opts);
   if (!token) return false;
   res.cookies.set(claimCookieName(roomId), token, claimCookieOptions());
   return true;
+}
+
+/**
+ * Roll the claim credential this request already presents: mint a fresh token and
+ * drop the presented one, so the device keeps ONE entry in the room's capped list
+ * rather than consuming a new slot on every roll.
+ *
+ * Use this at every ROLL site (a successful claim, a verified session probe) and
+ * plain `attachClaimCookie` only where a device is getting its FIRST token (room
+ * creation, host-code login). Getting this backwards is not cosmetic — appending
+ * on a roll evicts other devices, which is the defect this exists to prevent.
+ */
+export async function rollClaimCookie(
+  res: { cookies: { set(name: string, value: string, opts: ReturnType<typeof claimCookieOptions>): unknown } },
+  req: NextRequest,
+  roomId: string,
+): Promise<boolean> {
+  return attachClaimCookie(res, roomId, { replacing: claimTokenFrom(req, roomId) });
 }
 
 /**

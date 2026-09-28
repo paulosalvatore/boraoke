@@ -134,7 +134,15 @@ export function hashHostCode(code: string): string {
  * More than one because a venue legitimately has more than one device: the room
  * is created on a phone and later the code is entered on the bar tablet, and
  * BOTH should keep frictionless re-entry. Small because each is a standing
- * credential; the oldest falls off. Logout clears them all.
+ * credential; once more than this many DEVICES hold one, the oldest falls off.
+ * Logout clears them all.
+ *
+ * "Devices", not "issues", and that distinction is the whole reason this cap is
+ * safe to keep small: a device ROLLING its credential replaces its own entry
+ * rather than consuming a new slot (`issueRoomClaimToken`'s `replacing`). Without
+ * that, a single phone opening /admin this many times would evict the bar tablet
+ * — a cap that reads as protecting multi-device support while quietly destroying
+ * it. Measured before the fix; there is a regression test.
  */
 export const MAX_CLAIM_TOKENS = 5;
 
@@ -157,13 +165,31 @@ export function hashClaimToken(token: string): string {
  * nothing has to read this out loud, so there is no reason for it to be
  * guessable at all.
  */
-export async function issueRoomClaimToken(roomId: string): Promise<string | null> {
+export async function issueRoomClaimToken(
+  roomId: string,
+  opts: { replacing?: string } = {},
+): Promise<string | null> {
   const room = await getRoom(roomId);
   if (!room) return null;
   const token = nodeRandomBytes(32).toString("base64url");
-  const next = [...(room.claimTokenHashes ?? []), hashClaimToken(token)].slice(
-    -MAX_CLAIM_TOKENS,
-  );
+  const existing = room.claimTokenHashes ?? [];
+  // `replacing` is the token the CALLER already holds, on a roll rather than a
+  // first issue. Dropping its hash makes rotation replace that device's own
+  // entry IN PLACE instead of appending a new one, and that is load-bearing for
+  // the multi-device property rather than tidiness: without it, every roll grew
+  // the list, so the `slice(-MAX_CLAIM_TOKENS)` below silently pushed OTHER
+  // devices off the end. Measured before the fix — a phone that opened /admin
+  // five times evicted the bar tablet's credential and dropped it back onto the
+  // shown-once host code, i.e. exactly the dead end this ticket exists to remove,
+  // while MAX_CLAIM_TOKENS looked like it was protecting the opposite.
+  //
+  // A plain `!==` on the hashes is deliberate and safe here: this is list
+  // maintenance, not authentication. Verification has already happened (every
+  // roll site calls `verifyClaim` first), a miss merely means nothing is dropped,
+  // and reaching this path at all requires already holding a live token.
+  const replaced = opts.replacing ? hashClaimToken(opts.replacing) : undefined;
+  const kept = replaced ? existing.filter((h) => h !== replaced) : existing;
+  const next = [...kept, hashClaimToken(token)].slice(-MAX_CLAIM_TOKENS);
   await roomBackend.update({ ...room, claimTokenHashes: next });
   return token;
 }

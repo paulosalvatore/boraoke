@@ -163,6 +163,90 @@ describe("the claim credential is NEVER handed to a client (B-S1)", () => {
   });
 });
 
+/**
+ * The capped list is what lets a venue hold the credential on the bar tablet AND
+ * the owner's phone. That property was asserted in the design notes and was FALSE
+ * as first implemented: every roll appended, so the cap evicted other devices
+ * instead of protecting them. These tests pin the property the cap is supposed to
+ * have, on the route rather than on the helper, because the bug lived in which
+ * helper the route called.
+ */
+describe("the capped list holds DEVICES, so one device's re-entry never evicts another", () => {
+  it("a phone re-entering many times does not push the bar tablet's credential off", async () => {
+    // Exactly TWO devices, so the length assertion below is a real count and not a
+    // guess: the room's own first token is the tablet, and the phone is the second.
+    const { room, token: tablet } = await roomWithClaim("Bar Duas Telas");
+    let phone = (await issueRoomClaimToken(room.id))!;
+
+    // The phone re-enters more times than the list can hold. Each claim rolls its
+    // own credential, so it must reuse its own slot rather than take a new one.
+    for (let i = 0; i < MAX_CLAIM_TOKENS + 2; i++) {
+      const res = await claimRoute(claimReq(room.id, { token: phone }));
+      expect(res.status).toBe(200);
+      phone = setCookie(res, claimCookieName(room.id))!;
+      expect(phone).toBeTruthy();
+    }
+
+    expect(await verifyRoomClaimToken(room.id, phone)).toBe(true);
+    expect(await verifyRoomClaimToken(room.id, tablet)).toBe(true);
+    // Two devices, two entries — the phone's rolls left no debris behind.
+    expect((await getRoom(room.id))!.claimTokenHashes).toHaveLength(2);
+  });
+
+  it("a rolled-away token is dead — rotation still revokes the value it replaced", async () => {
+    // The flip side: replacing in place must not accidentally keep the old token
+    // alive. This is what makes the roll a rotation rather than an accumulation.
+    const { room, token } = await roomWithClaim("Bar Rotacao");
+    const res = await claimRoute(claimReq(room.id, { token }));
+    expect(res.status).toBe(200);
+    const rolled = setCookie(res, claimCookieName(room.id))!;
+    expect(rolled).not.toBe(token);
+    expect(await verifyRoomClaimToken(room.id, rolled)).toBe(true);
+    expect(await verifyRoomClaimToken(room.id, token)).toBe(false);
+  });
+
+  it("the SESSION PROBE's roll does not evict another device either", async () => {
+    // This covers the second roll site, and it is not redundant with the claim-route
+    // test above: a mutation that regressed ONLY the probe to appending survived the
+    // whole suite when this test did not exist (R3, a SURVIVED-real-gap). The probe
+    // is also the roll site that fires most — every admin page load and every
+    // landing-page SavedRooms check — so it is the one that would actually evict a
+    // venue's tablet in production.
+    const { room, token: tablet } = await roomWithClaim("Bar Probe Duas Telas");
+    let phone = (await issueRoomClaimToken(room.id))!;
+    const session = (await issueSession(room.id))!;
+
+    for (let i = 0; i < MAX_CLAIM_TOKENS + 2; i++) {
+      const res = await sessionRoute(
+        new NextRequest(`http://127.0.0.1:3040/api/host/session?room=${room.id}`, {
+          headers: {
+            cookie: `${hostCookieName(room.id)}=${session}; ${claimCookieName(room.id)}=${phone}`,
+          },
+        }),
+      );
+      expect(res.status).toBe(200);
+      phone = setCookie(res, claimCookieName(room.id))!;
+      expect(phone).toBeTruthy();
+    }
+
+    expect(await verifyRoomClaimToken(room.id, phone)).toBe(true);
+    expect(await verifyRoomClaimToken(room.id, tablet)).toBe(true);
+    expect((await getRoom(room.id))!.claimTokenHashes).toHaveLength(2);
+  });
+
+  it("MORE devices than the cap still evicts the oldest — the cap is real", async () => {
+    // The cap must still bind; the fix narrows what counts against it, it does not
+    // remove it. Otherwise a room accumulates standing credentials without bound.
+    const { room } = await roomWithClaim("Bar Muitos Aparelhos");
+    const first = (await issueRoomClaimToken(room.id))!;
+    for (let i = 0; i < MAX_CLAIM_TOKENS; i++) {
+      await issueRoomClaimToken(room.id); // each one a DIFFERENT new device
+    }
+    expect(await verifyRoomClaimToken(room.id, first)).toBe(false);
+    expect((await getRoom(room.id))!.claimTokenHashes).toHaveLength(MAX_CLAIM_TOKENS);
+  });
+});
+
 describe("logout REVOKES the credential in server state (B-S1, direction 2)", () => {
   it("a token COPIED off the device stops working once the owner logs out", async () => {
     const { room, token } = await roomWithClaim("Bar Revogado");

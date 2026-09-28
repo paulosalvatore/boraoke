@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  attachClaimCookie,
   claimTokenFrom,
   clientIpFrom,
   hostCookieName,
@@ -9,6 +8,7 @@ import {
   issueSession,
   registerClaimFailure,
   resetClaimThrottle,
+  rollClaimCookie,
   roomIdFromRequest,
   verifyClaim,
 } from "@/lib/host-auth";
@@ -31,8 +31,11 @@ import {
  *  1. The credential is the httpOnly `boraoke_claim_<room>` cookie, whose raw
  *     value is minted server-side, is never returned in any response body, is
  *     never mirrored into localStorage, and is never read from a body or query.
- *     MECHANISM: the only read is `claimTokenFrom` (cookie), and the only writes
- *     are `attachClaimCookie` on room creation and on host-code login.
+ *     MECHANISM: the only read is `claimTokenFrom` (cookie). The only writes are
+ *     `attachClaimCookie` (a device's FIRST token — room creation, host-code
+ *     login) and `rollClaimCookie` (a roll for a device that already holds one —
+ *     this route, and a verified `GET /api/host/session`). Both write the cookie
+ *     and nothing else; neither has a path that puts the value in a body.
  *     NOT the identity uuid, which page JS can read via the `/api/identity` echo
  *     and the `cantai_patron_uuid` mirror — see `claimCookieName`'s note.
  *  2. Only the token's HASH is stored (`Room.claimTokenHashes`), so a store leak
@@ -94,8 +97,9 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ authed: true });
   res.cookies.set(hostCookieName(roomId), session, hostCookieOptions());
   // Roll the claim credential too, so an active venue's device never ages out of
-  // the bounded window (and the old token stops working once it falls off the
-  // room's capped list).
-  await attachClaimCookie(res, roomId);
+  // the bounded window. A ROLL, not a fresh issue: it replaces this device's own
+  // entry in the room's capped list, so re-entry on one device can never push
+  // another device's credential off the end (see `rollClaimCookie`).
+  await rollClaimCookie(res, req, roomId);
   return res;
 }
