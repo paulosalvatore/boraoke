@@ -454,6 +454,8 @@ Round 3's reverse-check of the two e2e blocker tests against the round-2 (vulner
 
 ## A fifth finding, found by reading the design claim back against the code
 
+> **SUPERSEDED IN PART — read this first.** The defect described below is real and the diagnosis stands. **The fix described below is not what shipped**: rotate-in-place turned out to introduce a lost-update race, e2e caught it, and the shipped mechanism re-sends the held token instead of minting. See `## Correction: the rotation fix was wrong too` at the end of this report. This section is kept because the *finding* and its measurement are still the record, and because silently rewriting it would hide exactly the kind of mistake this report exists to make visible.
+
 Round 3's report says, of the capped token list: "Tokens are a capped list (`MAX_CLAIM_TOKENS = 5`) so a venue can hold the credential on the tablet *and* the owner's phone — which one hash could not do without silently killing the other device."
 
 **That was false as implemented, and it fails in the direction that matters.** Every roll *appended* a hash, so `slice(-MAX_CLAIM_TOKENS)` pushed the OLDEST entry off — and the oldest entry belongs to a different device. I probed it before changing anything:
@@ -498,3 +500,72 @@ Worth naming the general shape, because it is the third time on this PR: **the r
 **(d)** `triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path`. The `replacing` path hashes an opaque token and filters a list of hashes; it parses and normalises nothing.
 
 One judgment call recorded: I also corrected two comments that overstated what the code did — the claim route's SECURITY CONTRACT listed only two write sites (there are now two more via the roll helper) and `MAX_CLAIM_TOKENS`' docblock said "the oldest falls off" without saying oldest *device*. Both are the same defect class as B-S1's false contract line, so I did not leave them for a later round.
+
+---
+
+## Correction: the rotation fix was wrong too, and e2e is what caught it
+
+I fixed the eviction defect with rotate-in-place — on a roll, drop the presented token's hash and write the new one. Unit tests went green, five mutants died, and it was wrong. **The e2e suite caught it, which is the whole argument for having these tests at the level they are.**
+
+**The symptom.** `creator-reentry.spec.ts:209` — the returning-creator hero test — started failing. It is not on a security path and it was easy to write off as harness noise, especially on a contended box amid genuine cold-dev-server pathology. I did not write it off, because it sat in a file I had changed.
+
+**The isolation, which is the part that mattered.** Rather than argue about it, I ran matched controls on a warm, functional server:
+
+| Tree | hero test |
+|---|---|
+| both round-4 changes reverted | **passed 2/2** |
+| only the rotation reverted (origin check still in) | **passed 2/2** |
+| only the origin check reverted (rotation still in) | **failed 2/2** |
+| as shipped at that point | **failed 2/2** |
+
+That is a clean bisect: the rotation was the cause, the origin check was not. Note the first cold attempts were ambiguous (2/3 vs 3/3) and I could have stopped there and called it flake — the answer only became unambiguous once I cleaned `.next` and stopped measuring through build-artifact corruption.
+
+**The mechanism**, confirmed by direct probe rather than inferred:
+
+```
+stored=1 aLives=false bLives=true t1Lives=false
+```
+
+Two concurrent rolls carrying the SAME cookie — a double-mounted effect in dev, two tabs, or `SavedRooms` racing `AdminRoom` — each read the room, each removed the presented hash, and the second write clobbered the first. One of the two new tokens was already dead when its response reached the browser, and the original was gone as well. **A device could be locked out by its own successful re-entry.** Append did not have this failure because the original hash survived a lost update; replace made the same race lethal. I traded a deterministic multi-device bug for a probabilistic single-device one and, briefly, called that a fix.
+
+**What shipped instead.** The roll does not mint at all. It re-sends the value the caller already holds with a fresh `Max-Age`, and writes nothing:
+
+- nothing grows, so nothing is evicted — the original defect is fixed;
+- nothing is written, so nothing can race — the new defect cannot occur;
+- both call sites verify before rolling, so authority is still never minted for a caller that did not prove it.
+
+This is not a novel invention; it is the shape already used by the TICKET-76 rolling host session a few lines above it, which re-sets the very cookie it just verified rather than issuing a new one. I should have followed the local precedent the first time. **Rotation was never what secures this credential — server-side revocation on logout is, and it is untouched.**
+
+### (a) Mutations — 5 run, 5 killed
+
+| # | Mutation | Result |
+|---|---|---|
+| P1 | roll mints-and-**appends** (the rounds 1-3 mechanism) | **KILLED** — 5 failed, incl. both eviction tests and the concurrency test |
+| P3 | roll is a **no-op** (window never extended) | **KILLED** — 5 failed |
+| P4a | **first issue** re-set with a 1-minute Max-Age | **initially SURVIVED — real gap**, now **KILLED** |
+| P4b | **roll** re-set with a 1-minute Max-Age | **KILLED** — 1 failed |
+| P5 | the session probe rolls **without** verifying the caller holds a token | **KILLED** — 7 failed |
+
+**P4 survived for an instructive reason and found a real gap.** My mutation pattern matched `attachClaimCookie` — byte-identical text, earlier in the file — instead of `rollClaimCookie`, so it mutated the *first-issue* path by accident. It passed the whole suite. The existing cookie-shape test asserts `claimCookieOptions()`, which only proves the constant is right and says nothing about what a route actually put on the wire; a creator receiving a 60-second credential would have broken re-entry for everyone with nothing going red. Closed by asserting `Max-Age` on the creation route's own response, and the mutant is now split in two so both paths are covered. A mis-aimed mutant is still evidence — it is worth reading what it actually hit before re-aiming it.
+
+The mint-and-**replace** mechanism is covered too: it is exactly what the new `CONCURRENT re-entries` test was written against, and the probe output above is that test failing on it.
+
+### (b) Reverse-check
+
+The controls table above is the reverse-check, at the level where the defect lived: the new e2e assertion fails against the pre-fix (rotating) implementation and passes against the shipped one, on a warm server, twice each. At unit level, P1 is the rounds 1-3 implementation and kills three assertions.
+
+### (c) Hollowing-out — a primitive changed, and two assertions had to be re-pointed
+
+The roll primitive changed from **mint** to **re-set**, so every assertion about a rolled cookie changed meaning:
+
+- `a successful claim ROLLS the credential` asserted `rolled !== token`. Under the new primitive that is not merely vacuous, it is **false** — so it could not be left alone. Re-pointed to the property that now carries the meaning: the same value comes back with the full `Max-Age` and still claims. P4b confirms it is live.
+- `a rolled-away token is dead — rotation still revokes the value it replaced` asserted a property that no longer exists. Replaced by `CONCURRENT re-entries on one device both leave it with a working credential`, which is where the risk actually moved.
+- The eviction tests (`a phone re-entering many times…`, `the SESSION PROBE's roll…`) still fail under P1 and P3, so they are live against the new primitive rather than true-by-construction.
+
+### (d) Triggered mutation pass
+
+`triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path`
+
+### What I'd flag to the reviewer about my own process
+
+I shipped the rotation fix with a green unit suite and a clean mutation table, and it was wrong. The mutants I chose all probed *eviction*, because eviction was the bug I had just found — none probed *concurrency*, because I was not thinking about it. Mutation testing proves a suite can fail; it cannot tell you which property you forgot to think about. The thing that caught this was an end-to-end test exercising a real browser doing two things at once, and the only reason it got diagnosed rather than dismissed was refusing to write off a failure in a file I had touched.
