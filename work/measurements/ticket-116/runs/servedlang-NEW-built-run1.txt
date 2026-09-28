@@ -1,0 +1,35 @@
+=== served-lang targeted: servedlang-NEW-built #1 ===
+root: /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-e2e-built-server
+head: 77bd0c7
+loadavg-start: { 11.84 15.70 17.97 }
+
+[WebServer]  ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+[WebServer]  We detected multiple lockfiles and selected the directory of /Users/paulosalvatore/Documents/GitHub/boraoke/package-lock.json as the root directory.
+[WebServer]  To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+[WebServer]    See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+[WebServer]  Detected additional lockfiles: 
+[WebServer]    * /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-e2e-built-server/package-lock.json
+[WebServer] 
+
+[WebServer]  ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+[WebServer]  We detected multiple lockfiles and selected the directory of /Users/paulosalvatore/Documents/GitHub/boraoke/package-lock.json as the root directory.
+[WebServer]  To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+[WebServer]    See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+[WebServer]  Detected additional lockfiles: 
+[WebServer]    * /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-e2e-built-server/package-lock.json
+[WebServer] 
+
+Running 7 tests using 1 worker
+
+[1/7] [chromium] › e2e/served-lang.spec.ts:93:7 › served <html lang> per route (TICKET-79) › app-wide routes follow the visitor: cookie, then Accept-Language, then pt-BR
+[2/7] [chromium] › e2e/served-lang.spec.ts:105:7 › served <html lang> per route (TICKET-79) › the venue TV serves the ROOM's language, never the visitor's
+[3/7] [chromium] › e2e/served-lang.spec.ts:123:7 › served <html lang> per route (TICKET-79) › the legacy /default screen stays pt-BR for any visitor
+[4/7] [chromium] › e2e/served-lang.spec.ts:129:7 › served <html lang> per route (TICKET-79) › the TICKET-75 client-side lang patch is gone from the served HTML
+[5/7] [chromium] › e2e/served-lang.spec.ts:135:7 › served <html lang> per route (TICKET-79) › the patron room keeps its full chain: cookie → room → Accept-Language → pt-BR
+[6/7] [chromium] › e2e/served-lang.spec.ts:148:7 › served <html lang> per route (TICKET-79) › the host console follows the host's cookie, not the room
+[7/7] [chromium] › e2e/served-lang.spec.ts:153:7 › served <html lang> per route (TICKET-79) › metadata still renders alongside the lang fix (TICKET-74 guard)
+  7 passed (16.2s)
+exit-code: 0
+wall-clock-seconds: 17
+loadavg-end: { 12.15 15.51 17.85 }
+# --- END OF RUN ---

@@ -32,12 +32,37 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
   retries: 0,
-  // Serial execution (single worker). The dev/CI store + room registry use the
-  // in-memory driver, whose singletons live in ONE Next dev process and reset on
-  // each route's first compile (documented memory-driver caveat). Parallel
-  // workers race those resets across test files and wipe seeded state, so e2e
-  // runs serially — deterministic and fast enough (~40s). Production uses the
-  // durable Upstash driver and has no such constraint.
+  // Serial execution (single worker) — KEPT, but for a different reason than the
+  // one this comment used to give. TICKET-116 tested the old justification and
+  // it no longer holds; the replacement was measured, not assumed.
+  //
+  // The ORIGINAL reason was that the in-memory singletons reset on each route's
+  // first compile, and parallel workers raced those resets. That cause is gone:
+  // a built server compiles nothing at request time, and the singletons are now
+  // pinned to `globalThis`. So lifting `workers: 1` was worth a real try — the
+  // suite is the slowest gate this product has.
+  //
+  // It does not survive the try, because a SECOND cause was underneath it all
+  // along and is unaffected by the build: **17 of the 20 spec files touch the
+  // one shared `default` room** (nine of them seed into it), and with the store
+  // no longer being wiped between files they contend on it directly. On top of that,
+  // `POST /api/queue/advance` is capped at 12 per room per 60s
+  // (lib/advance-rate-limit.ts, hardcoded), a budget several workers drain far
+  // faster than one.
+  //
+  // Measured cold, full suite, same machine, four workers' worth of evidence:
+  //   workers: 1  -> 126/126 on 5 of 5 runs        (3m54s - 4m07s)
+  //   workers: 2  ->   1 failure on 4 of 4 runs    (2m38s - 2m44s)
+  //   workers: 4  -> 2-4 failures on 4 of 4 runs   (2m01s - 2m25s)
+  // Under `workers: 2` it is the SAME test every time —
+  // `tv-watchdog.spec.ts:180`, the stall-ladder recreate rung, which asserts on
+  // the shared room's TV player. A deterministic failure, not load noise.
+  //
+  // So parallelism is roughly a 1.5-2x wall-clock win that currently costs
+  // determinism, and a flaky gate is worth less than a slow one. The real unlock
+  // is giving each spec its own room rather than raising this number — until
+  // that lands, this stays 1. Production uses the durable Upstash driver and has
+  // no such constraint.
   workers: 1,
   use: {
     baseURL: `http://${HOST}:${PORT}`,

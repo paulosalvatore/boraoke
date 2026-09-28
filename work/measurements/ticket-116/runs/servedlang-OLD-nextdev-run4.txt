@@ -1,0 +1,68 @@
+=== served-lang targeted: servedlang-OLD-nextdev #4 ===
+root: /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-reverse-check
+head: 66e0cd4
+loadavg-start: { 15.77 16.77 18.43 }
+
+[WebServer]  ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+[WebServer]  We detected multiple lockfiles and selected the directory of /Users/paulosalvatore/Documents/GitHub/boraoke/package-lock.json as the root directory.
+[WebServer]  To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+[WebServer]    See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+[WebServer]  Detected additional lockfiles: 
+[WebServer]    * /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-reverse-check/package-lock.json
+[WebServer] 
+
+Running 7 tests using 1 worker
+
+[1/7] [chromium] › e2e/served-lang.spec.ts:93:7 › served <html lang> per route (TICKET-79) › app-wide routes follow the visitor: cookie, then Accept-Language, then pt-BR
+[2/7] [chromium] › e2e/served-lang.spec.ts:105:7 › served <html lang> per route (TICKET-79) › the venue TV serves the ROOM's language, never the visitor's
+  1) [chromium] › e2e/served-lang.spec.ts:105:7 › served <html lang> per route (TICKET-79) › the venue TV serves the ROOM's language, never the visitor's 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "en"
+    Received: "pt-BR"
+
+      108 |     // The exact bug TICKET-75 was filed for: an `es` patron cookie on a room
+      109 |     // whose screen renders English copy.
+    > 110 |     expect(await servedLang(`/${room}/tv`, { cookieLocale: "es" })).toBe("en");
+          |                                                                     ^
+      111 |     expect(
+      112 |       await servedLang(`/${room}/tv`, { acceptLanguage: "es-ES,es;q=0.9" }),
+      113 |     ).toBe("en");
+        at /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-reverse-check/e2e/served-lang.spec.ts:110:69
+
+    Error Context: test-results/served-lang-served-html-la-ceb1b-anguage-never-the-visitor-s-chromium/error-context.md
+
+
+[3/7] [chromium] › e2e/served-lang.spec.ts:123:7 › served <html lang> per route (TICKET-79) › the legacy /default screen stays pt-BR for any visitor
+[4/7] [chromium] › e2e/served-lang.spec.ts:129:7 › served <html lang> per route (TICKET-79) › the TICKET-75 client-side lang patch is gone from the served HTML
+[5/7] [chromium] › e2e/served-lang.spec.ts:135:7 › served <html lang> per route (TICKET-79) › the patron room keeps its full chain: cookie → room → Accept-Language → pt-BR
+  2) [chromium] › e2e/served-lang.spec.ts:135:7 › served <html lang> per route (TICKET-79) › the patron room keeps its full chain: cookie → room → Accept-Language → pt-BR 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "en"
+    Received: "es"
+
+      137 |
+      138 |     // No cookie → the venue's default wins over the browser's own preference.
+    > 139 |     expect(await servedLang(`/${room}`, { acceptLanguage: "es-ES,es;q=0.9" })).toBe("en");
+          |                                                                                ^
+      140 |     // An explicit patron cookie still wins over the venue default.
+      141 |     expect(await servedLang(`/${room}`, { cookieLocale: "es" })).toBe("es");
+      142 |     // A room nobody ever created falls through to the visitor's own chain.
+        at /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t116-reverse-check/e2e/served-lang.spec.ts:139:80
+
+    Error Context: test-results/served-lang-served-html-la-a14ba-m-→-Accept-Language-→-pt-BR-chromium/error-context.md
+
+
+[6/7] [chromium] › e2e/served-lang.spec.ts:148:7 › served <html lang> per route (TICKET-79) › the host console follows the host's cookie, not the room
+[7/7] [chromium] › e2e/served-lang.spec.ts:153:7 › served <html lang> per route (TICKET-79) › metadata still renders alongside the lang fix (TICKET-74 guard)
+  2 failed
+    [chromium] › e2e/served-lang.spec.ts:105:7 › served <html lang> per route (TICKET-79) › the venue TV serves the ROOM's language, never the visitor's 
+    [chromium] › e2e/served-lang.spec.ts:135:7 › served <html lang> per route (TICKET-79) › the patron room keeps its full chain: cookie → room → Accept-Language → pt-BR 
+  5 passed (12.9s)
+exit-code: 1
+wall-clock-seconds: 13
+loadavg-end: { 14.87 16.55 18.33 }
+# --- END OF RUN ---
