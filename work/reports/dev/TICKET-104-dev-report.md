@@ -569,3 +569,69 @@ The roll primitive changed from **mint** to **re-set**, so every assertion about
 ### What I'd flag to the reviewer about my own process
 
 I shipped the rotation fix with a green unit suite and a clean mutation table, and it was wrong. The mutants I chose all probed *eviction*, because eviction was the bug I had just found — none probed *concurrency*, because I was not thinking about it. Mutation testing proves a suite can fail; it cannot tell you which property you forgot to think about. The thing that caught this was an end-to-end test exercising a real browser doing two things at once, and the only reason it got diagnosed rather than dismissed was refusing to write off a failure in a file I had touched.
+
+---
+
+## Gates — round 4 final
+
+| Gate | Result |
+|---|---|
+| `npm test` (jest) | **53 suites, 961 passed / 5 skipped / 966 total**, exit 0 |
+| `npm run build` | compiled successfully |
+| ES2019 bundle check | **OK** — all 49 chunks parse at ES2019 |
+| `scripts/check-css-target.mjs` | **OK** — TV surface uses nothing newer than Chrome 68 |
+| `npx tsc --noEmit` | clean over `app/ lib/ components/ e2e/`; only the pre-existing `e2e/advance-auth.spec.ts` error that is also on `main` |
+| `npm run test:e2e` | distribution below |
+
+### e2e distribution — 10 fresh-server runs, 10 of 10 VALID
+
+Each run gets its own port with `CI=1`, so `reuseExistingServer` is off and Playwright starts and tears down its own server — a genuinely cold run every time, and an occupied port fails loudly instead of silently measuring another worktree's server. `.next` was cleaned first (see the third failure family below). Machine was quiet: load 6.9-39.7 on 10 cores, against the 150-293 under which the earlier attempts were taken.
+
+```
+### A. FULL SUITE — 5 runs, one fresh server each
+  full run 1 (port 3130, 502s, load 8.26):  pass —  116 passed (8.4m)
+  full run 2 (port 3130, 381s, load 6.93):  pass —  116 passed (6.3m)
+  full run 3 (port 3130, 392s, load 8.92):  FAIL —  1 failed  115 passed (6.5m)
+          1) [chromium] › e2e/render-and-links.spec.ts:262:5 › /[room]/tv renders the YT iframe host with a seeded queue
+  full run 4 (port 3130, 390s, load 13.51): pass —  116 passed (6.5m)
+  full run 5 (port 3130, 426s, load 17.21): pass —  116 passed (7.1m)
+### B. creator-reentry spec (the changed one) — 5 runs, one fresh server each
+  spec run 1 (port 3130, 42s, load 18.87): pass —  10 passed (40.4s)
+  spec run 2 (port 3130, 43s, load 16.20): pass —  10 passed (42.9s)
+  spec run 3 (port 3130, 49s, load 21.62): pass —  10 passed (47.5s)
+  spec run 4 (port 3130, 65s, load 39.72): pass —  10 passed (1.1m)
+  spec run 5 (port 3130, 39s, load 27.28): pass —  10 passed (37.7s)
+```
+
+**Full suite: 5/5 valid, 4 clean, 1 run with a single failure. Changed spec: 5/5 valid, 5 clean (50/50 tests).** Wall clocks 6.3-8.4 min sit in a tight band around the ~11-minute warm baseline with none of the 5-7 hour absurdities of the discarded round-3 distribution; no run tripped the arithmetic canary; no run showed build-artefact errors.
+
+**Validity criteria, stated so this distribution can be audited rather than trusted.** A run is VOID, not FAILED, if any of these hold — because each proves the measurement broke rather than the code:
+1. `contrast math sanity › black text on white = 21:1` appears in the failures. It asserts arithmetic over two constants and cannot fail for a product reason.
+2. Wall clock wildly outside the baseline band (the discarded round-3 runs were 5.3-7.0 **hours**).
+3. `Timed out waiting 120000ms from config.webServer` — `next dev` never became reachable, so nothing executed.
+4. Missing `.next` manifests, `Cannot find module './vendor-chunks/qrcode.js'`, or `__webpack_modules__[moduleId] is not a function` — build-artefact corruption.
+
+### The single failure is not attributable to this change, checked rather than assumed
+
+`e2e/render-and-links.spec.ts:262 › /[room]/tv renders the YT iframe host with a seeded queue`, 1 of 5 runs.
+
+That file **does** import `dropCreatorIdentity` from `e2e/helpers.ts`, which I changed — so it earned a real check rather than a wave-through:
+
+- The failing test does not call `dropCreatorIdentity`. The four call sites are at lines 292, 341, 356 and 396, all **after** line 262 in file order, and Playwright runs a file serially in one worker — so my helper change cannot have altered the state this test inherits.
+- The test creates a room, seeds a song, opens `/[room]/tv` and asserts the hero renders within an 8s timeout. It touches no claim credential, no identity, no session and no logout — nothing on any path this PR changes.
+- It passed 4 of 5 runs including both neighbours of the failing one.
+
+Timing family, on the pre-existing cold-`next dev` class. Not mine.
+
+### Three failure families, kept separate
+
+1. **Timeout / cold-compile** — `page.goto` timeouts, `webServer` unreachable, 8s render assertions. Load-sensitive and pre-existing across the whole suite; `main` fails cold runs with none of this code present. `served-lang.spec.ts:105` (deterministic, TICKET-116) and `search.spec.ts` (random on cold caches) are the documented members. Root cause is the suite running against `npx next dev`; TICKET-116's `next build` + `next start` is the fix and is not this ticket's.
+2. **Build-artefact corruption** — a third family, and it was mine to cause: `next build` and `next dev` share `.next/`, and I ran `npm run build` mid-session while e2e runs were using the same directory. Signature is missing manifests and `vendor-chunks` module errors. `rm -rf .next` removed it completely. **Flagged for TICKET-116**, because moving e2e to `next build` makes this collision *more* likely, not less, unless the build is isolated (a distinct `distDir` or per-worktree build dirs) — otherwise the fix for family 1 manufactures family 2 routinely.
+3. **Real assertion failures on changed paths** — **none in this distribution.** The one that did occur earlier in the round was the hero test, which was genuinely mine and is fixed (see the correction section above).
+
+## Friction (round 4)
+
+- **A shared port range.** Another worktree was cycling servers through 3136/3137/3138 while this lane held 3130-3139. With `reuseExistingServer: !CI` that is a silent hijack — the suite would measure another branch's code and report green. `CI=1` plus an `lsof` pre-flight makes it loud. Filed to the framework inbox.
+- **`next build` and `next dev` share `.next/`.** Running the build gate between e2e runs corrupts the dev server's artefacts, and the resulting failures look like ordinary test failures. Build gates and e2e runs must not interleave in one worktree.
+- **A load average is a bad proxy for whether a box can be measured.** This machine sat at 150+ while a 3-test run completed in 27s, because a permanent Docker/Virtualization VM inflates the average without starving Playwright. A load gate would have waited out its cap and measured nothing. Judging each run on its own self-consistency — wall clock against a known band, plus an assertion that cannot fail for a product reason — is the instrument that actually works.
+- **A mis-aimed mutant is still evidence.** P4 matched `attachClaimCookie` instead of `rollClaimCookie` because the two bodies are byte-identical, and it survived — revealing that nothing asserted the `Max-Age` the routes actually put on the wire, only the constant in the options object. Read what a surviving mutant really hit before re-aiming it.
