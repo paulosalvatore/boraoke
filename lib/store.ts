@@ -35,5 +35,24 @@ function createStore(): QueueStore {
   return resolveDriver() === "upstash" ? createUpstashStore() : new MemoryStore();
 }
 
-/** The process-wide store singleton. */
-export const store: QueueStore = createStore();
+/**
+ * The process-wide store singleton — pinned to `globalThis` (TICKET-116).
+ *
+ * A plain `export const store = createStore()` is discarded whenever this module
+ * is RE-EVALUATED, and under `next dev` that happens on every route's first
+ * compile and again after each ~25s idle eviction. The queue simply vanished
+ * mid-test, at arbitrary points: it is the mechanism behind the deterministic
+ * `served-lang.spec.ts` failure that made `main` red, and behind the TICKET-65 /
+ * 68 / 88 / 92 deflaking work and the three warm-up helpers in `e2e/helpers.ts`.
+ * Pinning to `globalThis` — the standard Next.js dev pattern — means a
+ * re-evaluation rebinds to the SAME instance instead of building a fresh one.
+ *
+ * Unconditional, not `NODE_ENV !== "production"`-guarded, for two reasons: the
+ * e2e suite now runs a PRODUCTION build on the memory driver (so a NODE_ENV
+ * guard would exclude the case this exists for), and the Upstash driver holds
+ * no local state, so pinning it is a no-op rather than a risk. Serverless gives
+ * each instance its own global anyway — this changes nothing in production.
+ */
+const globalForStore = globalThis as unknown as { __boraokeQueueStore?: QueueStore };
+export const store: QueueStore =
+  globalForStore.__boraokeQueueStore ?? (globalForStore.__boraokeQueueStore = createStore());

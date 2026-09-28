@@ -45,6 +45,26 @@ async function warmUp(page: Page) {
   await page.goto("/default/admin");
 }
 
+/**
+ * Clear the browser's cookies for a test that needs an UNAUTHENTICATED start.
+ *
+ * TICKET-116 — why the `about:blank` navigation is load-bearing. `warmUp` leaves
+ * the page sitting on the AUTHED `/default/admin` dashboard, which polls
+ * `/api/host/session` every few seconds; that endpoint is a ROLLING session (see
+ * lib/host-auth.ts) and RE-ISSUES the host cookie on every successful probe. A
+ * bare `clearCookies()` therefore races an in-flight poll whose `Set-Cookie`
+ * lands immediately AFTER the clear, silently restoring the very session the
+ * test just removed — which then satisfies the analytics probe and renders the
+ * link the test asserts is absent. Measured against a production build: the
+ * assertion failed on slow iterations (6-7s) and passed on fast ones (2s), and
+ * it reproduced under `next dev` only rarely because the store wipe hid it.
+ * Navigating away first unmounts the poller, so the clear is the last word.
+ */
+async function clearCookiesSafely(page: Page) {
+  await page.goto("about:blank");
+  await page.context().clearCookies();
+}
+
 /** Create a room via /new and return its id + one-time host code. */
 async function createRoom(
   page: Page,
@@ -285,7 +305,7 @@ test("/[room]/admin: login → controls + mode switcher + customer-screen links"
   // test's own room login and defeat the "must not render" assertion. A real
   // venue host never has that cookie, so strip it here to test the honest
   // scenario: a session minted from nothing but this room's own hostCode.
-  await page.context().clearCookies();
+  await clearCookiesSafely(page);
   const { id, hostCode } = await createRoom(page, "Bar Render Admin");
   await page.goto(`/${id}/admin`);
 
@@ -331,7 +351,7 @@ test("/[room]/admin: logout control is absent on the login gate (unauthenticated
   // TICKET-77 (host logout): a real dashboard control cannot render before
   // the dashboard itself does — the gate and the dashboard are mutually
   // exclusive branches in AdminRoom. Pin that explicitly rather than assume it.
-  await page.context().clearCookies();
+  await clearCookiesSafely(page);
   const { id } = await createRoom(page, "Bar Logout Gate");
   await page.goto(`/${id}/admin`);
   await expect(page.getByLabel(/código do host/i)).toBeVisible();
@@ -343,7 +363,7 @@ test("/[room]/admin: logout control clears the session on the wire (confirm → 
   // 30-day session window): POST /api/host/session had zero callers anywhere
   // in the UI before this. Verify on the wire — not by trusting the client
   // state flip — that a session genuinely dies server-side.
-  await page.context().clearCookies();
+  await clearCookiesSafely(page);
   const { id, hostCode } = await createRoom(page, "Bar Logout Wire");
   await page.goto(`/${id}/admin`);
   const token = page.getByLabel(/código do host/i);
@@ -380,7 +400,7 @@ test("/[room]/admin: logout negative control — a failed clear leaves the host 
   // logged out, and the session must remain genuinely live — this is the
   // negative control the ticket asked for (stub the POST, confirm the
   // clearing assertion would catch a broken implementation).
-  await page.context().clearCookies();
+  await clearCookiesSafely(page);
   const { id, hostCode } = await createRoom(page, "Bar Logout Negative");
   await page.goto(`/${id}/admin`);
   const token = page.getByLabel(/código do host/i);

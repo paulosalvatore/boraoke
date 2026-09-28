@@ -204,9 +204,51 @@ export async function warmFeedbackRoute(request: APIRequestContext) {
 }
 
 /**
- * Drain a room's queue to empty via authenticated advances. Real test seeds are
- * a handful of entries, comfortably under the per-room advance rate limit; the
- * loop bound is only a runaway guard.
+ * Remove every queued entry through the HOST control plane
+ * (`POST /api/host/remove`), which is host-authed but — unlike advance — carries
+ * NO per-room rate limit, and is idempotent by contract (an id already gone
+ * still returns 200). Requires a host session cookie, so it logs in first.
+ *
+ * This is the fallback arm of {@link drainQueue}, not a general-purpose helper:
+ * prefer draining by advance, which exercises the real rotation path.
+ */
+async function removeAllEntries(
+  request: APIRequestContext,
+  roomId: string,
+  rawHostCode?: string,
+): Promise<void> {
+  const q = roomQuery(roomId);
+  const loginQ = roomId === DEFAULT_ROOM ? "" : q;
+  await request.post(`/api/host/login${loginQ}`, {
+    data: { token: rawHostCode ?? DEV_FALLBACK_TOKEN },
+  });
+  const data = await (await request.get(`/api/queue${q}`)).json();
+  for (const entry of data.items ?? []) {
+    await request.post(`/api/host/remove${q}`, { data: { entryId: entry.id } });
+  }
+}
+
+/**
+ * Drain a room's queue to empty via authenticated advances.
+ *
+ * TICKET-116 — why this is no longer a bare advance loop. Under `next dev` the
+ * in-memory store was silently WIPED by module re-evaluation every time a route
+ * compiled or was evicted, so a queue that this helper failed to drain got
+ * cleared for free by the dev server a moment later. Running against a
+ * production build removes that accidental reset — correctly — and it exposed a
+ * dependency the suite did not know it had: the shared `default` room's queue
+ * now survives for the whole run, and `POST /api/queue/advance` is capped at 12
+ * per room per 60s (`lib/advance-rate-limit.ts`). Past that cap the advances 429
+ * silently, the loop below spins without progress, and the NEXT spec to assert
+ * on `default` sees leftovers — measured as 4 failures reading
+ * `toHaveCount(3) -> received 7` and an idle `/tv` that still had a player.
+ *
+ * So: advance while advancing works (the real rotation path, unchanged for the
+ * handful-of-entries case every spec actually has), and if the queue is still
+ * not empty — which now only happens when the rate limit bites — fall back to
+ * host-authed removal, which has no such cap. The fallback is deliberately
+ * second: it must never mask a genuine advance failure in a spec that is
+ * testing advance.
  */
 export async function drainQueue(
   request: APIRequestContext,
@@ -216,6 +258,8 @@ export async function drainQueue(
   for (let i = 0; i < 60; i++) {
     const data = await (await request.get(`/api/queue${roomQuery(roomId)}`)).json();
     if (!data.items?.length) return;
-    await advanceOnce(request, roomId, rawHostCode);
+    const res = await advanceOnce(request, roomId, rawHostCode);
+    if (!res.ok()) break; // rate-limited (429) or otherwise refused — stop spinning
   }
+  await removeAllEntries(request, roomId, rawHostCode);
 }
