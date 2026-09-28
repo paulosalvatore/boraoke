@@ -1,5 +1,41 @@
 # boraoke — Manager Log
 
+## 2026-09-28 (later) — FOUR merged today (103, 106, 109, 84). The session's biggest finding is that our e2e suite tests a DEV SERVER and cannot pass a cold run.
+
+**Read this before trusting any "e2e green" on this product.** `main` at `6658fb9`. Three worktrees: `t99-runtime` (#80) and `t101-landing` (#79) are the Global TM's, parked; `t104-creator-admin` (#81) is mid-distribution.
+
+### THE FINDING THAT OUTRANKS EVERYTHING ELSE (TICKET-116)
+
+**`playwright.config.ts:34` runs the e2e suite against `npx next dev`.** Measured on **pure `origin/main`** with no PR code present, cold cache: **5 of 5 runs failed**, seven of twelve `search.spec` tests failed at least once, and **the failing set changes every run**. One run died with `Timed out waiting 120000ms from config.webServer` — the dev server never booted, so no test executed at all.
+
+Everything this house has been patching for weeks follows from that one line, in **three families**:
+1. **Cold-compile timeouts** — routes compile lazily *during* tests, so first-compile latency lands inside 5s/30s assertion windows.
+2. **Vanished state** — module re-evaluation discards the in-memory singletons (`lib/rooms.ts:278`, `lib/store.ts:39`, neither pinned to `globalThis`), wiping every room and queue entry mid-test. This is the deterministic `served-lang.spec.ts:105` failure that made `main` red.
+3. **`.next` artefact corruption** — `next build` and `next dev` share `.next/`, so a build mid-session corrupts the running server (missing manifests, `vendor-chunks` module errors).
+
+Plus: routes are **evicted and recompiled after ~25s idle**, so (1) and (2) recur at arbitrary points — which is why **no warm-up ordering ever closed it**, and `workers: 1` exists solely to work around (2).
+
+**The cure is `next build` + `next start`** — no lazy compilation, no module re-evaluation, no eviction — and it also makes e2e test what we actually deploy rather than a dev server that differs in strict-mode, minification and bundling. **It MUST ship with build isolation** (a distinct `distDir` or per-worktree build dirs), because otherwise it manufactures family 3 against the `run-app` skill's own hand-testing workflow.
+
+**Proven dead ends, so nobody retries them:** a warm-up **relocates** the compile cost rather than removing it (Playwright charges `beforeEach` against the *test's* timeout; the hook belongs in `beforeAll` with its own budget); an **invalid-body fire-to-compile warms the route but never the success-path modules**, which is a hole in the repo's own idiom; and no hook can run in a server that never booted.
+
+**Until that lands, every "e2e green" on boraoke is conditional on a WARM CACHE — including the evidence behind today's four merges.** State that caveat when reporting one.
+
+### Merged today
+**#83 TICKET-103** (TV focus state — live, prod-verified: video 35.6%→93%, QR always painted over the video, timed queue overlay), **#82 TICKET-106** (quota spike), **#85 TICKET-109** (join-card overlap), **#84 TICKET-108** (**billed `search.list` 3.75 → 2.25 per queued song, −40%, hit@10 held at 79% with an identical miss set**).
+
+### PR #81 (TICKET-104) — still open, and the reason is instructive
+Failed a security gate: the "credential page JS cannot read" claim was **false** (`POST /api/identity` echoes the cookie value; `/new` mirrors it as `patronUuid`), demonstrated end-to-end in real browsers. Redesigned to a purpose-built httpOnly credential with **server-side revocation**. **Neither blocker was ever live in production** — the claim route doesn't exist on `main`.
+
+**This ticket's signature risk, hit TWICE: every mechanism that WRITES on the authentication path can recreate the lockout the ticket exists to remove.** Round 3's capped token list evicted another device's credential; round 4's rotation let two concurrent rolls each delete the presented hash, so a device could be **locked out by its own successful re-entry**. The shipped version writes nothing — it re-sends the held token with a fresh `Max-Age`. **Rotation was never what secured this credential; server-side revocation is.**
+
+### Standing rules learned today
+- **A known-pre-existing failure class is still YOURS to investigate when it lands in a file you changed.** A Dev nearly missed a real bug in its own code because the TM told it timeouts were pre-existing. The amendment came from the agent, and it is right.
+- **Gate reports need a distribution, not one run** — and state the **condition** (warm vs cold). Two flawed measurements are on the record today: a Dev's `113 passed/0 failed` on a spec failing ~43% of the time, and **the TM's own "8 clean `main` runs" that were ~2 cold and 6 warm**, used to wrongly attribute a defect to a PR.
+- **Void a run, don't triage it**, when: an impossible assertion fails (a constants-only canary), wall-clock is wildly off baseline, the box was contended, or `.next` artefacts are corrupt.
+- **A plausible mechanism is not evidence.** Three confident explanations for one flaky test — the budget hypothesis, spec ordering, and a miscompared control — were all wrong, and each was settled cheaply by a measurement nobody had run.
+
+
 ## 2026-09-28 — CHECKPOINT. Three merged (103 TV focus state LIVE + verified on prod, 106 spike, 109 overlap). #81 blocked on a security FAIL; #84 finished, awaiting a Tech-Lead decision.
 
 **Written for a stranger — this section alone is enough to resume.** `main` at `32e58cb`+, clean. **Three worktrees, all intentional:** `t99-runtime` (PR #80) and `t101-landing` (PR #79) belong to the Global TM and are **parked — do not touch**; `t104-creator-admin` (PR #81) is mid-round-3.
