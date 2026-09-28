@@ -1,7 +1,7 @@
 # TICKET-117 — A value for `FEEDBACK_ADMIN_TOKEN` is committed on `main`, and that variable gates a live admin route
 
 **Filed:** 2026-09-28, found during the TICKET-104 security work. **Not** introduced by any PR in flight — it is on `main` and in git history.
-**Priority:** MED-HIGH pending one answer (below). Not an emergency; the repo is private.
+**Priority:** LOW — **the question below is ANSWERED: production does not set this variable.** Hygiene fix only; no rotation, no incident.
 **Type:** Security / credential hygiene
 **Size:** S
 
@@ -40,3 +40,24 @@ Worth making that the habit: when a scanner flags an env assignment, **grep the 
 
 - Use the **`handle-secret`** skill. Never print a value, never echo it into a report, never commit one.
 - Rotation is an outward-facing action — it needs Tech-Lead authorisation before it happens, not after.
+
+## 2026-09-28 ANSWERED — production does NOT set `FEEDBACK_ADMIN_TOKEN`. LOW, hygiene only.
+
+Checked by listing the production environment's variable **names** (`vercel env ls`), which prints values only as encrypted blobs — no secret was read, printed or written to disk, and `vercel env pull` was deliberately not used.
+
+Production holds exactly **12** variables: `GOOGLE_CLIENT_SECRET`, `HOST_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`, `KV_REST_API_TOKEN`, `KV_REST_API_URL`, `KV_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `REDIS_URL`, `UPSTASH_REDIS_REST_TOKEN`, `UPSTASH_REDIS_REST_URL`, `YOUTUBE_API_KEY`.
+
+**`FEEDBACK_ADMIN_TOKEN` is not among them.** So `app/api/feedback/route.ts` fails closed in production (its own header documents that posture), and the committed string is a **local-only dev value that has never been a live credential**.
+
+**Consequences:** no rotation, no history rewrite, no Tech-Lead decision, no incident. This drops to the third option in the list above.
+
+### Remaining work (small)
+
+- Replace the literal in `work/reports/testing/TICKET-11-app-test.md:8` with a placeholder such as `FEEDBACK_ADMIN_TOKEN=<your-local-token>`, and note in the doc that the variable is local-only and unset in production.
+- Add a line to the same doc for `work/evidence/TICKET-89/apptester-ticket-89.mjs` recording that its `cantai-dev-host` hit is the documented dev fallback, so neither file re-litigates the next time `secret-scan` runs over them.
+
+### Keep the lesson even though the answer was benign
+
+The triage step is what mattered, and it stays worth doing: **when a scanner flags an env assignment, grep the variable name against `app/` and `lib/` before calling it benign.** Here that grep is what turned "documentation noise" into "a variable consumed by an auth check", which is what justified spending two minutes on the production check. The check was cheap, the answer was clean, and the alternative — assuming benign because it looks like docs — is how a live credential would eventually slip through.
+
+Equally: the answer came from a **names-only** listing. Reaching for `vercel env pull` would have put all 12 production secrets on disk to establish that a 13th does not exist.
