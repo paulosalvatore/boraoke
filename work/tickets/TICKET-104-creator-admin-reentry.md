@@ -37,3 +37,25 @@ A `creatorUuid`-based claim is an **authentication** path, so it gets adversaria
 - The homepage hero, on a device with a created room, leads with that room and a resume/open-admin CTA instead of the generic create hero; a device with no created room sees today's hero unchanged.
 - The existing `cantai_`-prefixed keys are **not renamed** — renaming drops live user state (`lib/room-memory.ts:18-22`).
 - `__tests__/room-memory.test.ts` still green; new logic lands in pure injectable-storage helpers matching that file's existing style (jest here is node-env only, no jsdom).
+
+## 2026-09-28 CLOSE — security re-gate APPROVED (0 blockers). Merged with three follow-ups filed.
+
+The first security gate **failed** this PR with two blockers. After two redesign rounds the re-gate **APPROVED** it with **0 blockers and 10 observations**, verifying both original attack chains **by execution, with a positive control in every run**.
+
+- **B-S1 (credential exfiltration) — closed at the root, not patched.** Everything page JS can reach (`document.cookie`, every storage key, the `/api/identity` echo, both host probes) contains no trace of the token; 12 replay combinations from a fresh browser profile all 401, while the **real** token in a fresh profile does reach claim 200 + moderation 200 — so the harness could detect success and didn't. The old credential is inert: `creatorUuid` in a cookie, in the query and in the body all 401. "Zero authorization reads" was verified exhaustively (94 files, two positive controls firing): of 12 `creatorUuid` occurrences, 8 are comments and the rest are the type, the parameter and the single write.
+- **B-S2 (cross-site logout lockout) — closed, both layers live and separable.** The exact exploit returns 401 and changes nothing. Five foreign-provenance variants against a genuinely valid session all 401, with same-origin / same-site / absent controls returning 200 — so neither guard is standing in for the other. No room-existence oracle (identical bodies, measured).
+- **The roll mechanism — right as shipped.** No store write on the authentication path. 12 concurrent claims and 12 concurrent authenticated probes all 200 with the token still live. Neither the eviction defect nor the lost-update race reproduces, **because nothing is written to lose**.
+
+### The lesson this ticket should be remembered for
+
+**Every mechanism that WRITES on the authentication path recreated the lockout this ticket exists to remove — three times.** Round 3's capped token list evicted another device's credential; round 4's first rotation let two concurrent rolls each delete the presented hash, so a device could be **locked out by its own successful re-entry**; and the surviving `MAX_CLAIM_TOKENS` behaviour evicts the owner via other people's ordinary logins (TICKET-120). The shipped design writes nothing at all. **Rotation was never what secured this credential — server-side revocation is.**
+
+A second, separate lesson: **a confidently-worded sentence outran the code four times** on this PR — the "cookie page JS cannot read" contract line, the O4 over-credit, the "server-derived" throttle key, and the "devices, not issues" docblock. The code improved every round; that habit did not. Two of those claims were corrected in the PR body at merge time rather than being left to propagate, which is the only reason they are not still believed.
+
+### Filed, not fixed here (all pre-existing or not-worsened)
+
+- **TICKET-118 (HIGH)** — logout revokes the claim credential but **not a host session already minted from it**, and the session value is a deterministic HMAC with **no rotation lever**, so a compromised venue has **no recovery path**. Do not describe this feature as providing one.
+- **TICKET-119 (MED)** — the throttle key is **client-controlled** (`x-real-ip` / `x-forwarded-for`), so the host-code brute-force bound is resettable; reachable through the pre-existing login route alone. Whether Vercel's edge overwrites those headers in production is unverified and decides the severity.
+- **TICKET-120 (MED-HIGH)** — the claim-token cap counts **issues, not devices**, on the login path: five staff logins evict the owner's phone back onto a code they were shown once.
+
+Gates at merge: jest **55 suites / 996 passed / 5 skipped**, ES2019 and Chrome-68 floors OK, full-suite distribution **10 of 10 runs valid** (4 of 5 clean, changed spec 50/50), with the single failure cleared by file-order proof rather than assertion.
