@@ -478,3 +478,21 @@ button.joinBtn {
     flex: none;
   }
 }
+
+/* ── Returning-creator hero secondary links (TICKET-104) ─────────────────── */
+/*
+ * The row of quieter links under the "open admin" CTA (TV, public room, create
+ * another). Plain flex + gap + wrap, which is the same Chrome-68-safe vocabulary
+ * the rest of this file uses (see scripts/check-css-target.mjs).
+ */
+.creatorLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin-top: 0.9rem;
+  font-size: 0.9rem;
+}
+
+.creatorLinks a {
+  color: var(--accent-text);
+}

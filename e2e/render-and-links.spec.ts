@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { warmModerationRoutes } from "./helpers";
+import { warmModerationRoutes, dropCreatorIdentity } from "./helpers";
 
 /**
  * TICKET-20 — Render + link test suite. The TL explicitly distrusts prior
@@ -307,6 +307,9 @@ test("/[room]/admin: login → controls + mode switcher + customer-screen links"
   // scenario: a session minted from nothing but this room's own hostCode.
   await clearCookiesSafely(page);
   const { id, hostCode } = await createRoom(page, "Bar Render Admin");
+  // TICKET-104: present as a non-creator device so the host-code gate is the
+  // path under test (a creator is auto-claimed past it by design).
+  await dropCreatorIdentity(page);
   await page.goto(`/${id}/admin`);
 
   // login gate
@@ -353,6 +356,9 @@ test("/[room]/admin: logout control is absent on the login gate (unauthenticated
   // exclusive branches in AdminRoom. Pin that explicitly rather than assume it.
   await clearCookiesSafely(page);
   const { id } = await createRoom(page, "Bar Logout Gate");
+  // TICKET-104: present as a non-creator device so the host-code gate is the
+  // path under test (a creator is auto-claimed past it by design).
+  await dropCreatorIdentity(page);
   await page.goto(`/${id}/admin`);
   await expect(page.getByLabel(/código do host/i)).toBeVisible();
   await expect(page.getByTestId("admin-logout-button")).toHaveCount(0);
@@ -365,6 +371,9 @@ test("/[room]/admin: logout control clears the session on the wire (confirm → 
   // state flip — that a session genuinely dies server-side.
   await clearCookiesSafely(page);
   const { id, hostCode } = await createRoom(page, "Bar Logout Wire");
+  // TICKET-104: present as a non-creator device so the host-code gate is the
+  // path under test (a creator is auto-claimed past it by design).
+  await dropCreatorIdentity(page);
   await page.goto(`/${id}/admin`);
   const token = page.getByLabel(/código do host/i);
   await token.fill(hostCode);
@@ -402,6 +411,9 @@ test("/[room]/admin: logout negative control — a failed clear leaves the host 
   // clearing assertion would catch a broken implementation).
   await clearCookiesSafely(page);
   const { id, hostCode } = await createRoom(page, "Bar Logout Negative");
+  // TICKET-104: present as a non-creator device so the host-code gate is the
+  // path under test (a creator is auto-claimed past it by design).
+  await dropCreatorIdentity(page);
   await page.goto(`/${id}/admin`);
   const token = page.getByLabel(/código do host/i);
   await token.fill(hostCode);

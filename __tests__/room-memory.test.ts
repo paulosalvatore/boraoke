@@ -14,6 +14,7 @@ import {
   rememberJoinedRoom,
   forgetRoom,
   roomsToProbe,
+  primaryCreatedRoom,
   syncLocalRooms,
   type StorageLike,
 } from "@/lib/room-memory";
@@ -241,5 +242,41 @@ describe("SECURITY INVARIANT — never stores host code", () => {
       expect(room).not.toHaveProperty("hostCode");
       expect(room).not.toHaveProperty("code");
     }
+  });
+});
+
+/**
+ * TICKET-104 — the returning-creator hero decision. Pure over an already-sorted
+ * list (as `loadRooms` returns it), so the landing page's hero swap is provable
+ * without a DOM, which is the only option here (jest is node-env only).
+ */
+describe("primaryCreatedRoom — which room the hero leads with", () => {
+  it("is the most-recently-touched CREATED room", () => {
+    rememberCreatedRoom({ id: "old-bar", name: "Old Bar", createdAt: 1000 }, store);
+    rememberCreatedRoom({ id: "new-bar", name: "New Bar", createdAt: 5000 }, store);
+    expect(primaryCreatedRoom(loadRooms(store))?.id).toBe("new-bar");
+  });
+
+  it("SKIPS a more recent JOINED room — a patron's hero is not someone else's venue", () => {
+    rememberCreatedRoom({ id: "my-bar", name: "My Bar", createdAt: 1000 }, store);
+    rememberJoinedRoom({ id: "their-bar", name: "Their Bar", lastSeen: 9000 }, store);
+    const rooms = loadRooms(store);
+    expect(rooms[0].id).toBe("their-bar"); // most recent overall...
+    expect(primaryCreatedRoom(rooms)?.id).toBe("my-bar"); // ...but not the hero
+  });
+
+  it("is null for a device that only ever joined rooms", () => {
+    rememberJoinedRoom({ id: "their-bar", name: "Their Bar" }, store);
+    expect(primaryCreatedRoom(loadRooms(store))).toBeNull();
+  });
+
+  it("is null for a first-time visitor (generic hero stays)", () => {
+    expect(primaryCreatedRoom(loadRooms(store))).toBeNull();
+  });
+
+  it("picks up a room the device created AFTER joining it (created is sticky)", () => {
+    rememberJoinedRoom({ id: "bar", name: "Bar", lastSeen: 1000 }, store);
+    rememberCreatedRoom({ id: "bar", name: "Bar", createdAt: 2000 }, store);
+    expect(primaryCreatedRoom(loadRooms(store))?.id).toBe("bar");
   });
 });

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { warmModerationRoutes } from "./helpers";
+import { warmModerationRoutes, dropCreatorIdentity } from "./helpers";
 
 /**
  * E2E (TICKET-44): venue-optional song moderation.
@@ -48,6 +48,9 @@ async function createRoom(page: Page, name: string): Promise<{ id: string; hostC
 }
 
 async function loginAdmin(page: Page, id: string, hostCode: string) {
+  // TICKET-104: the creator is auto-claimed straight into the dashboard now, so
+  // to exercise the host-code gate this browser must stop being the creator.
+  await dropCreatorIdentity(page);
   await page.goto(`/${id}/admin`);
   const codeInput = page.getByLabel("Código do host");
   await codeInput.waitFor();

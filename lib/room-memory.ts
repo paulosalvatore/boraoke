@@ -159,6 +159,26 @@ export function roomsToProbe(
   return rooms.filter((r) => r.role === "created").slice(0, limit);
 }
 
+/**
+ * The room a returning CREATOR should be led with — the most-recently-touched
+ * room this device created, or null when it created none (TICKET-104).
+ *
+ * This is what flips the landing hero from the generic create-a-room pitch to
+ * "your room is here, open admin". It is deliberately a pure function over an
+ * already-sorted list (as `loadRooms` returns it) so the hero decision is
+ * unit-testable under jest's node env with no DOM — the same contract the rest
+ * of this module keeps.
+ *
+ * "created" is the only role that qualifies: a device that merely JOINED a room
+ * is a patron, and leading its hero with someone else's venue would be wrong.
+ * Note it stores nothing new — the hero reads the SAME `cantai_rooms_v1` blob
+ * that has been written since TICKET-43, so the file's never-store-the-host-code
+ * invariant is untouched by this feature.
+ */
+export function primaryCreatedRoom(rooms: RememberedRoom[]): RememberedRoom | null {
+  return rooms.find((r) => r.role === "created") ?? null;
+}
+
 /** Sort a copy most-recent-first (stable on ties by id for determinism). */
 function sortRooms(rooms: RememberedRoom[]): RememberedRoom[] {
   return [...rooms].sort(

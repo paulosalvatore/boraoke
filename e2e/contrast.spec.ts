@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
-import { warmModerationRoutes, warmTvRoutes } from "./helpers";
+import { warmModerationRoutes, warmTvRoutes, dropCreatorIdentity } from "./helpers";
 
 /**
  * TICKET-60 — Computed-style contrast assertions.
@@ -474,6 +474,9 @@ test.describe("patron room contrast", () => {
 test.describe("admin room contrast", () => {
   async function loginAdmin(page: Page, roomName: string) {
     const { id, hostCode } = await createRoom(page, roomName);
+    // TICKET-104: this spec measures the CODE gate's contrast, so stop being the
+    // creator — otherwise auto-claim goes straight to the dashboard.
+    await dropCreatorIdentity(page);
     await page.goto(`/${id}/admin`);
     await page.getByLabel(/código do host/i).fill(hostCode);
     await page.getByRole("button", { name: /^entrar$/i }).click();
@@ -549,6 +552,7 @@ test.describe("admin room contrast", () => {
 
   test("login gate: host-code input text is legible against its own fill", async ({ page }) => {
     const { id } = await createRoom(page, "Bar Contrast Admin Gate");
+    await dropCreatorIdentity(page); // TICKET-104 — reach the gate, not the dashboard
     await page.goto(`/${id}/admin`);
     const tokenInput = page.getByLabel(/código do host/i);
     await tokenInput.fill("probe-code");
