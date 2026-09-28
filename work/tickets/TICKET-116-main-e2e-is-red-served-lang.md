@@ -205,3 +205,30 @@ Whichever is chosen, verify explicitly that a `next dev` session survives an e2e
 ### Related: a measurement-hygiene rule this produced
 
 Any agent running `npm run build` during a session that also uses `next dev` is corrupting its own subsequent test runs. Until the directories are isolated, treat a run showing missing manifests or `vendor-chunks` module errors as **void for artefact reasons** — a fourth void-category alongside the canary, wild wall-clock, and contention. Clean `.next` and re-measure rather than triaging the failures.
+
+## 2026-09-28 FOURTH UPDATE — this ticket's own gate-gap premise was WRONG, and its title overstates the finding. Both corrected here.
+
+The TICKET-116 review established two facts that contradict things **this ticket asserted repeatedly**. Recording them here rather than quietly editing, because the false premise is what shaped the ticket's recommendations.
+
+### Correction 1 — "nothing in this house runs boraoke's e2e" is FALSE
+
+`.github/workflows/ci.yml` exists and runs the suite. Verified: every workflow run in this repo's history succeeded, and the reviewer measured **126/126 in 4.0m** on this branch's tip. The ticket repeatedly claimed no gate ran e2e; **it does**.
+
+**The real gap is much narrower: `ci.yml`'s only trigger is `on: pull_request`.** Every run ever recorded on this repo is a `pull_request` event. So **nothing re-verifies `main` after a merge** — which is precisely how a problem on `main` could persist unnoticed. The fix is a three-line addition (`push: { branches: [main] }`), filed as **TICKET-123**.
+
+Acceptance criterion 4 of this ticket ("close the gate gap") was therefore aimed at the wrong target. The suite was always gated on PRs; it was never gated on `main`.
+
+### Correction 2 — "`main`'s e2e suite is RED" is condition-specific, not absolute
+
+The title and early text say `main` is red. More precisely: **`main` fails when the suite is run cold with a narrow spec selection, and passes in a full-suite run.** Both are true and neither is the whole picture:
+
+- Measured here: cold, narrow selection → `served-lang.spec.ts:105` fails deterministically (3/3), and `search.spec.ts` fails 5/5 runs with a roaming failure set.
+- Also measured: a **full-suite** run passes — on a GitHub runner (126/126) and locally when warm — because alphabetically earlier specs compile the route and the warm-up helpers suppress the trigger.
+
+So the accurate statement is **not** "`main` is broken" but "**the suite's verdict depended on how it was invoked and how loaded the machine was**". That is worse for a gate than a plain failure, because a green run carried no information — which is exactly what this PR fixes.
+
+**The reviewer's framing is the right one: the gate already existed and was green; the change's value is that its verdict now means something.** A quiet CI runner cannot see a load-dependent race.
+
+### What this does not change
+
+The three failure families, the proven dead ends (warm-ups relocate rather than remove the cost; an invalid-body fire-to-compile never warms the success path; no hook runs in a server that never booted), the build-isolation requirement, and the `next build` + `next start` fix all stand — they were measured, not inferred from the wrong premise.
