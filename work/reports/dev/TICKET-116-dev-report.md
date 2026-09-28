@@ -32,13 +32,13 @@ The copy in that same response is English (`Scan to join the queue` present), so
 
 | | old config (`next dev`) | new config (built server) |
 |---|---|---|
-| **full suite, cold, `workers: 1`** | 124/124 on **3 of 3** runs | **126/126 on 5 of 5 runs** |
+| **full suite, cold, `workers: 1`** | 124/124 on **3 of 3** runs | **126/126 on 6 of 6 runs** |
 | **wall clock** | 6m57s – 7m13s | **3m54s – 4m07s** |
 | **`served-lang.spec.ts` alone, cold** | **2 failed on 5 of 5 runs** | **7/7 passed on 5 of 5 runs** |
 
 Two results, and the second is the one that carries the ticket:
 
-1. **The change makes the suite deterministic and roughly 1.8× faster.** Five cold runs, 126/126 every time, inside a 13-second spread.
+1. **The change makes the suite deterministic and roughly 1.8× faster.** Six cold runs, 126/126 every time, inside a 17-second spread (3m50s – 4m07s). The sixth was run against the exact delivered commit (`27ac203`) after everything else had landed, so the headline number is a property of what is being merged and not of an intermediate tree.
 2. **The full-suite reverse check did NOT reproduce the old failures** — the old `next dev` config passed 3 of 3 cold runs on an uncontended machine, against a recorded baseline of 5-of-5 failures. That is a finding, not a formality, and §9 reports it rather than burying it. The **targeted** reverse check is what carries the proof: `served-lang.spec.ts` run alone and cold fails **5 of 5** on the old config and passes **5 of 5** on the new one.
 
 ---
