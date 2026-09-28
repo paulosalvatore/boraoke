@@ -1,5 +1,41 @@
 # boraoke — Manager Log
 
+## 2026-09-28 — CHECKPOINT. Three merged (103 TV focus state LIVE + verified on prod, 106 spike, 109 overlap). #81 blocked on a security FAIL; #84 finished, awaiting a Tech-Lead decision.
+
+**Written for a stranger — this section alone is enough to resume.** `main` at `32e58cb`+, clean. **Three worktrees, all intentional:** `t99-runtime` (PR #80) and `t101-landing` (PR #79) belong to the Global TM and are **parked — do not touch**; `t104-creator-admin` (PR #81) is mid-round-3.
+
+### Shipped today
+- **TICKET-103 — TV focus state: MERGED, DEPLOYED, VERIFIED ON PRODUCTION.** Video goes 35.6% → 93% of the viewport, QR always painted over the video, up-next overlay on a 6s/30s cycle. Verified on `boraoke.com` itself, not inferred from a green deploy.
+- **TICKET-106 — quota spike: MERGED** (report is the deliverable).
+- **TICKET-109 — join-card overlap: MERGED.** Costs ~13% relative video area in the *normal* state; accepted because that state is **transient** (the screen auto-enters focus after 4s), so the shrink never touches the state a room actually watches.
+
+### THE TWO THINGS A COLD READER MUST NOT GET WRONG
+
+**1. The TL's "black screen, QR gone" was never his TV, and never our chrome-hide timer.** It is **YouTube-native fullscreen**, still reachable via focus-the-iframe + `F` despite `fs: 0`. In that state the iframe is the fullscreen element and **nothing of ours composites** — so a QR overlay there is impossible, not merely hard. He attributed it to TV rest mode; that was a hypothesis, not evidence, and testing it is what found the real cause. Both halves of his report were one event: the focus view he liked and the QR loss he minded arrived in a single keypress. TICKET-103 makes that state ours.
+
+**2. PR #81's central security claim was FALSE, and the durable record must say so.** It was delivered — and relayed upward by this TM — as keying on "a cookie page JS cannot read". It is readable **two** ways: `POST /api/identity` **echoes the httpOnly cookie's value in its response body**, and `/new` **sends the localStorage mirror as `patronUuid`**, which becomes `creatorUuid`. The security gate executed the full chain in real browsers: exfiltrate with one `fetch` → fresh browser profile → claim **200** → moderation on the victim's room **200**; and the victim's **logout does not revoke it**, because the marker is a cookie in the victim's own jar rather than server state. One unattended minute at a venue tablet yields remote, ~400-day, unrevokable admin, with no XSS.
+
+**Root cause is structural:** one value is required to be both client-readable (own-row highlighting, the `?uuid=` poll) and secret (the claim). It cannot be both. **Round 3 therefore redesigns the credential** — a purpose-built httpOnly admin credential issued at room creation, never echoed, never mirrored, never a parameter, with **server-side revocation** and a bounded lifetime; `creatorUuid` demoted to a non-secret ownership label.
+
+**Not live in production** — the claim route does not exist on `main`, verified directly. No incident, no hotfix, no disclosure. These are holes the PR *would* have opened, caught by the gate the round-1 Reviewer insisted was missing. **A second blocker:** `POST /api/host/session` (logout) is unauthenticated, so any third-party page plants the marker and permanently locks the creator out — proved cross-site, no click, `SameSite=lax` irrelevant since nothing needs to be *sent*, and room ids are public venue slugs.
+
+### Open, with why
+- **PR #81 (TICKET-104)** — BLOCKED on the security FAIL; round 3 in flight. Rounds 1-2 were largely sound and the IP→identity throttle re-keying **stands**; only the credential is being redesigned. Re-gate security when it lands.
+- **PR #84 (TICKET-108)** — **finished and waiting on a Tech-Lead decision, not on us.** Billed calls per queued song 3.75 → **2.25 (−40%)** with hit@10 **held at 79%** and an identical miss set. Its App Tester feel-gate is **BLOCKED**: no `YOUTUBE_API_KEY` exists locally, so the held pool is always empty and the new behaviour is structurally unreachable; the tester correctly refused to mock and report on a simulation. The choice is hold-for-a-test-key vs merge-now-gate-later. **A peer relayed the TL's answer as text sitting unsubmitted in this tab's input box; that was refused — an unsubmitted draft is not a decision, and accepting it would have manufactured the approval this TM escalated for.**
+- **The quota correction that matters:** the safe headroom is **~1.7x, not the ~4x** first relayed. 4x was only reachable via a naive "extension ⇒ never refetch" rule — the approach this TM itself proposed — which the guardrail measured at **hit@10 36%**, a textbook false win. The shipped starvation guard (narrow locally only while ≥3 held rows match) is what holds quality.
+- **Blocked on the Tech Lead:** TICKET-107 (Vault entry **plus a SEPARATE test YouTube key** — testing with the production key would spend the very 100/day bucket under conservation), TICKET-110 (real-LG validation; the LG model/webOS version also answers PR #80's shim question).
+- **Filed, unstarted:** 111 (search telemetry — the `cached` flag TICKET-85 specified and never shipped), 112 (logout-lockout copy, a TL call), 113 (geometry test covers only 1080p + normal state; **note the trap** — in focus state those boxes *do* overlap harmlessly, so a naive extension would fail on correct code), 114 (**two agents independently saw the queue drain in 1-3s with no interaction** — probably the watchdog auto-skipping a player that looks stalled, but unconfirmed, and the alternative is a patron's song vanishing before it plays), 115 (unauthenticated logout on `main` — **live**, but a recoverable nuisance today; sequenced *after* round 3 because both touch the same endpoint).
+
+### Standing facts for this product, learned today
+- **There is NO code-review bot.** The only actor on PRs is `vercel`, a deployment bot. The house's flip-to-ready-then-resolve-threads step is a genuine **no-op** here — the real gate is the out-of-band Reviewer/App-Tester/Cyber verdicts. Do not wait on threads that never arrive.
+- **The in-memory store reset RECURS.** `next dev` evicts and recompiles `/apple-icon.png` about every **25s of idle**, wiping seeded state even after every route was warmed. Warm-then-burst, no idle pause. Documented in the `run-app` skill; it has cost four testers time.
+- **`verify-green-local.sh` does not apply here** — it runs framework gates (`md-doctor`/`shell-tests`) that boraoke does not have. Not a missing gate; do not claim that verdict.
+- **Gate reports need a distribution, not one run.** A Dev reported `113 passed / 0 failed` on a spec that was failing **~43% of the time**; nobody lied, the sample size was one. Two independent runs disagreeing is a **finding to chase**, never a flake to absorb.
+
+### Five framework notes filed today (the one sanctioned framework write)
+A user's symptom is evidence but their causal attribution is a hypothesis, and relay hops flatten the two; three concrete silent-false-negative shapes (zsh word-split no-op, empty-string-hash fingerprint, a positive control shredded before the check that needed it); **`secret-scan.sh` has no Google `AIza` pattern**, so a bare Google key scans clean — found because a planted control failed, and boraoke's primary credential is that shape; one green run is not evidence on a nondeterministic path; and ticket numbers allocated from a per-branch directory listing collide silently across worktrees (two TICKET-111s today).
+
+
 ## 2026-09-27 (later) — 🟢 PR #82 MERGED (TICKET-106 spike). The quota problem is NOT a quota problem. Four tickets filed, three lanes in flight.
 
 **Written for a stranger.** `main` at `f5fc2fa`, clean. **Five worktrees, all intentional:** `t99-runtime` (#80) and `t101-landing` (#79) are the Global TM's, parked — **do not touch**; `t103-tv-focus`, `t104-creator-admin` (PR #81) and `t108-keystroke-billing` are live lanes.
