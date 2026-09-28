@@ -47,7 +47,14 @@ import {
   _clearAll,
   type CounterOptions,
 } from "./rate-limit-counter";
-import { DEFAULT_ROOM, getRoom, hashHostCode, isValidRoomId } from "./rooms";
+import {
+  DEFAULT_ROOM,
+  getRoom,
+  hashHostCode,
+  isValidRoomId,
+  issueRoomClaimToken,
+  verifyRoomClaimToken,
+} from "./rooms";
 
 /**
  * Base cookie name (legacy `default` room). Per-room cookies append the room id
@@ -184,85 +191,100 @@ export async function verifySessionValue(roomId: string, cookieValue: unknown): 
 }
 
 /**
- * Cookie marking "this device asked to be logged OUT of this room" (TICKET-104).
+ * The ADMIN CLAIM cookie for a room (TICKET-104, redesigned after the PR #81
+ * security gate).
  *
- * Auto-claim would otherwise make logout a no-op: the creator's identity cookie
- * lives 2 years, so clearing the host session and reloading `/<room>/admin` would
- * silently claim straight back in. That would break the one control this module
- * names as the mitigation for the shared-venue-tablet case (see the 30-day note
- * above) — the next person to pick up the tablet would be host again.
+ * WHY THIS EXISTS AS ITS OWN CREDENTIAL — do not collapse it back onto the
+ * identity uuid. Round 2 keyed the claim on `boraoke_identity` and the security
+ * gate broke it end-to-end in real browsers: that uuid is published to page JS
+ * twice over (`POST /api/identity` echoes the cookie's value in its response
+ * body, and `cantai_patron_uuid` mirrors it in localStorage on every room
+ * visit), and it is *required* to be client-readable for own-row highlighting
+ * and the `?uuid=` pending poll. A value that page JS can read is not a
+ * credential, so the gate exfiltrated it with one `fetch`, replayed it from a
+ * different browser profile, and took real host control of someone else's room.
+ * One value cannot be both client-readable and secret. So the claim gets its
+ * own secret, and `creatorUuid` goes back to being a non-secret ownership label.
  *
- * So logout sets this marker and the claim route refuses while it is present.
- * A successful host-code LOGIN clears it: someone who can present the code has
- * proved possession, and re-enabling their frictionless re-entry is the whole
- * point of the ticket. New cookie, so it uses the current `boraoke` brand (no
- * legacy-name constraint, same reasoning as `boraoke_identity`).
+ * The properties that make this one a credential rather than a label:
+ *   - 256 CSPRNG bits, minted server-side, **never** returned in any response
+ *     body, never mirrored into localStorage, never accepted as a request
+ *     parameter. The only place it exists client-side is this httpOnly cookie.
+ *   - Only its HASH is stored (`Room.claimTokenHashes`, `hashClaimToken`), so a
+ *     store leak yields nothing replayable.
+ *   - **Server-side revocable.** Logout clears the hashes, so a token already
+ *     copied off the device stops working. The round-2 design could not do this
+ *     — its opt-out was a marker cookie in the victim's OWN jar, which locked
+ *     the owner out while leaving the attacker's copy at 200.
+ *   - **Bounded, rolling lifetime** (below), rather than a lifetime that has to
+ *     be reasoned about against another cookie's.
  */
-export function hostNoClaimCookieName(roomId: string): string {
-  return `boraoke_noclaim_${roomId}`;
+export function claimCookieName(roomId: string): string {
+  return `boraoke_claim_${roomId}`;
 }
 
 /**
- * Lifetime of the no-claim marker. It must OUTLIVE the identity cookie it
- * suppresses (2 years, `lib/identity.ts`), or logout would quietly expire back
- * into auto-claim; 3 years gives it margin without being literally forever.
+ * Claim-cookie lifetime: 180 days, ROLLING (re-issued on every successful claim
+ * and on every successful session probe).
+ *
+ * Deliberately NOT a "big number chosen to outlive another cookie" — that was
+ * O3, and it was the wrong shape twice over: Chromium caps cookies at 400 days
+ * so a 3-year value silently became 400 days, and the cookie it was supposed to
+ * outlive *rolled* while the marker never did, so the opt-out quietly expired
+ * back into auto-claim after ~13 months. Correctness here does not depend on
+ * comparing two cookie lifetimes at all: revocation is server state.
+ *
+ * Rolling is what keeps "bounded" from meaning "eventually locks the owner out":
+ * an active venue's credential never ages out, while a room nobody has touched
+ * for six months stops carrying a standing admin credential on some old device.
  */
-export const NO_CLAIM_MAX_AGE_SECONDS = 60 * 60 * 24 * 365 * 3;
+export const CLAIM_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
 
-/** Cookie options for the no-claim marker — same scope as the session cookie. */
-export function noClaimCookieOptions() {
+/** Cookie options for the admin-claim cookie — same least-privilege path as the session. */
+export function claimCookieOptions() {
   return {
     httpOnly: true as const,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     path: HOST_COOKIE_PATH,
-    maxAge: NO_CLAIM_MAX_AGE_SECONDS,
+    maxAge: CLAIM_MAX_AGE_SECONDS,
   };
 }
 
-/** True when this device opted out of auto-claim for this room (logged out). */
-export function hasNoClaimMarker(req: NextRequest, roomId: string): boolean {
-  return Boolean(req.cookies.get(hostNoClaimCookieName(roomId))?.value);
+/** The raw claim token this request presents for `roomId`, if any. */
+export function claimTokenFrom(req: NextRequest, roomId: string): string | undefined {
+  return req.cookies.get(claimCookieName(roomId))?.value;
 }
 
 /**
- * Whether `identityUuid` is the registered creator of `roomId` (TICKET-104).
+ * Mint a claim token for a room and attach it to a response as the httpOnly
+ * claim cookie. Used at room creation (the creator's device gets it immediately)
+ * and on a successful host-code login (which is how a device that logged out, or
+ * a room predating this design, gets one).
  *
- * This is the no-typing re-entry proof. The creator's identity uuid is held in
- * the httpOnly, root-path, 2-year `boraoke_identity` cookie (`lib/identity.ts`)
- * — 24x the host session's 30-day window — and the room stores the same value as
- * `creatorUuid`, which is server-side bookkeeping never exposed to any client
- * (`PublicRoom` omits it; `__tests__/rooms.test.ts` asserts that). So a returning
- * creator proves ownership with a cookie they cannot read, forge, or leak via
- * JS, and NOTHING has to be persisted in localStorage — `lib/room-memory.ts`'s
- * never-store-the-host-code invariant stands untouched.
- *
- * Hard preconditions, all deliberate:
- *   - The caller MUST pass a uuid read from the identity COOKIE. Never accept
- *     one from a request body or query string: that would turn the localStorage
- *     mirror `cantai_patron_uuid` into a bearer credential for host access.
- *     See the ADOPTION GUARD in `lib/identity.ts`, which closes the matching
- *     hole on the cookie-minting side.
- *   - A room with no `creatorUuid` (legacy rooms, or created while the identity
- *     store was down — creation is fail-open) is NOT claimable. An absent
- *     creator must never match an absent/blank uuid.
- *
- * Comparison is constant-time for uniformity with the rest of this module;
- * uuids are not guessable by timing in practice, but nothing here needs to be
- * the one place that compares identity material with `===`.
+ * Returns false when nothing was issued (room missing), so the caller can carry
+ * on without failing the operation it was really doing — an un-issued claim
+ * token costs the creator the no-typing path, never the room.
  */
-export async function verifyCreatorClaim(
+export async function attachClaimCookie(
+  res: { cookies: { set(name: string, value: string, opts: ReturnType<typeof claimCookieOptions>): unknown } },
   roomId: string,
-  identityUuid: unknown,
 ): Promise<boolean> {
-  if (typeof identityUuid !== "string" || identityUuid.length === 0) return false;
-  // `default` has no room record and therefore no creator — it stays on the
-  // env-token path exclusively.
+  const token = await issueRoomClaimToken(roomId);
+  if (!token) return false;
+  res.cookies.set(claimCookieName(roomId), token, claimCookieOptions());
+  return true;
+}
+
+/**
+ * Whether this request presents a live claim token for `roomId`.
+ *
+ * `default` is excluded: it has no room record, so it has no claim tokens, and it
+ * is governed by the shared env `HOST_TOKEN` instead.
+ */
+export async function verifyClaim(req: NextRequest, roomId: string): Promise<boolean> {
   if (roomId === DEFAULT_ROOM) return false;
-  const room = await getRoom(roomId);
-  const creator = room?.creatorUuid;
-  if (typeof creator !== "string" || creator.length === 0) return false;
-  return timingSafeHexEqual(identityUuid, creator);
+  return verifyRoomClaimToken(roomId, claimTokenFrom(req, roomId));
 }
 
 /**
@@ -309,60 +331,67 @@ function loginKey(ip: string): string {
   return `login:${ip}`;
 }
 
-// ─── Creator-claim throttle (TICKET-104, rescoped after the PR #81 review) ───
+// ─── Admin-claim throttle (TICKET-104; re-shaped twice, so read the history) ──
 //
-// Two things about this bucket are deliberate, and the SECOND one was a shipped
-// availability defect the opus review measured before it reached production.
+// Round 1 keyed this on the IP and charged a failure even when the caller
+// presented nothing. `AdminRoom` claims on every session-less admin render, so
+// ten ordinary admin-URL opens from a venue's shared wifi 429'd the CREATOR's
+// own claim, and a 429 rendered as the code gate — the unrecoverable-code dead
+// end this ticket exists to remove, delivered to the room's owner. Measured: 3
+// failing runs out of 5.
 //
-// 1. It is NOT the login bucket. Sharing it would let claim failures spend the
-//    budget a legitimate host needs for the code gate.
+// Round 2 re-keyed it on the caller's identity uuid, which fixed that shared
+// fate but handed an unauthenticated caller an unbounded supply of
+// CLIENT-CHOSEN bucket keys. The security gate measured the consequence: 1100
+// claims with a fresh uuid each evicted the `login:<ip>` bucket from the shared
+// process-wide LRU (`lib/rate-limit-counter.ts`, MAX_TRACKED_KEYS = 1000), so
+// the host-code brute-force control became resettable at will.
 //
-// 2. It is keyed on the caller's IDENTITY, not on their IP, and only a caller
-//    who actually presented a valid identity cookie is ever charged. Keyed on IP
-//    it did the exact damage separation was meant to prevent, one layer down:
-//    `AdminRoom` POSTs claim on EVERY session-less admin render, and the route
-//    charged a failure even with no identity cookie at all, so ten ordinary
-//    session-less loads from one public IP inside a minute 429'd the CREATOR's
-//    own claim — and a 429 renders as the code gate, i.e. precisely the
-//    unrecoverable-code dead end this ticket exists to remove. Measured on a
-//    venue-shaped IP: 3 failures in 7 full-suite runs as shipped, 0 in 3 with
-//    the ceiling raised and nothing else changed.
+// So this round takes both lessons at once, and the shape is what matters:
 //
-// Why identity-keyed bucketing is sound HERE, where it would be naive elsewhere:
-// this route has no guessable secret. The caller cannot supply a uuid (the route
-// reads the cookie and nothing else), so the only "attack" is sweeping room ids
-// hoping one has `creatorUuid` equal to your own uuid — a v4 collision. Rotating
-// to a fresh identity therefore buys an attacker nothing, because a fresh
-// identity owns nothing and matches nothing. The bucket is not an anti-guessing
-// control; it is a cheap bound on one device's pointless retry loop. A caller
-// with no identity cookie is not charged and is not bounded here, which matches
-// the posture of the app's other unauthenticated single-store-read endpoints
-// (`GET /api/rooms?id=`, `GET /api/host/session`); the expensive write path has
-// its own throttle (`lib/room-create-throttle.ts`).
+//   * The key is **server-derived** (the edge-set client IP), never a value the
+//     caller chose. Bucket cardinality is therefore bounded by real clients, the
+//     same bound `login:<ip>` has always had — a claim flood can no longer evict
+//     anything that a login flood could not already.
+//   * A **valid credential is never denied by it.** The route verifies the claim
+//     token FIRST and only consults or charges this counter on a failure. That is
+//     what kills round 1's shared fate at the root rather than by re-keying: the
+//     creator's own request succeeds, so no amount of other traffic on their IP
+//     can stand between them and their room.
+//   * Only a request that actually PRESENTED a token is charged. A caller with no
+//     claim cookie — every patron who ever opens an admin URL — is free, and
+//     short-circuits before any store read.
+//
+// It is still not an anti-guessing control and should not be mistaken for one: a
+// 256-bit token is not guessable. It is a cheap bound on repeated failures.
 const CLAIM_THROTTLE_OPTS: CounterOptions = LOGIN_THROTTLE_OPTS;
 
 /**
  * Namespaced counter key for a claim-failure bucket. The argument is the
- * caller's own identity uuid — NEVER an IP, so one device can never spend
- * another device's budget (see the note above).
+ * SERVER-DERIVED client IP (see `clientIpFrom`) — never a client-chosen value,
+ * which is what made round 2's keyspace unbounded.
  */
-function claimKey(identityUuid: string): string {
-  return `hostclaim:${identityUuid}`;
+function claimKey(ip: string): string {
+  return `hostclaim:${ip}`;
 }
 
-/** True when this IDENTITY has exhausted its creator-claim failure budget. */
-export function isClaimThrottled(identityUuid: string): Promise<boolean> {
-  return isThrottled(claimKey(identityUuid), CLAIM_THROTTLE_OPTS);
+/**
+ * True when this IP has exhausted its claim-FAILURE budget. Callers must consult
+ * this only after a claim has already failed verification — a valid token is
+ * never subject to it.
+ */
+export function isClaimThrottled(ip: string): Promise<boolean> {
+  return isThrottled(claimKey(ip), CLAIM_THROTTLE_OPTS);
 }
 
-/** Record one failed creator-claim attempt for this IDENTITY. */
-export function registerClaimFailure(identityUuid: string): Promise<void> {
-  return registerFailure(claimKey(identityUuid), CLAIM_THROTTLE_OPTS);
+/** Record one failed claim attempt for this IP. */
+export function registerClaimFailure(ip: string): Promise<void> {
+  return registerFailure(claimKey(ip), CLAIM_THROTTLE_OPTS);
 }
 
-/** Clear the creator-claim failure bucket for this IDENTITY (successful claim). */
-export function resetClaimThrottle(identityUuid: string): Promise<void> {
-  return resetKey(claimKey(identityUuid));
+/** Clear the claim-failure bucket for this IP (successful claim). */
+export function resetClaimThrottle(ip: string): Promise<void> {
+  return resetKey(claimKey(ip));
 }
 
 /**
@@ -422,6 +451,46 @@ export function _clearLoginThrottle(): void {
 export async function requireHost(req: NextRequest, roomId: string): Promise<boolean> {
   const cookie = req.cookies.get(hostCookieName(roomId))?.value;
   return verifySessionValue(roomId, cookie);
+}
+
+/**
+ * Whether this request is POSITIVELY IDENTIFIABLE as coming from another site.
+ *
+ * Second, independent layer under the B-S2 fix. `requireHost` is the one that
+ * makes the gate's measured attack a 401 — a cross-site top-level POST carries no
+ * `SameSite=Lax` cookie, so it cannot prove host authority. This adds the check
+ * that does not depend on a cookie attribute holding, because the whole lesson of
+ * this round is that a security property resting on one mechanism nobody attacked
+ * is a property nobody has verified. A future `SameSite=None`, a browser quirk, or
+ * a same-site-but-not-same-origin subdomain would each quietly re-open the route;
+ * this closes it on the request's own provenance instead.
+ *
+ * Deliberately FAIL-OPEN when provenance is unstated, and that is a considered
+ * trade rather than an oversight. A non-browser client (curl, the unit suite, a
+ * venue's own integration) sends neither header, and there is no way to tell it
+ * apart from a browser that withheld them — so treating absence as hostile would
+ * break legitimate callers to defend against an attacker who, per the paragraph
+ * above, is already stopped by `requireHost` and would in any case be a *browser*
+ * and therefore send the headers. Absence is not the attack shape; a stated
+ * foreign origin is.
+ *
+ * `Sec-Fetch-Site` first (set by the browser, unforgeable by page JS, and it
+ * distinguishes the top-level-navigation case the gate actually exploited).
+ * `same-site` passes as well as `same-origin` so an apex/`www` deployment split
+ * cannot break the shared-venue tablet's real logout; `cross-site` and `none` are
+ * refused. `Origin` is the fallback for clients that send it but not
+ * `Sec-Fetch-Site`; an unparseable or literal-`null` Origin is not ours.
+ */
+export function isCrossSiteRequest(req: NextRequest): boolean {
+  const site = req.headers.get("sec-fetch-site")?.trim().toLowerCase();
+  if (site) return !(site === "same-origin" || site === "same-site");
+  const origin = req.headers.get("origin")?.trim();
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== req.headers.get("host");
+  } catch {
+    return true;
+  }
 }
 
 /**

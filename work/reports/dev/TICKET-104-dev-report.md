@@ -1,6 +1,6 @@
 # TICKET-104 — Dev report
 
-**Status:** round 2 complete — B1 and B2 fixed, all report corrections applied. Gates: jest **53 suites / 948 passed / 5 skipped / 953 total**; full Playwright **113 passed, 0 failing runs out of 3 consecutive fresh-server runs**; ES2019 + CSS-target floor gates OK. B3 (App Tester, Cyber Security) is the Tech Manager's. See `## Round 2` at the end of this file; the corrections the review asked for are applied inline above it, so this file reads as the current record rather than a patchwork.
+**Status:** ROUND 3 — the credential is redesigned after the security gate's REQUEST-CHANGES. See `## Round 3` at the end; the round-2 status line below is kept for history. Round 2 status was: B1 and B2 fixed, all report corrections applied. Gates: jest **53 suites / 948 passed / 5 skipped / 953 total**; full Playwright **113 passed, 0 failing runs out of 3 consecutive fresh-server runs**; ES2019 + CSS-target floor gates OK. B3 (App Tester, Cyber Security) is the Tech Manager's. See `## Round 2` at the end of this file; the corrections the review asked for are applied inline above it, so this file reads as the current record rather than a patchwork.
 **Worktree:** `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t104-creator-admin`, branch `ticket/104-creator-admin`
 **Plan:** `work/plans/TICKET-104-plan.md`
 
@@ -276,3 +276,178 @@ Removing the **whole** no-claim mechanism (marker check + set + clear) — the t
 | `npx tsc --noEmit` (filtered to `app/ lib/ components/ e2e/`) | clean, except the pre-existing `e2e/advance-auth.spec.ts` error that is on `main` and unrelated to this branch |
 
 Not run by me, and not mine to run: the App Tester and Cyber Security gates (B3).
+
+---
+
+# Round 3 — response to the Cyber Security REQUEST-CHANGES
+
+Report: `work/reports/cyber/TICKET-104-security-gate.md`. Two blockers, both demonstrated end-to-end in real browsers, and both real. This round **replaces the credential** rather than patching it.
+
+## What I got wrong, stated plainly
+
+My round-1 and round-2 reports asserted that the claim credential was "a cookie page JS cannot read" and that the blast radius of a copied `cantai_patron_uuid` was "zero". **Both were false**, and I asserted them as verified facts in a section headed SECURITY CONTRACT, which is how they propagated through a reviewer's endorsement and a TM's relay upward. The gate exfiltrated the value with one `fetch`, replayed it from a different browser profile, and took real host control of a room — and the victim's logout provably did not revoke it.
+
+The specific thing I failed to check: I reasoned about the *cookie's* attributes (httpOnly, path-scoped) and never asked whether the cookie's **value** was obtainable by other means. It was, twice over — `POST /api/identity` echoes it in a response body, and `cantai_patron_uuid` mirrors it in localStorage on every room visit, which `/new` then sends as `patronUuid` so it *becomes* `creatorUuid`. httpOnly on a value the server hands out elsewhere is decorative.
+
+## The redesign: a purpose-built credential
+
+The root cause is structural, exactly as the gate said: the identity uuid is *required* to be client-readable (own-row highlighting, the `?uuid=` pending poll) and was *required* to be secret (the claim). One value cannot be both. So the claim now has its own.
+
+| | Round 2 (broken) | Round 3 |
+|---|---|---|
+| Credential | the identity uuid, = `creatorUuid` | a 256-bit CSPRNG token, `boraoke_claim_<room>` |
+| Reachable by page JS | **yes** — `/api/identity` echo + localStorage mirror | **no** — never in a response body, never in localStorage, never a request parameter |
+| At rest | compared against `creatorUuid` in plaintext | only `hashClaimToken` hashes, in `Room.claimTokenHashes` |
+| Revocation | a marker cookie in the **victim's own jar** — revoked nothing for a copier | **server state**: logout clears the hashes, so every copy dies |
+| Lifetime | 3 years, reasoned against another cookie's 2 years | 180 days, **rolling**, no cross-cookie comparison at all |
+| `creatorUuid`'s role | the credential | back to being a non-secret ownership label |
+
+Lifecycle: room creation mints one and sets the cookie (never in the 201 body); a successful claim and a verified session probe roll it; **logout revokes every token server-side**; a successful host-code login mints a **fresh** one, so a revoked credential stays dead while the legitimate owner gets frictionless re-entry back. Tokens are a capped list (`MAX_CLAIM_TOKENS = 5`) so a venue can hold the credential on the tablet *and* the owner's phone — which one hash could not do without silently killing the other device.
+
+**B-S2 — logout is now authenticated.** `POST /api/host/session` requires `requireHost`, so a cross-site top-level POST is a 401 that changes nothing: no cookie planted, no token revoked. This is the fix the gate asked for, and the reason it belongs in this PR rather than in TICKET-115 is that this PR is what turns an unauthenticated logout from a recoverable nuisance into a permanent lockout.
+
+**O3 dissolves rather than being re-tuned.** No number was picked to beat another cookie's lifetime; correctness lives in server state, and the cookie is simply bounded (180 days) and rolling so an active venue never ages out. The no-claim marker is deleted entirely, which also removes O5 (page JS could plant a marker) by construction.
+
+**O1/O2 — the throttle keyspace.** The key is back to the server-derived client IP, so a caller cannot invent bucket keys and evict the login throttle from the shared LRU. That does **not** reintroduce B1's shared fate, because the shape changed: the route **verifies the credential first and only consults or charges the budget after a failure**, so a live credential is never subject to it, and a caller presenting no credential is never charged at all (no store read either). B1's property is now held by a stronger mechanism than re-keying.
+
+**O4 — correcting the record, as asked.** My earlier claim that the adoption guard "is what keeps the answer zero" was wrong: the secrecy of the uuid was, and the uuid was not secret — knowing it was sufficient *without* adoption, because the claim route read it straight from the Cookie header. The guard is kept (it still prevents obtaining a *legitimately issued* durable identity cookie, and prevents store pollution) but it is not load-bearing for this feature, and it carries a real patron-continuity cost.
+
+## Tests that would have caught both blockers
+
+Their absence is why two rounds of review missed this, so they are the centre of this round. Neither is expressible as a unit test: one needs a second browser profile, the other a second origin.
+
+- **`the claim credential cannot be exfiltrated and replayed (B-S1)`** — the victim's page scrapes *everything* JS can reach (`document.cookie`, every localStorage key, the `/api/identity` echo), asserts the claim credential is in none of it, then replays every credential-shaped scrap from a **different browser context** as each cookie name the app uses. The claim must 401, `POST /api/host/moderation` must 401, and no dashboard may render.
+- **`a cross-site top-level POST to logout changes nothing (B-S2)`** — a page served from a **different origin** (`http://evil.test`, fulfilled by route interception so the POST still hits the real server) auto-submits a form to the logout endpoint. The owner's claim must still be 200 afterwards.
+
+### (b) Reverse-check — both new tests against the round-2 (vulnerable) code
+
+`git stash` of the six changed source files, the spec unchanged:
+
+```
+  ✓   1 the creator reaches admin straight from creation, typing nothing
+  ✘   2 re-entry works with ONLY the claim cookie left (host session gone)
+  ✓   3 deliberate LOGOUT is not undone by auto-claim
+  ✘   4 entering the host code after a logout restores frictionless re-entry
+  ✓   5 a device that did NOT create the room still hits the code gate
+  ✓   6 the hero leads with the created room and links into admin
+  ✓   7 a first-time visitor sees the generic hero, unchanged
+  ✘   8 the claim credential cannot be exfiltrated and replayed (B-S1) › everything page JS can see is NOT enough to claim the room
+  ✘   9 a third-party page cannot lock the creator out (B-S2) › a cross-site top-level POST to logout changes nothing
+  ✓  10 the owner's OWN logout still works, and still sticks
+  4 failed, 6 passed
+```
+
+**Tests 8 and 9 fail against the vulnerable code — each catches its own blocker.** Tests 2 and 4 fail because the credential does not exist in round 2 (expected). Test 10 passes in both, correctly: the round-2 marker also made logout stick from the *victim's* point of view — which is precisely why test 10 alone was never evidence, and why the revocation test below exists.
+
+### (a) Mutations — 8 run, 8 killed
+
+| # | Mutation | Result |
+|---|---|---|
+| S1 | claim route trusts the identity cookie again (**recreates B-S1**) | **KILLED** — 9 failed / 16 passed |
+| S2 | logout drops `requireHost` (**recreates B-S2**) | **KILLED** — all 3 B-S2 tests |
+| S3 | logout clears cookies but does not revoke server-side | **KILLED** — `a token COPIED off the device stops working once the owner logs out` |
+| S4 | host-code login mints no fresh credential | **KILLED** — `entering the host code after a logout mints a FRESH token` |
+| S5 | room creation leaks the token in the 201 body | **KILLED** — `puts it in NO response body` |
+| S6 | an empty hash list counts as a match (every legacy room becomes claimable) | **initially SURVIVED — real gap**, now **KILLED**; see below |
+| S7 | claim consults the throttle **before** verifying (recreates B1's shared fate) | **KILLED** — `a SPENT budget on the creator's own IP still lets a valid token through` |
+| S8 | throttle keyed on the client-chosen token instead of the IP (recreates O1) | **KILLED** — 2 tests, including the keyspace one |
+
+**S6 was a SURVIVED-real-gap and I fixed it rather than arguing it.** The suite only ever saw `claimTokenHashes` **absent** (revocation deletes the key; creation never writes `[]`), so a mutation treating an *empty* list as a match went unnoticed — and that mutation makes every legacy room claimable by anyone. Closed with a test that writes `claimTokenHashes: []` straight to `roomBackend`, the same technique the `default`-room and blank-creator guards needed. Re-run with that test present: **1 failed / 25 passed** — killed.
+
+### (c) Hollowing-out declaration
+
+**A primitive beneath existing assertions changed, and one assertion HAD been hollowed.** The no-claim marker was deleted, so the round-2 assertion `expect(cookies).not.toContain('boraoke_noclaim_<id>')` — the one I added in round 2 to close B2 — became **true by construction**: with no marker mechanism at all it passes with the login route granting nothing. I found it by re-reading every assertion that named the removed mechanism, and re-pointed that test at the property that now carries the meaning: a correct host code must **mint a fresh, httpOnly claim credential**, asserted *before* the `clearCookies()` that would destroy it. S4 confirms the replacement is live.
+
+Also re-examined and re-pointed: `keepOnlyIdentityCookie` → `keepOnlyClaimCookie` (keeping only the identity cookie would now be a test of nothing, since the identity uuid is deliberately worthless here), and the "deliberate LOGOUT" test's rationale comment, which described a mechanism that no longer exists.
+
+### (d) Triggered mutation pass
+
+`triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path`
+
+`hashClaimToken` and `verifyRoomClaimToken` are on an identity path but neither parses nor normalises user input — one hashes an opaque value, the other compares hashes. The clause does not fire. S1/S6/S8 above mutate them anyway, because this is auth code.
+
+## Friction (round 3)
+
+- The B-S1 test cost me four diagnostic cycles to an artifact, not a bug: the dev server's in-process memory store is dropped whenever a route compiles for the first time, and this test is the first thing in the suite to touch `POST /api/identity` and `POST /api/host/moderation`. The room 404'd mid-test while the security property was holding perfectly. Warming both routes helped; the durable fix was to move the `/api/identity` scrape **before** room creation so the reset cannot land on the critical path. Two assertions in that test are now deliberately phrased as absences (`dashboard` count 0) rather than presences (`code gate visible`) for the same reason — the positive "a non-creator sees the gate" claim is kept as its own separate passing test, so nothing was weakened to make anything pass.
+- My mutation harness bit me a second time in the same way as round 2: full-path backup keys are now mandatory in it, and the round-2 basename collision would have silently committed a wrong file.
+
+---
+
+# Round 4 — picking up from a Dev that stopped mid-round
+
+I am a fresh Dev. The previous one stopped during a network outage, mid-sentence, having said "Fixed. Re-launching the distribution now that the helper is correct". So the first job was establishing what state the branch was actually in, before believing anything the log or that sentence implied.
+
+## Step 0 — what I actually found (reconciliation)
+
+**The round-3 work was complete and uncommitted.** ~1,020 insertions across 10 files sat in the working tree with **nothing staged and nothing committed**: `git log origin/ticket/104-creator-admin..HEAD` was empty in both directions, so the branch tip equalled the remote and the entire redesign existed only on disk. Had that worktree been cleaned up, round 3 would have been lost in full. It is committed now.
+
+**No stash, and no corruption from either reported hazard.** Checked specifically, because both hazards the previous Dev reported would have left silent damage:
+
+- **The basename-collision hazard did NOT recur.** Round 3's harness (`t104r3mut.py`) keys its backups on the full path (`app__api__host__claim__route.ts`), which is the fix for the round-2 collision that restored `session/route.ts` over `claim/route.ts`. I verified the outcome rather than trusting the code: all six mutated files are **byte-identical** to their pre-mutation backups in `…/scratchpad/t104r3b/`, and I then read all four route files end-to-end to confirm each contains its own route and not a neighbour's. `git stash list` is empty; no `.bak`/`.orig`/`.rej` anywhere in the tree; no live `next dev`, jest or playwright process, and nothing listening on 3050-3060 or 3130-3139. The tree was clean and unmutated.
+- **The measure-while-mutating hazard DID recur, and it invalidated the round-3 distribution.** `/tmp/t104r3dist2.log` is the run that sentence launched. Its combination phase is fine — 6/6 pass, ~2.5 min each. Its full-suite phase is garbage and must not be read as a result: **5.3h, 6.9h and 7.0h of wall clock** for a suite that takes minutes, 26-32 failures per run, and among them `contrast math sanity › black text on white background resolves to 21:1`. That assertion is pure arithmetic on two constants; it cannot fail for a logic reason, so its failure is a measurement artifact, not a finding. Three concurrent worktrees (`t99`, `t101`, `t108`) plus the harness were live on this machine overnight. **I discarded that distribution entirely and re-measured** (§ Gates below) rather than trying to interpret it.
+
+One process note while I am on it: the round-3 reverse-check was done with `git stash`. The stash stack is shared across every worktree in this repo, so that is not a safe instrument here — a temporary WIP commit is. It did no harm this time (the stack is empty and the six files verified clean), but I did not reuse the technique.
+
+## What round 4 changes, and what it deliberately does not
+
+**The round-3 redesign is right and I did not relitigate it.** The purpose-built `boraoke_claim_<room>` credential, hashes-at-rest, server-side revocation on logout, the 180-day rolling bound, `creatorUuid` demoted to a label, and the throttle re-shaped to verify-then-charge on a server-derived key — that is the direction the gate asked for, it is implemented coherently, and the gate's B-S1/B-S2/O1/O3/O4 are all answered by it. Four things were still missing or wrong, all found by reading rather than by a failing test.
+
+**1. The same-origin check the gate's direction asked for was never added (B-S2, second layer).** Round 3 added `requireHost` and stopped. That alone does defeat the measured attack — a cross-site top-level POST carries no `SameSite=Lax` cookie — but the specification asks for authentication **plus** a same-origin/CSRF check, and the reason to want both is the lesson of this whole PR: a property resting on one unexamined mechanism is a property nobody has verified. A future `SameSite=None`, a browser quirk, or a same-site-but-not-same-origin subdomain each quietly re-opens the route. Added `isCrossSiteRequest` (`lib/host-auth.ts`) and wired it into `POST /api/host/session` as a second, independent refusal.
+
+It is deliberately **fail-open on absent provenance**, which is a considered trade and is argued in the code: `Sec-Fetch-Site` is unforgeable by page JS and distinguishes exactly the top-level-navigation case the gate exploited, `same-site` passes alongside `same-origin` so an apex/`www` split cannot break the shared-venue tablet's real logout, and a client that sends neither header is a non-browser client (curl, this repo's own unit suite) that cannot be told apart from a browser withholding them — while the attacker, being a browser, always sends them and is in any case already stopped by `requireHost`. Absence is not the attack shape; a stated foreign origin is.
+
+**The no-oracle property is now asserted rather than assumed.** Both refusals return the identical 401 body, and `requireHost` is already false for an unknown room as well as for a wrong session, so the route adds no room-existence signal. There is a test for it (M5 below).
+
+**2. Three comments still asserted the premise the gate disproved.** This is the exact defect the gate called out by name — "a contract comment should name the property's evidence or be marked as an assumption, or it hardens a wrong belief for the next reader" — and round 3 fixed the code while leaving three statements of the false premise in the tree, in the places a future reader is most likely to trust:
+
+- `app/(patron)/[room]/admin/AdminRoom.tsx` — claimed the route "mints a session when the device's httpOnly `boraoke_identity` cookie matches the room's `creatorUuid`", and that "the uuid travels as a cookie the client cannot read". Both false, and the second is verbatim the sentence the gate falsified.
+- `e2e/creator-reentry.spec.ts` header — "The proof is the httpOnly `boraoke_identity` cookie matched against the room's `creatorUuid`".
+- `lib/identity.ts` — the adoption-guard docblock still said `room.creatorUuid` grants a host session, and still called the guard "load-bearing, do not relax". This one is O4 in a second location: the gate asked for the over-credit to be corrected, round 3 corrected it in the dev report but not in the code comment that a future reader would actually reach. Rewritten to state what the guard does buy (no legitimately-issued cookie for someone else's uuid, no store pollution) and what it does not (admin access).
+
+I verified by an independent sweep that `room.creatorUuid` now has **zero non-comment reads** anywhere in `app/` or `lib/` — the only privileged gates are `requireHost` (session cookie) and `verifyClaim` (claim token), neither of which touches an identity uuid. So the comments were the only thing left asserting it.
+
+**3. One new assertion was vacuous.** The B-S1 e2e test closed with `expect([200, 401]).toContain(victimClaim.status())`, written to absorb the dev store's documented reset. It accepts every status the route can return, so it cannot fail and is not evidence — and worse, it made the test read as covering one more property than it does. Removed, with the reasoning left in place, because the property is real and is pinned where it *can* fail: the B-S2 cross-site test asserts the owner's claim is exactly 200 after an attack, and "re-entry works with ONLY the claim cookie left" asserts it directly.
+
+**4. The round-3 e2e distribution was re-measured from scratch** (see § Gates).
+
+## (a) Mutations — 5 run, 5 killed, each by the right assertion
+
+Harness: `…/scratchpad/t104r4mut.py`, full-path backup keys, restore-and-reverify after every mutant. Baseline both suites: **65 passed**.
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | logout drops the cross-site check, **keeping `requireHost`** (i.e. the tree exactly as I received it) | **KILLED** — 2 failed / 63 passed: `a valid session presented from ANOTHER SITE…`, `a valid session with a FOREIGN Origin…` |
+| M2 | `isCrossSiteRequest` never fires (always reports same-site) | **KILLED** — same 2 |
+| M3 | `isCrossSiteRequest` refuses **everything** (would break the real logout) | **KILLED** — 4 failed / 61 passed, incl. `the owner's OWN same-origin logout still works — the shared-tablet path` and the two revocation tests |
+| M4 | the `Origin` fallback is dropped (clients that send Origin but not `Sec-Fetch-Site` unprotected) | **KILLED** — 1 failed: `a valid session with a FOREIGN Origin…` |
+| M5 | logout 404s an unknown room (becomes an existence oracle) | **KILLED** — 2 failed, incl. `is not a room-existence oracle — a real room and a made-up one reply identically` |
+
+M1 and M3 are the pair that matters, and they bracket the check from both sides: M1 proves the new tests fail when the check is absent, M3 proves they fail when it over-refuses. **M3 is why the three new refusal tests use a session that is genuinely VALID.** The three pre-existing B-S2 tests all present a caller with no valid session, so `requireHost` alone refuses them and every one of them stays green with the provenance check deleted — they are tests of `requireHost`, not of this. Only a valid-session-plus-foreign-origin case can distinguish the two mechanisms, and that is what the new ones are.
+
+Restored, baseline re-verified: **65 passed, 65 total.**
+
+## (b) Reverse-check against the pre-fix implementation
+
+For this round's change the pre-fix implementation **is** M1 — the tree as the previous Dev left it, `requireHost` present and no provenance check — so M1's output is the reverse-check, verbatim:
+
+```
+=== M1 logout drops the cross-site check, keeping requireHost (the gap I am closing)
+    Tests:       2 failed, 63 passed, 65 total
+    ● logout is AUTHENTICATED, so nobody can lock the owner out (B-S2) › a valid session presented from ANOTHER SITE cannot log the room out
+    ● logout is AUTHENTICATED, so nobody can lock the owner out (B-S2) › a valid session with a FOREIGN Origin cannot log the room out either
+```
+
+Round 3's reverse-check of the two e2e blocker tests against the round-2 (vulnerable) code stands as recorded above — 4 failed / 6 passed, with tests 8 and 9 each failing on its own blocker. I did not redo it; the code it ran against is unchanged by this round, and re-running it would have required mutating the tree while the distribution was measuring it, which is the mistake that cost round 3 its distribution.
+
+## (c) Hollowing-out declaration
+
+**A primitive beneath existing assertions changed, and I re-examined the assertions over it.** `POST /api/host/session` gained a second refusal condition, so every existing assertion about a refused logout now has two possible causes and could pass with either guard deleted.
+
+- The three pre-existing B-S2 tests (`a cookie-less POST…`, `a WRONG session value…`, `another room's valid session…`) **are** now hollowed with respect to the new check — each would pass with `isCrossSiteRequest` deleted, because none of them presents a valid session. That is correct and intended: they are `requireHost`'s tests and they still fail when `requireHost` is removed (round 3's S2 mutant). I did not repoint them; I added the three valid-session tests that the new check *can* be the only cause of, and M1/M3 demonstrate the separation. The hazard here is not a dead assertion, it is mistaking those three for coverage of the new layer — hence this paragraph and the comment above them in the test file.
+- `logout clears the cookie with maxAge 0 on the matching path` (TICKET-76) and the two revocation tests pass through the new condition on their success path; M3 and M5 confirm they are live rather than true-by-construction.
+
+## (d) Triggered mutation pass
+
+`triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path`
+
+`isCrossSiteRequest` reads two headers and compares a URL host. It parses nothing the app then uses as data, normalises no user input, and computes no money/quantity/identity value — the `new URL()` call is a validity test whose failure is treated as hostile, not a parse whose output is retained. M1-M4 mutate it regardless, because it is auth code.

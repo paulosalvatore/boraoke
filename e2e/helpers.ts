@@ -230,22 +230,31 @@ export async function drainQueue(
 }
 
 /**
- * The httpOnly identity cookie (`lib/identity.ts`). Named here because specs
- * need to drop it deliberately — see `dropCreatorIdentity`.
+ * The httpOnly identity cookie (`lib/identity.ts`). Since the TICKET-104 security
+ * redesign this is a non-secret LABEL, not a credential — kept named here only so
+ * specs can assert that dropping or forging it changes nothing.
  */
 export const IDENTITY_COOKIE = "boraoke_identity";
 
 /**
- * Make this browser stop being the room's CREATOR, so the host-code login gate
- * is reachable again (TICKET-104).
+ * Make this browser stop being the room's CREATOR, so the host-code login gate is
+ * reachable again (TICKET-104).
  *
  * Since TICKET-104 a creator never sees the gate: `POST /api/host/claim`
- * re-authenticates them off the identity cookie, which is the whole point. Specs
- * that exist to exercise the CODE path therefore have to present themselves as a
- * different device — a venue tablet typing the code a host created elsewhere,
- * which is exactly the scenario the gate serves. Dropping only the identity
- * cookie does that without disturbing locale or session cookies.
+ * re-authenticates them off a credential their device holds, which is the whole
+ * point. Specs that exist to exercise the CODE path therefore have to present
+ * themselves as a different device — a venue tablet typing the code a host created
+ * elsewhere, which is exactly the scenario the gate serves.
+ *
+ * WHICH cookie this drops is load-bearing and changed in the security round: the
+ * credential is now the purpose-built `boraoke_claim_<room>` token, NOT the
+ * identity uuid. Dropping the identity cookie alone no longer makes a device a
+ * non-creator, and a helper that did so would silently stop reaching the gate —
+ * which is exactly how four specs broke when the credential was replaced. Both are
+ * cleared: the claim cookie because it is the credential, the identity cookie so a
+ * spec that wants a genuinely fresh device gets one.
  */
 export async function dropCreatorIdentity(page: Page) {
+  await page.context().clearCookies({ name: /^boraoke_claim_/ });
   await page.context().clearCookies({ name: IDENTITY_COOKIE });
 }

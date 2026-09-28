@@ -1,184 +1,426 @@
 /**
- * Creator-claim unit tests (TICKET-104).
+ * Admin-claim unit tests (TICKET-104, rewritten after the PR #81 security gate).
  *
- * `verifyCreatorClaim` is the authentication decision behind
- * `POST /api/host/claim` — the path that lets a room's CREATOR back into admin
- * without typing the shown-once host code. It is therefore tested as auth, not
- * as a convenience: every negative case below is a way in that must stay shut.
+ * The claim is an AUTHENTICATION path, so it is tested as one: every negative
+ * case below is a way in that must stay shut, and the first three describes exist
+ * because the gate broke the previous design end-to-end in real browsers.
  *
- * Rooms are created through the real `createRoom` against the in-process memory
- * room backend, exactly as `__tests__/host-auth.test.ts` does.
+ * The property that design got wrong, stated so these tests cannot drift from it:
+ * the credential must be something **no page JS has ever seen**. Round 2 keyed the
+ * claim on the identity uuid, which `POST /api/identity` echoes in a response body
+ * and `cantai_patron_uuid` mirrors in localStorage — so it was exfiltrable with one
+ * `fetch` and replayable from another browser, and the victim's logout could not
+ * take it back. Hence a purpose-built token, hashed at rest, revocable in SERVER
+ * state.
+ *
+ * Route-level (same style as `__tests__/host-api.test.ts`) wherever the property
+ * lives in a route's decision rather than in a helper.
  */
 import {
-  verifyCreatorClaim,
   isClaimThrottled,
   registerClaimFailure,
   resetClaimThrottle,
   isLoginThrottled,
   registerLoginFailure,
   _clearLoginThrottle,
-  hostNoClaimCookieName,
-  hasNoClaimMarker,
-  noClaimCookieOptions,
-  NO_CLAIM_MAX_AGE_SECONDS,
+  claimCookieName,
+  claimCookieOptions,
+  CLAIM_MAX_AGE_SECONDS,
+  hostCookieName,
+  issueSession,
 } from "@/lib/host-auth";
 import { NextRequest } from "next/server";
 import { POST as claimRoute } from "@/app/api/host/claim/route";
-import { IDENTITY_COOKIE } from "@/lib/identity";
-import { createRoom, hashHostCode, roomBackend, type Room } from "@/lib/rooms";
+import { POST as logoutRoute, GET as sessionRoute } from "@/app/api/host/session/route";
+import { POST as loginRoute } from "@/app/api/host/login/route";
+import { POST as roomsRoute } from "@/app/api/rooms/route";
+import {
+  createRoom,
+  getPublicRoom,
+  getRoom,
+  hashClaimToken,
+  issueRoomClaimToken,
+  revokeRoomClaimTokens,
+  verifyRoomClaimToken,
+  roomBackend,
+  MAX_CLAIM_TOKENS,
+} from "@/lib/rooms";
 
-const CREATOR = "123e4567-e89b-42d3-a456-426614174000";
-const OTHER = "223e4567-e89b-42d3-a456-426614174001";
+const VENUE_IP = "203.0.113.42";
 
 async function mustCreateRoom(name: string, creatorUuid?: string) {
   const created = await createRoom(name, creatorUuid);
   if (!created) throw new Error("room ceiling hit in test");
-  return created.room;
+  return created;
 }
 
-describe("verifyCreatorClaim — the creator's device gets in", () => {
-  it("accepts the identity uuid that created the room", async () => {
-    const room = await mustCreateRoom("claim yes", CREATOR);
-    expect(await verifyCreatorClaim(room.id, CREATOR)).toBe(true);
-  });
-});
+/** A room plus a live claim token for it — the state a creator's device is in. */
+async function roomWithClaim(name: string) {
+  const { room, hostCode } = await mustCreateRoom(name);
+  const token = await issueRoomClaimToken(room.id);
+  if (!token) throw new Error("claim token not issued");
+  return { room, hostCode, token };
+}
 
-describe("verifyCreatorClaim — every other caller stays out", () => {
-  it("rejects a DIFFERENT identity uuid (a patron who learned the room id)", async () => {
-    const room = await mustCreateRoom("claim no", CREATOR);
-    expect(await verifyCreatorClaim(room.id, OTHER)).toBe(false);
-  });
-
-  it("rejects a uuid that merely SHARES A PREFIX with the creator's", async () => {
-    const room = await mustCreateRoom("claim prefix", CREATOR);
-    // Same first 8 chars, different tail — a partial/truncated match must not pass.
-    expect(await verifyCreatorClaim(room.id, CREATOR.slice(0, 8))).toBe(false);
-    expect(
-      await verifyCreatorClaim(room.id, `${CREATOR.slice(0, 30)}ffffff`),
-    ).toBe(false);
-  });
-
-  it("rejects a room with NO creatorUuid on record, even when asked with an empty uuid", async () => {
-    // Legacy rooms and rooms created while the identity store was down (creation
-    // is fail-open) carry no creatorUuid. Two absences must never match.
-    const room = await mustCreateRoom("claim legacy");
-    expect(room.creatorUuid).toBeUndefined();
-    expect(await verifyCreatorClaim(room.id, "")).toBe(false);
-    expect(await verifyCreatorClaim(room.id, undefined)).toBe(false);
-    expect(await verifyCreatorClaim(room.id, null)).toBe(false);
-    expect(await verifyCreatorClaim(room.id, CREATOR)).toBe(false);
-  });
-
-  it("rejects a non-string uuid without throwing", async () => {
-    const room = await mustCreateRoom("claim nonstring", CREATOR);
-    expect(await verifyCreatorClaim(room.id, { toString: () => CREATOR })).toBe(false);
-    expect(await verifyCreatorClaim(room.id, 42)).toBe(false);
-  });
-
-  it("rejects a room that does not exist", async () => {
-    expect(await verifyCreatorClaim("no-such-room-xyz", CREATOR)).toBe(false);
-  });
-
-  it("rejects the legacy `default` room, which has no creator", async () => {
-    expect(await verifyCreatorClaim("default", CREATOR)).toBe(false);
-    expect(await verifyCreatorClaim("default", "")).toBe(false);
-  });
-});
+function claimReq(
+  roomId: string,
+  opts: { token?: string; ip?: string; session?: string; extraCookies?: Record<string, string> } = {},
+): NextRequest {
+  const jar: Record<string, string> = { ...(opts.extraCookies ?? {}) };
+  if (opts.token !== undefined) jar[claimCookieName(roomId)] = opts.token;
+  if (opts.session) jar[hostCookieName(roomId)] = opts.session;
+  const headers: Record<string, string> = { "x-forwarded-for": opts.ip ?? VENUE_IP };
+  const cookie = Object.entries(jar)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+  if (cookie) headers.cookie = cookie;
+  return new NextRequest(
+    `http://127.0.0.1:3040/api/host/claim?room=${encodeURIComponent(roomId)}`,
+    { method: "POST", headers },
+  );
+}
 
 /**
- * The two guards below cannot be reached through `createRoom`, which is exactly
- * why they are tested here against records written STRAIGHT to the backend:
- * `createRoom` refuses the id `default` (RESERVED_ROOM_IDS) and spreads
- * `creatorUuid` only when truthy, so both cases are unreachable today and a
- * mutation removing either guard survives a `createRoom`-only suite. They are
- * defence-in-depth against the next writer of room records, and defence that
- * nothing asserts is decoration.
+ * A logout request. `fetchSite` / `origin` model the request's PROVENANCE: the
+ * real browser sends `Sec-Fetch-Site` (and, on any POST, `Origin`), and omitting
+ * both — the default here — is what a non-browser client looks like.
  */
-describe("verifyCreatorClaim — guards against a hand-written room record", () => {
-  it("never claims the `default` room even if a record with a creator exists", async () => {
-    await roomBackend.create({
-      id: "default",
-      name: "legacy",
-      hostCodeHash: hashHostCode("whatever"),
-      createdAt: new Date().toISOString(),
-      settings: { mode: "full-karaoke" },
-      creatorUuid: CREATOR,
-    } as Room);
-    // `default` is governed by the shared env HOST_TOKEN, not by a creator.
-    expect(await verifyCreatorClaim("default", CREATOR)).toBe(false);
+function logoutReq(
+  roomId: string,
+  opts: { session?: string; fetchSite?: string; origin?: string } = {},
+): NextRequest {
+  const headers: Record<string, string> = { host: "127.0.0.1:3040" };
+  if (opts.session) headers.cookie = `${hostCookieName(roomId)}=${opts.session}`;
+  if (opts.fetchSite) headers["sec-fetch-site"] = opts.fetchSite;
+  if (opts.origin) headers.origin = opts.origin;
+  return new NextRequest(
+    `http://127.0.0.1:3040/api/host/session?room=${encodeURIComponent(roomId)}`,
+    { method: "POST", headers },
+  );
+}
+
+/** Read a Set-Cookie value for `name` off a route response. */
+function setCookie(res: Response, name: string): string | undefined {
+  for (const raw of res.headers.getSetCookie?.() ?? []) {
+    const [pair] = raw.split(";");
+    const [k, ...rest] = pair.split("=");
+    if (k.trim() === name) return rest.join("=");
+  }
+  return undefined;
+}
+
+beforeEach(() => {
+  _clearLoginThrottle();
+});
+
+describe("the claim credential is NEVER handed to a client (B-S1)", () => {
+  it("room creation sets the token in an httpOnly cookie and puts it in NO response body", async () => {
+    const res = await roomsRoute(
+      new NextRequest("http://127.0.0.1:3040/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "198.51.100.1" },
+        body: JSON.stringify({ name: "Bar Segredo" }),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    const token = setCookie(res, claimCookieName(body.id));
+    expect(token).toBeTruthy();
+
+    // THE property: the raw token appears nowhere a client can read it.
+    expect(JSON.stringify(body)).not.toContain(token!);
+    expect(Object.values(body)).not.toContain(token);
+    // And the cookie carrying it is httpOnly + path-scoped.
+    const raw = (res.headers.getSetCookie?.() ?? []).find((c) =>
+      c.startsWith(`${claimCookieName(body.id)}=`),
+    )!;
+    expect(raw).toMatch(/HttpOnly/i);
+    expect(raw).toMatch(/Path=\/api\/host/i);
   });
 
-  it("never matches a BLANK creatorUuid against a blank identity uuid", async () => {
-    const id = "blank-creator-room";
-    await roomBackend.create({
-      id,
-      name: "blank",
-      hostCodeHash: hashHostCode("whatever"),
-      createdAt: new Date().toISOString(),
-      settings: { mode: "full-karaoke" },
-      creatorUuid: "",
-    } as Room);
-    // Two absences must never authenticate each other.
-    expect(await verifyCreatorClaim(id, "")).toBe(false);
+  it("the token is NOT the creatorUuid, and the creatorUuid cannot be replayed as one", async () => {
+    // The whole point of the redesign: knowing the identity uuid (which page JS
+    // can read, via the /api/identity echo and the cantai_patron_uuid mirror)
+    // must buy nothing at all.
+    const CREATOR = "123e4567-e89b-42d3-a456-426614174000";
+    const { room } = await mustCreateRoom("Bar Rotulo", CREATOR);
+    const token = await issueRoomClaimToken(room.id);
+    expect(token).not.toBe(CREATOR);
+    expect(await verifyRoomClaimToken(room.id, CREATOR)).toBe(false);
+    expect((await claimRoute(claimReq(room.id, { token: CREATOR }))).status).toBe(401);
+    // ...while the real token works, so the negative above is not vacuous.
+    expect((await claimRoute(claimReq(room.id, { token: token! }))).status).toBe(200);
+  });
+
+  it("the room record stores only HASHES, and never exposes them publicly", async () => {
+    const { room, token } = await roomWithClaim("Bar Hash");
+    const stored = (await getRoom(room.id))!.claimTokenHashes!;
+    expect(stored).toEqual([hashClaimToken(token)]);
+    expect(stored).not.toContain(token);
+    const pub = await getPublicRoom(room.id);
+    expect(pub).not.toHaveProperty("claimTokenHashes");
+    expect(JSON.stringify(pub)).not.toContain(token);
   });
 });
 
-describe("no-claim marker — logout beats auto-claim", () => {
-  function reqWithCookies(cookies: Record<string, string>): NextRequest {
-    return {
-      cookies: {
-        get: (name: string) =>
-          name in cookies ? { value: cookies[name] } : undefined,
-      },
-    } as unknown as NextRequest;
-  }
+describe("logout REVOKES the credential in server state (B-S1, direction 2)", () => {
+  it("a token COPIED off the device stops working once the owner logs out", async () => {
+    const { room, token } = await roomWithClaim("Bar Revogado");
+    const stolen = token; // the attacker's copy, taken before logout
+    expect((await claimRoute(claimReq(room.id, { token: stolen }))).status).toBe(200);
 
-  it("names the marker per room, so logging out of one room does not lock another", () => {
-    expect(hostNoClaimCookieName("bar-do-ze")).toBe("boraoke_noclaim_bar-do-ze");
-    expect(hostNoClaimCookieName("outro-bar")).not.toBe(
-      hostNoClaimCookieName("bar-do-ze"),
+    const session = (await issueSession(room.id))!;
+    expect((await logoutRoute(logoutReq(room.id, { session }))).status).toBe(200);
+
+    // The copy is dead for the attacker too — which a marker in the victim's own
+    // cookie jar could never achieve.
+    expect((await claimRoute(claimReq(room.id, { token: stolen }))).status).toBe(401);
+    expect((await getRoom(room.id))!.claimTokenHashes).toBeUndefined();
+  });
+
+  it("entering the host code after a logout mints a FRESH token, not the revoked one", async () => {
+    const { room, hostCode, token } = await roomWithClaim("Bar Volta");
+    const session = (await issueSession(room.id))!;
+    await logoutRoute(logoutReq(room.id, { session }));
+
+    const res = await loginRoute(
+      new NextRequest(`http://127.0.0.1:3040/api/host/login?room=${room.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "198.51.100.2" },
+        body: JSON.stringify({ token: hostCode }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const fresh = setCookie(res, claimCookieName(room.id));
+    expect(fresh).toBeTruthy();
+    expect(fresh).not.toBe(token); // a revoked credential stays dead
+    expect((await claimRoute(claimReq(room.id, { token: fresh! }))).status).toBe(200);
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(401);
+  });
+
+  it("holds the credential for several devices, capped, and logout clears them ALL", async () => {
+    const { room } = await mustCreateRoom("Bar Multi");
+    const tokens: string[] = [];
+    for (let i = 0; i < MAX_CLAIM_TOKENS + 2; i++) {
+      tokens.push((await issueRoomClaimToken(room.id))!);
+    }
+    // The newest MAX_CLAIM_TOKENS are live; the oldest fell off.
+    for (const live of tokens.slice(-MAX_CLAIM_TOKENS)) {
+      expect(await verifyRoomClaimToken(room.id, live)).toBe(true);
+    }
+    for (const dead of tokens.slice(0, 2)) {
+      expect(await verifyRoomClaimToken(room.id, dead)).toBe(false);
+    }
+    await revokeRoomClaimTokens(room.id);
+    for (const t of tokens) {
+      expect(await verifyRoomClaimToken(room.id, t)).toBe(false);
+    }
+  });
+});
+
+describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () => {
+  it("a cookie-less POST to logout changes NOTHING — no revocation, no cookie", async () => {
+    const { room, token } = await roomWithClaim("Bar Csrf");
+    const res = await logoutRoute(logoutReq(room.id));
+    expect(res.status).toBe(401);
+    // Nothing was planted and nothing was revoked...
+    expect(res.headers.getSetCookie?.() ?? []).toEqual([]);
+    expect((await getRoom(room.id))!.claimTokenHashes).toHaveLength(1);
+    // ...so the owner's no-typing re-entry still works.
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
+  });
+
+  it("a WRONG session value cannot log the room out either", async () => {
+    const { room, token } = await roomWithClaim("Bar Sessao Falsa");
+    const res = await logoutRoute(logoutReq(room.id, { session: "f".repeat(64) }));
+    expect(res.status).toBe(401);
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
+  });
+
+  /**
+   * The second layer. These are NOT redundant with the three tests above, and the
+   * distinction is the whole reason they exist: those pass a caller with no valid
+   * session, so `requireHost` alone refuses them and they would stay green if the
+   * provenance check were deleted. These hand the route a session that IS valid
+   * and refuse it on provenance alone — so only the provenance check can make them
+   * pass, which is what makes them a test of it rather than of `requireHost`.
+   */
+  it("a valid session presented from ANOTHER SITE cannot log the room out", async () => {
+    const { room, token } = await roomWithClaim("Bar Sec Fetch");
+    const session = (await issueSession(room.id))!;
+    const res = await logoutRoute(
+      logoutReq(room.id, { session, fetchSite: "cross-site" }),
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.getSetCookie?.() ?? []).toEqual([]);
+    // Nothing revoked, so the owner's no-typing re-entry is untouched.
+    expect((await getRoom(room.id))!.claimTokenHashes).toHaveLength(1);
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
+  });
+
+  it("a valid session with a FOREIGN Origin cannot log the room out either", async () => {
+    // The fallback path, for a client that sends Origin but no Sec-Fetch-Site.
+    const { room, token } = await roomWithClaim("Bar Origem Estranha");
+    const session = (await issueSession(room.id))!;
+    const res = await logoutRoute(
+      logoutReq(room.id, { session, origin: "http://evil.test" }),
+    );
+    expect(res.status).toBe(401);
+    expect((await getRoom(room.id))!.claimTokenHashes).toHaveLength(1);
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
+  });
+
+  it("the owner's OWN same-origin logout still works — the shared-tablet path", async () => {
+    // The check must refuse the attack without costing the feature its point: a
+    // venue tablet has to be able to hand the room back. This is what `AdminRoom`
+    // actually sends (a same-origin fetch, so both headers are present).
+    const { room, token } = await roomWithClaim("Bar Mesma Origem");
+    const session = (await issueSession(room.id))!;
+    const res = await logoutRoute(
+      logoutReq(room.id, {
+        session,
+        fetchSite: "same-origin",
+        origin: "http://127.0.0.1:3040",
+      }),
+    );
+    expect(res.status).toBe(200);
+    // ...and it really logged out: revoked in SERVER state, so the copy dies too.
+    expect((await getRoom(room.id))!.claimTokenHashes).toBeUndefined();
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(401);
+  });
+
+  it("is not a room-existence oracle — a real room and a made-up one reply identically", async () => {
+    const { room } = await roomWithClaim("Bar Existe");
+    const real = await logoutRoute(logoutReq(room.id));
+    const fake = await logoutRoute(logoutReq("bar-nao-existe-de-jeito-nenhum"));
+    expect(real.status).toBe(fake.status);
+    expect(await real.json()).toEqual(await fake.json());
+    expect(real.headers.getSetCookie?.() ?? []).toEqual(
+      fake.headers.getSetCookie?.() ?? [],
     );
   });
 
-  it("detects the marker only for the room it was set on", () => {
-    const req = reqWithCookies({ [hostNoClaimCookieName("bar-do-ze")]: "1" });
-    expect(hasNoClaimMarker(req, "bar-do-ze")).toBe(true);
-    expect(hasNoClaimMarker(req, "outro-bar")).toBe(false);
+  it("another room's valid session cannot log THIS room out", async () => {
+    const { room, token } = await roomWithClaim("Bar Alvo");
+    const other = await roomWithClaim("Bar Vizinho");
+    const otherSession = (await issueSession(other.room.id))!;
+    const res = await logoutRoute(
+      new NextRequest(`http://127.0.0.1:3040/api/host/session?room=${room.id}`, {
+        method: "POST",
+        headers: { cookie: `${hostCookieName(other.room.id)}=${otherSession}` },
+      }),
+    );
+    expect(res.status).toBe(401);
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
+  });
+});
+
+describe("claim — every caller without a live token stays out", () => {
+  it("no claim cookie at all", async () => {
+    const { room } = await roomWithClaim("Bar Sem Cookie");
+    expect((await claimRoute(claimReq(room.id))).status).toBe(401);
   });
 
-  it("is absent by default, and an empty value does not count as set", () => {
-    expect(hasNoClaimMarker(reqWithCookies({}), "bar-do-ze")).toBe(false);
-    expect(
-      hasNoClaimMarker(reqWithCookies({ [hostNoClaimCookieName("bar-do-ze")]: "" }), "bar-do-ze"),
-    ).toBe(false);
+  it("a wrong token, an empty token, and another room's token", async () => {
+    const { room } = await roomWithClaim("Bar Token Errado");
+    const other = await roomWithClaim("Bar Outro Token");
+    expect((await claimRoute(claimReq(room.id, { token: "nope" }))).status).toBe(401);
+    expect((await claimRoute(claimReq(room.id, { token: "" }))).status).toBe(401);
+    expect((await claimRoute(claimReq(room.id, { token: other.token }))).status).toBe(401);
   });
 
-  it("OUTLIVES the identity cookie it suppresses — otherwise logout expires back into auto-claim", () => {
-    const identityMaxAge = 60 * 60 * 24 * 365 * 2; // lib/identity.ts
-    expect(NO_CLAIM_MAX_AGE_SECONDS).toBeGreaterThan(identityMaxAge);
-    const opts = noClaimCookieOptions();
+  it("an EMPTY hash list matches nothing — asserted against a hand-written record", async () => {
+    // Unreachable through the app today (`revokeRoomClaimTokens` deletes the key
+    // rather than emptying it, and creation never writes `[]`), which is exactly
+    // why it needs asserting: a mutation that treats an empty list as a match
+    // survived a suite that only ever saw the key ABSENT, and that mutation makes
+    // every legacy room claimable by anyone. Written straight to the backend, the
+    // same technique the `default`/blank-creator guards needed.
+    const { room } = await mustCreateRoom("Bar Lista Vazia");
+    const rec = (await getRoom(room.id))!;
+    await roomBackend.update({ ...rec, claimTokenHashes: [] });
+    expect(await verifyRoomClaimToken(room.id, "anything")).toBe(false);
+    expect(await verifyRoomClaimToken(room.id, "")).toBe(false);
+    expect((await claimRoute(claimReq(room.id, { token: "anything" }))).status).toBe(401);
+  });
+
+  it("a room with NO claim tokens on record is not claimable (legacy rooms)", async () => {
+    const { room } = await mustCreateRoom("Bar Legado");
+    expect((await getRoom(room.id))!.claimTokenHashes).toBeUndefined();
+    expect((await claimRoute(claimReq(room.id, { token: "anything" }))).status).toBe(401);
+    expect(await verifyRoomClaimToken(room.id, "")).toBe(false);
+  });
+
+  it("the legacy `default` room is never claimable", async () => {
+    const req = new NextRequest("http://127.0.0.1:3040/api/host/claim?room=default", {
+      method: "POST",
+      headers: { cookie: `${claimCookieName("default")}=whatever` },
+    });
+    expect((await claimRoute(req)).status).toBe(401);
+  });
+
+  it("a non-existent room is not claimable", async () => {
+    const req = claimReq("no-such-room-xyz", { token: "anything" });
+    expect((await claimRoute(req)).status).toBe(401);
+  });
+});
+
+describe("claim cookie shape — bounded and rolling, not a lifetime comparison (O3)", () => {
+  it("is httpOnly, host-path-scoped, and bounded well inside the browser's 400-day cap", async () => {
+    const opts = claimCookieOptions();
     expect(opts.httpOnly).toBe(true);
     expect(opts.path).toBe("/api/host");
-    expect(opts.maxAge).toBe(NO_CLAIM_MAX_AGE_SECONDS);
+    expect(opts.maxAge).toBe(CLAIM_MAX_AGE_SECONDS);
+    // The old design needed 3 years to outlive another cookie, which a real
+    // browser silently capped at 400 days. Correctness no longer depends on that
+    // comparison at all — revocation is server state — so this is simply bounded.
+    const DAYS = 60 * 60 * 24;
+    expect(CLAIM_MAX_AGE_SECONDS).toBeLessThan(400 * DAYS);
+  });
+
+  it("a successful claim ROLLS the credential, so an active venue never ages out", async () => {
+    const { room, token } = await roomWithClaim("Bar Rolando");
+    const res = await claimRoute(claimReq(room.id, { token }));
+    expect(res.status).toBe(200);
+    const rolled = setCookie(res, claimCookieName(room.id));
+    expect(rolled).toBeTruthy();
+    expect(rolled).not.toBe(token);
+    expect((await claimRoute(claimReq(room.id, { token: rolled! }))).status).toBe(200);
+  });
+
+  it("the session probe rolls it too, but only for a caller that ALREADY holds one", async () => {
+    const { room, token } = await roomWithClaim("Bar Probe");
+    const session = (await issueSession(room.id))!;
+    const withToken = await sessionRoute(
+      new NextRequest(`http://127.0.0.1:3040/api/host/session?room=${room.id}`, {
+        headers: { cookie: `${hostCookieName(room.id)}=${session}; ${claimCookieName(room.id)}=${token}` },
+      }),
+    );
+    expect(setCookie(withToken, claimCookieName(room.id))).toBeTruthy();
+
+    // A host session alone must never MINT claim authority — only extend proven authority.
+    const { room: room2 } = await roomWithClaim("Bar Probe Dois");
+    const session2 = (await issueSession(room2.id))!;
+    const withoutToken = await sessionRoute(
+      new NextRequest(`http://127.0.0.1:3040/api/host/session?room=${room2.id}`, {
+        headers: { cookie: `${hostCookieName(room2.id)}=${session2}` },
+      }),
+    );
+    expect(setCookie(withoutToken, claimCookieName(room2.id))).toBeUndefined();
   });
 });
 
 describe("claim throttle — its OWN bucket, never the login one", () => {
-  beforeEach(() => {
-    _clearLoginThrottle();
-  });
-
-  // NOTE the deliberately SHARED key string in these three. Claim now buckets on
-  // an identity uuid and login on an IP, so passing two different strings would
-  // make the tests vacuous — they would pass with both namespaces collapsed into
-  // one. Using the same string for both is what actually proves the key prefixes
-  // differ (`hostclaim:` vs `login:`).
-  const SHARED = "123e4567-e89b-42d3-a456-4266141740aa";
+  // NOTE the deliberately SHARED key string. Both buckets key on the client IP
+  // now, so passing two different strings would make these vacuous — they would
+  // pass with both namespaces collapsed into one. The same string is what proves
+  // the key prefixes differ (`hostclaim:` vs `login:`).
+  const SHARED = "203.0.113.77";
 
   it("spending the claim budget does NOT throttle the host-code login path", async () => {
     for (let i = 0; i < 10; i++) await registerClaimFailure(SHARED);
     expect(await isClaimThrottled(SHARED)).toBe(true);
-    // The creator must still be able to fall back to typing the code.
+    // The creator must always be able to fall back to typing the code.
     expect(await isLoginThrottled(SHARED)).toBe(false);
   });
 
@@ -188,7 +430,7 @@ describe("claim throttle — its OWN bucket, never the login one", () => {
     expect(await isClaimThrottled(SHARED)).toBe(false);
   });
 
-  it("a successful claim resets its own bucket", async () => {
+  it("a successful claim resets the bucket", async () => {
     for (let i = 0; i < 10; i++) await registerClaimFailure(SHARED);
     expect(await isClaimThrottled(SHARED)).toBe(true);
     await resetClaimThrottle(SHARED);
@@ -197,95 +439,75 @@ describe("claim throttle — its OWN bucket, never the login one", () => {
 });
 
 /**
- * B1 regression (PR #81 review) — the throttle must never be able to deny the
- * feature to the very person it exists for.
+ * B1 regression, carried forward through the credential redesign.
  *
- * As shipped, `POST /api/host/claim` charged a per-IP failure even with NO
- * identity cookie, and `AdminRoom` POSTs it on every session-less admin render.
- * So ten ordinary admin-URL opens from a venue's shared IP inside a minute 429'd
- * the CREATOR's own claim — and a 429 rendered as the code gate, i.e. exactly
- * the unrecoverable-code dead end this ticket removes. Measured, not theorised:
- * 3 failures in 7 full-suite runs as shipped.
+ * The original defect: the route charged a per-IP failure even with no credential
+ * presented, and `AdminRoom` claims on every session-less admin render — so
+ * ordinary admin-URL opens from a venue's shared wifi 429'd the CREATOR's own
+ * claim, and a 429 rendered as the code gate. Measured then: 3 failing runs of 5.
  *
- * These are route-level tests (same style as `__tests__/host-api.test.ts`)
- * because the defect lived in the route's charging decision, not in the counter.
+ * Round 2 fixed it by re-keying onto the caller's identity, which the security
+ * gate then showed hands an unauthenticated caller unbounded CLIENT-CHOSEN bucket
+ * keys (evicting the login throttle from the shared LRU). So the property is now
+ * held by a different and stronger mechanism: verification happens FIRST and a
+ * valid credential is never subject to the budget at all, while the key is
+ * server-derived. These tests pin BOTH halves.
  */
-describe("claim route — incidental traffic can never 429 the creator (B1)", () => {
-  const VENUE_IP = "203.0.113.42";
-
-  function claimReq(
-    roomId: string,
-    opts: { identity?: string; ip?: string } = {},
-  ): NextRequest {
-    const headers: Record<string, string> = {};
-    if (opts.identity) headers.cookie = `${IDENTITY_COOKIE}=${opts.identity}`;
-    headers["x-forwarded-for"] = opts.ip ?? VENUE_IP;
-    return new NextRequest(
-      `http://127.0.0.1:3040/api/host/claim?room=${encodeURIComponent(roomId)}`,
-      { method: "POST", headers },
-    );
-  }
-
-  beforeEach(() => {
-    _clearLoginThrottle();
-  });
-
+describe("the throttle can never deny a legitimate creator (B1) and its key is server-derived (O1)", () => {
   it("a flood of session-less renders from the venue IP does not block the creator", async () => {
-    const room = await mustCreateRoom("bar venue nat", CREATOR);
-    // 40 patrons/bookmarks open /<room>/admin with no identity cookie — four
-    // times the failure ceiling, all from the one public IP the creator is on.
+    const { room, token } = await roomWithClaim("bar venue nat");
+    // 40 patrons/bookmarks open /<room>/admin with no claim cookie — four times
+    // the failure ceiling, all from the one public IP the creator is on.
     for (let i = 0; i < 40; i++) {
-      const res = await claimRoute(claimReq(room.id));
-      expect(res.status).toBe(401); // no identity → nothing to claim with
+      expect((await claimRoute(claimReq(room.id))).status).toBe(401);
     }
-    // The creator, on that SAME IP, still gets in without typing anything.
-    const res = await claimRoute(claimReq(room.id, { identity: CREATOR }));
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ authed: true });
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
   });
 
-  it("another DEVICE's failed claims do not block the creator, even on the same IP", async () => {
-    const room = await mustCreateRoom("bar shared wifi", CREATOR);
-    // A real device with its own identity, probing repeatedly.
-    for (let i = 0; i < 20; i++) {
-      await claimRoute(claimReq(room.id, { identity: OTHER }));
+  it("a SPENT budget on the creator's own IP still lets a valid token through", async () => {
+    // The strongest form of the property, and the one round 2 could not state:
+    // even with the bucket fully spent — by anyone, on this very IP — a live
+    // credential wins, because it is verified before the budget is consulted.
+    const { room, token } = await roomWithClaim("bar orcamento gasto");
+    for (let i = 0; i < 25; i++) {
+      await claimRoute(claimReq(room.id, { token: "wrong-token" }));
     }
-    // That device is now bounded...
-    expect(await isClaimThrottled(OTHER)).toBe(true);
-    // ...and the creator's budget is untouched.
-    expect(await isClaimThrottled(CREATOR)).toBe(false);
-    expect((await claimRoute(claimReq(room.id, { identity: CREATOR }))).status).toBe(200);
+    expect(await isClaimThrottled(VENUE_IP)).toBe(true);
+    expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
+    // And a successful claim clears the bucket it never had to satisfy.
+    expect(await isClaimThrottled(VENUE_IP)).toBe(false);
   });
 
-  it("a garbage identity cookie is not charged either, and cannot become a bucket key", async () => {
-    const room = await mustCreateRoom("bar garbage cookie", CREATOR);
-    for (let i = 0; i < 15; i++) {
-      const res = await claimRoute(claimReq(room.id, { identity: "not-a-uuid" }));
-      expect(res.status).toBe(401);
+  it("invented tokens cannot create unbounded bucket keys — the key is the IP (O1)", async () => {
+    // Round 2's keyspace was client-chosen, so 1100 rotating values evicted the
+    // login bucket from the shared process-wide LRU and reset the host-code
+    // brute-force control. Rotating the credential now changes no key at all.
+    const { room } = await roomWithClaim("bar chaves");
+    const before = await isLoginThrottled(VENUE_IP);
+    for (let i = 0; i < 30; i++) {
+      await claimRoute(claimReq(room.id, { token: `invented-${i}` }));
     }
-    expect(await isClaimThrottled("not-a-uuid")).toBe(false);
-    expect((await claimRoute(claimReq(room.id, { identity: CREATOR }))).status).toBe(200);
+    // One bucket, not thirty: the IP's. Proven by it being throttled at all.
+    expect(await isClaimThrottled(VENUE_IP)).toBe(true);
+    expect(await isLoginThrottled(VENUE_IP)).toBe(before);
   });
 
-  it("a genuinely exhausted identity gets 429 — DISTINGUISHABLE from a 401 rejection", async () => {
-    const room = await mustCreateRoom("bar exhausted", CREATOR);
+  it("a genuinely exhausted IP gets 429 — DISTINGUISHABLE from a 401 rejection", async () => {
+    const { room } = await roomWithClaim("bar exausto");
     for (let i = 0; i < 12; i++) {
-      await claimRoute(claimReq(room.id, { identity: OTHER }));
+      await claimRoute(claimReq(room.id, { token: "wrong" }));
     }
-    const res = await claimRoute(claimReq(room.id, { identity: OTHER }));
+    const res = await claimRoute(claimReq(room.id, { token: "wrong" }));
     expect(res.status).toBe(429);
     // The client keys off this to say "wait a minute" instead of "wrong code".
     expect(await res.json()).toEqual({ authed: false, throttled: true });
   });
 
-  it("a successful claim clears the claiming identity's own budget", async () => {
-    const room = await mustCreateRoom("bar reset", CREATOR);
-    // Creator fails against a room it does not own, spending some budget...
-    const foreign = await mustCreateRoom("bar alheio", OTHER);
-    for (let i = 0; i < 5; i++) {
-      await claimRoute(claimReq(foreign.id, { identity: CREATOR }));
+  it("a caller with NO credential is never charged, so patrons cost nothing", async () => {
+    const { room } = await roomWithClaim("bar gratis");
+    for (let i = 0; i < 30; i++) {
+      await claimRoute(claimReq(room.id, { ip: "198.51.100.30" }));
     }
-    expect((await claimRoute(claimReq(room.id, { identity: CREATOR }))).status).toBe(200);
-    expect(await isClaimThrottled(CREATOR)).toBe(false);
+    expect(await isClaimThrottled("198.51.100.30")).toBe(false);
   });
 });

@@ -100,11 +100,14 @@ export default function AdminRoom({
   // we do NOT go straight to the code gate any more. The host code is shown once
   // and unrecoverable, and nobody hands it to the creator, so the gate is a dead
   // end for exactly the person who owns the room. We first try ONE
-  // `POST /api/host/claim`, which mints a session when the device's httpOnly
-  // `boraoke_identity` cookie matches the room's `creatorUuid` (see that route's
-  // security contract — the uuid travels as a cookie the client cannot read, and
-  // nothing is stored in localStorage). A non-creator's claim just 401s and the
-  // gate appears exactly as before, so this only ever removes a dead end.
+  // `POST /api/host/claim`, which mints a session when the device presents the
+  // room's ADMIN CLAIM TOKEN — the httpOnly `boraoke_claim_<room>` cookie, whose
+  // value no page JS has ever seen (see that route's security contract). It is
+  // NOT the identity uuid: keying this on `creatorUuid` is exactly what the PR #81
+  // security gate broke, because that uuid is published to page JS by the
+  // `/api/identity` echo and the `cantai_patron_uuid` mirror. A device without the
+  // token just 401s and the gate appears exactly as before, so this only ever
+  // removes a dead end.
   //
   // Sequenced deliberately: the cheap read-only probe first, the claim only on
   // its failure, one attempt, no retry loop.

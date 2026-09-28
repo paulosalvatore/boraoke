@@ -101,15 +101,27 @@ export interface IdentityRequestLike {
  *   3. else mint a brand-new uuid v4 → touch it (fresh-device first touch,
  *      acceptance #1).
  *
- * ADOPTION GUARD (TICKET-104 — load-bearing, do not relax): step 2 adopts a
- * uuid the CALLER asserted, and both callers (`POST /api/identity`,
- * `POST /api/rooms`) then hand it back as the httpOnly identity cookie. That was
- * harmless while nothing authorized off an identity. TICKET-104 makes
- * `room.creatorUuid` grant a host session (`POST /api/host/claim`), which turns
- * unguarded adoption into impersonation: `POST /api/identity {legacyUuid: <a
- * creator's uuid>}` would mint a cookie for that creator and let the caller
- * claim their room. So adoption is refused for a uuid that ALREADY OWNS ROOMS
- * server-side (`listRooms`), and a fresh uuid is minted instead.
+ * ADOPTION GUARD (TICKET-104 — keep it, but do not over-credit it): step 2 adopts
+ * a uuid the CALLER asserted, and both callers (`POST /api/identity`,
+ * `POST /api/rooms`) then hand it back as the httpOnly identity cookie. So
+ * adoption is refused for a uuid that ALREADY OWNS ROOMS server-side
+ * (`listRooms`), and a fresh uuid is minted instead.
+ *
+ * WHY THIS IS NOT LOAD-BEARING FOR ADMIN ACCESS, corrected after the PR #81
+ * security gate (O4) — an earlier version of this comment claimed it was, and that
+ * claim is the kind a future reader deletes a guard on the strength of. It said
+ * `room.creatorUuid` grants a host session, so unguarded adoption would be
+ * impersonation. Two things are now true instead: the claim route never reads
+ * `creatorUuid` at all (it verifies a purpose-built `boraoke_claim_<room>` token —
+ * see `lib/host-auth.ts`), and even in the design where it did, the guard was
+ * never what made the answer safe: the takeover it closed already required knowing
+ * the victim's uuid, and knowing the uuid was sufficient WITHOUT adoption, because
+ * the route read it straight off the Cookie header.
+ *
+ * What the guard still genuinely buys, which is why it stays: it stops a caller
+ * obtaining a LEGITIMATELY ISSUED, durable identity cookie for someone else's
+ * uuid, and it stops identity-store pollution. Both are real; neither is admin
+ * access. Weigh it against the patron-continuity cost below on those terms.
  *
  * Only the client-asserted branch is guarded — a cookie-presented uuid was set
  * by us and is never re-checked. Accepted cost: a device whose identity predates
