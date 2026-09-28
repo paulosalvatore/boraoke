@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-09-28T17:06:12Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-116", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/116-e2e-built-server", "short_sha": "5ea88c1", "message_slug": "test(e2e): run the suite against a production build, not next dev"}}
