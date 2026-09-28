@@ -181,3 +181,27 @@ Cost: one `next build` (~1-4 min) before the suite. Against a suite that current
 4. **Close the gate gap**: with a suite that is actually reliable, running it automatically becomes worthwhile, which is what makes a red `main` detectable at all.
 
 **Until (1) lands, treat every "e2e green" claim on this product as conditional on a warm cache**, and say so when reporting one.
+
+## 2026-09-28 THIRD UPDATE — a third failure family, and a caveat that BINDS the build-and-start fix
+
+From the TICKET-104 round-4 work, two additions that change how the primary fix must be implemented.
+
+### A third failure family: `.next` build-artifact corruption
+
+Distinct from the two already recorded (cold-compile timeouts; store-wiping module re-evaluation). Symptoms: `app-paths-manifest.json` missing, `Cannot find module './vendor-chunks/qrcode.js'`, `__webpack_modules__[moduleId] is not a function`.
+
+**Cause: `next build` and `next dev` share the same `.next/` directory.** Running a build mid-session while a dev server is in use corrupts the artefacts the running server depends on. Cleaning `.next` removed it entirely. This is neither contention nor a product defect, and it is easy to misread as either.
+
+### The caveat, and it is the important half
+
+**Moving e2e to `next build` + `next start` makes this collision MORE likely, not less — unless the builds are isolated.** The proposed fix has the suite running a production build in the same working tree where agents and the `run-app` skill run `next dev` for hand-testing. Both write `.next/`. Without isolation, the fix for two failure families would routinely manufacture the third.
+
+**So build-and-start must ship with build isolation**, not as a follow-up. Options, to be chosen with evidence rather than assumed:
+- a distinct `distDir` for the e2e build (e.g. `.next-e2e`), so the dev server's artefacts are never touched;
+- or a dedicated build directory per worktree, which also removes the cross-worktree case — five worktrees were open on this product in one day, and `node_modules`/`.next` are shared through the repo root.
+
+Whichever is chosen, verify explicitly that a `next dev` session survives an e2e run happening concurrently. That is the exact scenario that produced the corruption, and it is a normal working pattern here, not an exotic one.
+
+### Related: a measurement-hygiene rule this produced
+
+Any agent running `npm run build` during a session that also uses `next dev` is corrupting its own subsequent test runs. Until the directories are isolated, treat a run showing missing manifests or `vendor-chunks` module errors as **void for artefact reasons** — a fourth void-category alongside the canary, wild wall-clock, and contention. Clean `.next` and re-measure rather than triaging the failures.
