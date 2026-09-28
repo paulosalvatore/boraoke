@@ -67,3 +67,52 @@ Under `next dev`, **any module re-evaluation discards every room and every queue
 4. **The gate gap stands unchanged** and remains the durable half: nothing in this house runs boraoke's e2e suite, which is why a red `main` went unnoticed.
 
 **Do not run the confirming suite while a latency-sensitive measurement is in flight** — a concurrent suite shares the `.next` cache and has already corrupted one measurement on this product.
+
+## 2026-09-28 SECOND UPDATE — measured: `main`'s e2e suite fails 4 out of 4 cold runs. The cause is that we test a DEV SERVER.
+
+Measured on **pure `origin/main`**, cold `.next` before every run, no PR code present:
+
+| run | failures | failing tests | wall-clock |
+|---|---|---|---|
+| 1 | 1 | `:37` | 2.9m |
+| 2 | 2 | `:329`, `:386` | 2.6m |
+| 3 | 4 | `:37`, `:65`, `:254`, `:329` | 5.8m |
+| 4 | 4 | `:37`, `:65`, `:115`, `:165` | 6.4m |
+
+**4 of 4 cold runs failed. Seven of `main`'s twelve `search.spec` tests failed at least once, and the failing set changes every run.** The flake also scales with machine load — the slower runs failed harder.
+
+This is not a property of any test. **It is the suite being run against a development server.**
+
+### The actual root cause
+
+`playwright.config.ts:34` — `webServer.command` is **`npx next dev -p ${PORT}`**.
+
+Everything we have been patching for weeks follows from that one line:
+
+1. **Routes compile lazily, during the tests.** First-compile latency lands inside assertion windows — hence `page.goto: net::ERR_ABORTED` on `/default` at a 30s timeout, and 5s `toBeVisible` timeouts. This is the **timeout** family.
+2. **Module re-evaluation discards the in-memory singletons** (`lib/rooms.ts:278`, `lib/store.ts:39`), wiping every room and queue entry mid-test. This is the **vanished state** family, and the deterministic `served-lang` failure.
+3. **Routes are evicted and recompiled after ~25s idle**, so (1) and (2) recur at arbitrary points rather than only at startup — which is why no warm-up ordering fully closes it.
+4. **`workers: 1` exists solely because of (2)** — see the comment at `playwright.config.ts:14-16`. The suite is serialised to work around a dev-server artefact.
+
+### The fix that closes the whole class
+
+**Run e2e against a production build — `next build` then `next start` — instead of `next dev`.** A built server does not compile lazily, does not re-evaluate modules, and does not evict routes. That removes every mechanism above at once:
+
+- no first-compile latency, so the timeout family disappears;
+- no module re-evaluation, so state survives and the `globalThis` pinning becomes belt-and-braces rather than load-bearing;
+- no eviction, so the ~25s recompile hazard disappears;
+- **`workers: 1` can likely be lifted**, making the suite substantially faster rather than merely more reliable;
+- the three warm-up helpers become unnecessary (leave them; stop adding more).
+
+It is also **more correct, not just more stable**: e2e would exercise what production actually runs. A dev server differs from a production build in ways that matter (React strict-mode double-invocation, minification, bundling), so today's suite can both fail on working code *and* pass on code that breaks when built.
+
+Cost: one `next build` (~1-4 min) before the suite. Against a suite that currently takes ~11 minutes warm, fails 4 of 4 cold, and has consumed days of agent time across TICKET-65/68/88/92 and today's work, that is trivially worth it.
+
+### Revised recommendation, in priority order
+
+1. **Switch `playwright.config.ts` to build-and-start.** This is the fix; everything else is mitigation. Verify by re-running the arm-E measurement — 4-of-4-failing should become 0-of-4.
+2. **Pin the memory singletons to `globalThis`** anyway (cheap, and it protects hand-testing against `next dev`, which is a real workflow the `run-app` skill documents).
+3. **Then confirm the served-lang value**, which should simply pass once (1) lands. If it still fails against a built server, *that* is a genuine product regression and gets escalated — the built-server run is the clean experiment this ticket has been missing.
+4. **Close the gate gap**: with a suite that is actually reliable, running it automatically becomes worthwhile, which is what makes a red `main` detectable at all.
+
+**Until (1) lands, treat every "e2e green" claim on this product as conditional on a warm cache**, and say so when reporting one.
