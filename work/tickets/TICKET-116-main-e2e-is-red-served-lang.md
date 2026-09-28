@@ -39,3 +39,31 @@ So the e2e suite runs **only when an agent chooses to run it**, which means a re
 ## Acceptance
 
 The test passes for the right reason (either the product is fixed, or the test is corrected with a written justification), the breaking change is identified, production impact is stated with evidence, and a gate exists that would have caught it.
+
+## 2026-09-28 UPDATE — ROOT CAUSE FOUND, and it is not a product regression. It is one defect behind a whole family of flakes.
+
+A read-only diagnosis (no suite run — two latency measurements were in flight) establishes this is **neither a product regression nor test drift**, and that **it predates 103/106/109** — none of those three touches the served-lang path, and `git log` over `middleware.ts`, `i18n/`, `app/layout.tsx` and `app/(patron)/[room]/tv/` ends at TICKET-79 itself.
+
+**The mechanism.** Both in-memory stores are **plain module-level singletons, not pinned to `globalThis`**:
+
+- `lib/rooms.ts:278` — `export const roomBackend: RoomBackend = createBackend();`
+- `lib/store.ts:39` — `export const store: QueueStore = createStore();`
+
+Under `next dev`, **any module re-evaluation discards every room and every queue entry.** The served-lang test seeds a room and then loads `/{room}/tv`; if a route compiles in between, the room is gone and `getRoomLanguage` falls back to `pt-BR`, failing an assertion that expects the room's `en`. The visitor's `Accept-Language` is structurally unreachable on the TV branch (`i18n/resolve-request-locale.ts:46-48` returns `getRoomLanguage(room)` and never reads the header), so a *product* explanation for the failure does not exist.
+
+**`served-lang.spec.ts` is the only seed-then-load spec that calls no warm-up helper.** That is why it is the one that fails.
+
+**One observation refines the diagnosis and makes the fix more urgent.** The hypothesis was that a full-suite run protects this spec by accident, because alphabetically earlier specs compile `/[room]/tv` first — but **the observed failure occurred in a full-suite run.** The reconciling explanation is the separately-measured dev-server behaviour: `next dev` **evicts and recompiles** routes after roughly 25 seconds of idle (documented in the `run-app` skill after `/apple-icon.png` wiped three testers' state). So the store is wiped not only on *first* compile but on **any** recompile, at arbitrary points in a long run. That makes the hazard **ordering-independent**: no amount of warm-up sequencing fully closes it.
+
+**Therefore the real fix is to pin the dev singletons to `globalThis`**, the standard Next.js dev pattern, so module re-evaluation cannot discard state. That eliminates the entire class rather than another instance of it. Consider what this class has already cost: three warm-up helpers in `e2e/helpers.ts`, the TICKET-88 / TICKET-92 / TICKET-65 / TICKET-68 deflaking work, a warm-up being added to `search.spec.ts` right now under TICKET-108, four agents losing time to vanished state in a single day, and this red `main`.
+
+**Production is not affected, and the reason is structural:** production runs the Upstash driver (`lib/rooms.ts:257-278`), where no module re-evaluation can lose a record. The middleware and i18n files are byte-identical to the TICKET-79 merge that was verified against production.
+
+### Revised scope
+
+1. **Pin both memory singletons to `globalThis`** (dev/test only — the Upstash path is stateless and unaffected). Check first whether any spec *relies* on the store resetting between files; if one does, that dependency is itself a defect to record.
+2. **Confirm the mechanism before fixing**, cheaply: run `served-lang.spec.ts` **alone with a clean `.next`** and capture the **received** value. `pt-BR` confirms the store-reset mechanism. **`es` would instead mean the pathname header is not reaching the request config — a genuine regression with production impact**, and that must be ruled out rather than assumed. The diagnosis argues strongly for `pt-BR` (an `es` result would also have failed the `/default/tv` and patron-chain assertions in the same file, which passed), but the value settles it and nobody has read it yet — the original error context was not retained.
+3. **Then re-assess the warm-up helpers.** With a `globalThis`-pinned store they become belt-and-braces rather than load-bearing; leave them, but stop treating "add another warm-up" as the answer to this class.
+4. **The gate gap stands unchanged** and remains the durable half: nothing in this house runs boraoke's e2e suite, which is why a red `main` went unnoticed.
+
+**Do not run the confirming suite while a latency-sensitive measurement is in flight** — a concurrent suite shares the `.next` cache and has already corrupted one measurement on this product.
