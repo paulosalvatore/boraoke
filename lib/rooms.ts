@@ -105,6 +105,35 @@ export interface Room {
    * token working for the attacker while locking the owner out.
    */
   claimTokenHashes?: string[];
+  /**
+   * The room's HOST-SESSION EPOCH — the one rotatable component of the session
+   * derivation, and the only thing that can end a host session (TICKET-118).
+   *
+   * WHY IT EXISTS. `lib/host-auth.ts`'s `sessionValue` was a pure function of
+   * `hostCodeHash`, which is immutable (the raw code is shown once and never
+   * stored, so it cannot be rotated). Every session cookie a room ever issued
+   * was therefore the same 64 hex characters for the room's whole life, and
+   * nothing anywhere could invalidate one. The TICKET-104 security re-gate
+   * measured the consequence: after the owner logged out, an attacker's claim
+   * correctly 401'd while the session that claim had ALREADY minted kept
+   * moderating and kept rolling itself a fresh 30-day cookie, indefinitely. Two
+   * separate logins returned the byte-identical session value, so re-entering
+   * the code did not help either. There was no sequence of actions available to
+   * a venue owner that ended an unauthorised session.
+   *
+   * Mixing this counter into the derivation gives one: bumping it invalidates
+   * every outstanding session for the room at once.
+   *
+   * ABSENT MEANS 0, AND 0 MEANS THE LEGACY DERIVATION. Read through
+   * `normaliseSessionEpoch`; at 0 the HMAC message is byte-identical to the
+   * pre-TICKET-118 one, so shipping this logs nobody out and no migration write
+   * is needed. Same optional-additive contract as `settings.language` /
+   * `settings.moderation`.
+   *
+   * Deliberately NOT part of `PublicRoom` — server-side bookkeeping, like
+   * `creatorUuid` and `claimTokenHashes`.
+   */
+  sessionEpoch?: number;
 }
 
 /** Client-safe room view — never leaks the host-code hash. */
@@ -214,6 +243,141 @@ export async function revokeRoomClaimTokens(roomId: string): Promise<void> {
   const next = { ...room };
   delete next.claimTokenHashes;
   await roomBackend.update(next);
+}
+
+/**
+ * Normalise a stored `sessionEpoch` into the integer the derivation uses
+ * (TICKET-118). Absent, or anything that is not a non-negative finite integer,
+ * reads as **0**, which is the legacy derivation.
+ *
+ * A numeric STRING is accepted and coerced, deliberately: the Upstash backend
+ * round-trips the record as JSON, and if some driver or hand-written record ever
+ * handed back `"3"`, silently falling back to 0 would **resurrect every session
+ * that epoch 3 revoked** — a security fail-open in the one function whose job is
+ * to make revocation stick. So anything that reads unambiguously as a
+ * non-negative integer is honoured.
+ *
+ * Genuinely un-interpretable input (undefined, null, NaN, Infinity, a negative,
+ * a fraction, an object, `""`) falls back to 0, which fails *open*. That is the
+ * considered direction rather than an oversight: an uninterpretable epoch is
+ * indistinguishable from a legacy record that has no epoch at all, and every
+ * room created before TICKET-118 is exactly that — so failing closed would
+ * refuse every live session in the product on deploy. The state is also not
+ * reachable from our own code, which only ever writes an integer via
+ * `revokeRoomHostSessions`.
+ */
+export function normaliseSessionEpoch(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+  if (!Number.isInteger(n)) return 0;
+  if (n < 0) return 0;
+  return n;
+}
+
+/** The room's current host-session epoch (0 when the room or the field is absent). */
+export async function getRoomSessionEpoch(roomId: string): Promise<number> {
+  const room = await getRoom(roomId);
+  return normaliseSessionEpoch(room?.sessionEpoch);
+}
+
+/** How many times `revokeRoomHostSessions` re-tries a bump that a concurrent write clobbered. */
+const EPOCH_BUMP_ATTEMPTS = 4;
+
+/**
+ * END EVERY OUTSTANDING HOST SESSION for a room, and every admin-claim
+ * credential except the one the acting device presents (TICKET-118).
+ *
+ * This is the venue's recovery lever — the thing the TICKET-104 re-gate found did
+ * not exist. It does both halves in ONE read-modify-write, because doing them in
+ * two would let a concurrent write land between them and leave the room in a
+ * state where sessions are dead but a stolen claim token can mint a fresh one:
+ *
+ *   1. `sessionEpoch` is bumped, so every session value derived from the old
+ *      epoch stops verifying (`lib/host-auth.ts`, `sessionValue`).
+ *   2. `claimTokenHashes` is pruned to just the presented token's hash, so a
+ *      copied claim credential cannot immediately re-claim a new session. Both
+ *      halves are needed: `POST /api/host/claim` converts a claim token into a
+ *      session, so revoking sessions without revoking claims revokes nothing.
+ *
+ * WHY IT KEEPS THE CALLER'S OWN TOKEN RATHER THAN CLEARING ALL AND RE-MINTING —
+ * this is the anti-lockout property, and it is the whole reason the function is
+ * shaped this way. Every mechanism this ticket's predecessors added on the
+ * authentication path recreated a lockout (a capped list that evicted another
+ * device, then a rotation whose two concurrent rolls each deleted the presented
+ * hash, so a device was locked out by its own successful re-entry). Keeping the
+ * presented hash means:
+ *   - the acting device's `boraoke_claim_<room>` cookie is UNTOUCHED and still
+ *     live, so nothing has to reach the browser for it to retain access;
+ *   - if the response is lost entirely — a network drop after this write commits
+ *     — the device's next admin mount auto-claims with that surviving token and
+ *     gets a fresh session at the new epoch. There is no response-delivery
+ *     lockout window, which a clear-all-and-re-mint design would have.
+ * When the caller presents no live claim token, every hash is dropped and the
+ * route mints the caller a fresh one instead; that path depends on the response,
+ * and the route documents it.
+ *
+ * LOST UPDATES. There is no compare-and-swap for room records (`RoomBackend` is
+ * get/create/update/count; the Upstash `update` is a plain `SET`), so a
+ * concurrent `issueRoomClaimToken` / `setRoomMode` can clobber this write — the
+ * pre-existing whole-record read-modify-write hazard. We therefore re-read and
+ * confirm the epoch actually advanced, retrying a bounded number of times. The
+ * failure mode that survives is "the revocation did not take", reported to the
+ * caller as a failure; it is never "the owner is locked out", because the
+ * caller's replacement session is derived AFTER this returns, from whatever
+ * epoch is actually stored (see the route).
+ *
+ * The two failure reasons are returned DISTINCTLY, because they mean different
+ * things to a venue owner: `no-room` is "there is nothing here to revoke" (the
+ * `default` room has no record and is governed by the env `HOST_TOKEN`, so it is
+ * not revocable here), while `contended` is "try again" — a transient loss to a
+ * concurrent write, where the sessions are still live.
+ */
+export type RevokeHostSessionsResult =
+  | { ok: true; epoch: number; keptClaimToken: boolean }
+  | { ok: false; reason: "no-room" | "contended" };
+
+export async function revokeRoomHostSessions(
+  roomId: string,
+  opts: { presentedClaimToken?: string } = {},
+): Promise<RevokeHostSessionsResult> {
+  const presented =
+    typeof opts.presentedClaimToken === "string" && opts.presentedClaimToken.length > 0
+      ? hashClaimToken(opts.presentedClaimToken)
+      : undefined;
+
+  for (let attempt = 0; attempt < EPOCH_BUMP_ATTEMPTS; attempt++) {
+    const room = await getRoom(roomId);
+    if (!room) return { ok: false, reason: "no-room" };
+    const current = normaliseSessionEpoch(room.sessionEpoch);
+    const target = current + 1;
+
+    // Keep the acting device's hash only if it is genuinely live right now —
+    // never trust the presented value into the record on its own say-so.
+    const live = Array.isArray(room.claimTokenHashes) ? room.claimTokenHashes : [];
+    const keep = presented !== undefined && live.includes(presented) ? [presented] : [];
+
+    const next: Room = { ...room, sessionEpoch: target };
+    if (keep.length > 0) next.claimTokenHashes = keep;
+    else delete next.claimTokenHashes;
+    await roomBackend.update(next);
+
+    // Confirm the write landed. A concurrent whole-record update can clobber it;
+    // ANY advance past `current` is success (a racing revoke that bumped further
+    // has already invalidated the same sessions this call was asked to end).
+    const after = await getRoom(roomId);
+    if (!after) return { ok: false, reason: "no-room" };
+    const landed = normaliseSessionEpoch(after.sessionEpoch);
+    if (landed > current) {
+      const keptClaimToken =
+        keep.length > 0 &&
+        Array.isArray(after.claimTokenHashes) &&
+        after.claimTokenHashes.includes(presented!);
+      return { ok: true, epoch: landed, keptClaimToken };
+    }
+  }
+  // Every attempt was clobbered. Report failure rather than a false success —
+  // the caller must not tell a venue owner that sessions were ended when they
+  // were not.
+  return { ok: false, reason: "contended" };
 }
 
 /** Constant-time comparison of two hex strings (mirrors lib/host-auth.ts). */

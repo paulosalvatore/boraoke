@@ -91,6 +91,16 @@ export default function AdminRoom({
   // tablet has a way to end a session deliberately.
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  // TICKET-118 (sign out all other devices). A SEPARATE action from the logout
+  // above, and deliberately so: logout means "get me off this tablet", while this
+  // means "end every session anywhere, including one somebody copied off a
+  // device". Until now no such action existed — a session, once minted, could
+  // never be revoked, so a venue that lost control of a device had no sequence of
+  // actions available that ended an unauthorised session. This device STAYS
+  // signed in, which is what makes it safe to use mid-service.
+  const [confirmingRevoke, setConfirmingRevoke] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [revokeMsg, setRevokeMsg] = useState<"done" | "error" | null>(null);
 
   const roomQuery = `?room=${encodeURIComponent(roomId)}`;
 
@@ -241,6 +251,35 @@ export default function AdminRoom({
     } finally {
       setLoggingOut(false);
       setConfirmingLogout(false);
+    }
+  }
+
+  /**
+   * TICKET-118: end every outstanding host session for this room, and every
+   * admin-claim credential except this device's.
+   *
+   * This device stays signed in on purpose — the route keeps the claim token this
+   * request presents and re-issues a session cookie derived from the new epoch,
+   * so `auth` is deliberately NOT flipped to "gate". Signing the owner out as a
+   * side effect of a security action would drop them onto the shown-once host
+   * code, which is the dead end TICKET-104 exists to remove and exactly the
+   * lockout this surface has recreated three times.
+   *
+   * On a non-200 we say so rather than reporting success: a 503 means the write
+   * lost a race and the other sessions are STILL LIVE, and telling a venue owner
+   * their room is secure when it is not is the worst failure this screen can have.
+   */
+  async function handleRevokeSessions() {
+    setRevoking(true);
+    setRevokeMsg(null);
+    try {
+      const res = await fetch(`/api/host/revoke-sessions${roomQuery}`, { method: "POST" });
+      setRevokeMsg(res.ok ? "done" : "error");
+    } catch {
+      setRevokeMsg("error");
+    } finally {
+      setRevoking(false);
+      setConfirmingRevoke(false);
     }
   }
 
@@ -492,7 +531,60 @@ export default function AdminRoom({
             Sair
           </button>
         )}
+        {/* TICKET-118: "sign out all other devices". Same muted secondary
+            treatment as logout — it is a meta-action, not a mid-service control.
+            The trigger lives in the header but the CONFIRM does not: it needs a
+            sentence of warning (the other devices land on a host code they may
+            not have), and a warning that has to fit beside four other header
+            controls at 390px is a warning nobody reads. So confirming opens the
+            panel below the header instead. */}
+        <button
+          type="button"
+          className={styles.logoutBtn}
+          data-testid="admin-revoke-button"
+          disabled={revoking}
+          onClick={() => {
+            setRevokeMsg(null);
+            setConfirmingRevoke((v) => !v);
+          }}
+        >
+          {t("signOutAll")}
+        </button>
       </header>
+
+      {confirmingRevoke && (
+        <div className={styles.revokePanel} data-testid="admin-revoke-confirm" role="alert">
+          <p className={styles.revokeWarning}>{t("signOutAllWarning")}</p>
+          <span className={styles.confirm}>
+            <button
+              type="button"
+              className={styles.confirmYes}
+              disabled={revoking}
+              data-testid="admin-revoke-confirm-yes"
+              onClick={handleRevokeSessions}
+            >
+              {t("signOutAllConfirm")}
+            </button>
+            <button
+              type="button"
+              className={styles.confirmNo}
+              disabled={revoking}
+              onClick={() => setConfirmingRevoke(false)}
+            >
+              {t("cancel")}
+            </button>
+          </span>
+        </div>
+      )}
+      {revokeMsg && (
+        <p
+          className={revokeMsg === "error" ? styles.revokeError : styles.revokeDone}
+          role="status"
+          data-testid="admin-revoke-toast"
+        >
+          {revokeMsg === "done" ? t("signOutAllDone") : t("signOutAllError")}
+        </p>
+      )}
 
       {/* Mode switcher — live (TICKET-10) */}
       <ModeSwitcher active={mode} onChange={changeMode} disabled={busy} />

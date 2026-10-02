@@ -53,6 +53,7 @@ import {
   hashHostCode,
   isValidRoomId,
   issueRoomClaimToken,
+  normaliseSessionEpoch,
   verifyRoomClaimToken,
 } from "./rooms";
 
@@ -96,16 +97,24 @@ export const DEV_FALLBACK_TOKEN = "cantai-dev-host";
  * the URL, code in localStorage) would both turn a permanent credential into a
  * leakable one — see work/tickets/TICKET-76-*.md.
  *
- * Why raising it is cheap in security terms: the session value is a
- * deterministic HMAC of the room secret (`sessionValue`), so it never changes
- * and cannot be revoked server-side. An attacker who has ALREADY exfiltrated
- * the cookie value can replay it indefinitely by setting their own expiry —
- * `maxAge` bounds nothing for them. It bounds only how long the LEGITIMATE
- * browser keeps the cookie on disk.
+ * Why raising it is cheap in security terms: `maxAge` bounds nothing for an
+ * attacker who has ALREADY exfiltrated the cookie value — they can replay it by
+ * setting their own expiry. It bounds only how long the LEGITIMATE browser keeps
+ * the cookie on disk.
  *
  * The real, accepted cost is therefore device-sharing, not theft: on a shared
  * venue tablet the next person to pick it up is host for 30 days. Logout
  * (`POST /api/host/session`) is the mitigation and must stay reachable.
+ *
+ * TICKET-118 CORRECTION — this docblock used to say the session value "never
+ * changes and cannot be revoked server-side", and the TICKET-104 re-gate
+ * measured that as a real gap, not a footnote: an attacker's already-minted
+ * session kept moderating after the owner's logout and kept rolling itself a
+ * fresh 30-day cookie, with no action available to the venue that would end it.
+ * It is no longer true. `sessionValue` now mixes the room's rotatable
+ * `sessionEpoch` into the derivation, and `POST /api/host/revoke-sessions` bumps
+ * it — so a copied cookie IS revocable, and the paragraph above bounds only the
+ * window before the owner notices, not the damage afterwards.
  *
  * ROLLING: a successful `GET /api/host/session` re-issues the cookie with a
  * fresh 30 days, so an active host effectively never falls out. A FAILED probe
@@ -123,19 +132,49 @@ export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
  * `null` when host controls are locked (production with nothing configured).
  */
 export async function resolveRoomToken(roomId: string): Promise<string | null> {
+  return (await resolveRoomSecret(roomId))?.token ?? null;
+}
+
+/**
+ * The room's full session-derivation input: its secret AND its rotatable session
+ * epoch (TICKET-118).
+ *
+ * WHY THIS EXISTS RATHER THAN A SECOND LOOKUP — it is the property that keeps a
+ * revocation lever off the authentication path. The epoch lives on the room
+ * record, and `resolveRoomToken` was ALREADY fetching that record for
+ * `hostCodeHash`; reading both out of the same `getRoom` means adding a
+ * revocation mechanism costs **zero** extra store reads and, more importantly,
+ * **zero writes** on the path a returning device takes. `issueSession`,
+ * `verifySessionValue`, `requireHost` and `verifyClaim` all stay pure reads.
+ *
+ * That is deliberate and it is the lesson of TICKET-104: every mechanism that
+ * wrote on this path recreated the very lockout it was added to remove (a capped
+ * token list that evicted another device; then a rotation whose two concurrent
+ * rolls each deleted the presented hash, so a device was locked out by its own
+ * successful re-entry). The only write in TICKET-118 is on the explicit
+ * revocation route, which no returning device ever touches.
+ *
+ * The `default` room has no record, so its epoch is always 0 — it is governed by
+ * the env `HOST_TOKEN` and is not revocable.
+ */
+export async function resolveRoomSecret(
+  roomId: string,
+): Promise<{ token: string; epoch: number } | null> {
   // 1. Per-room host-code hash (the multi-room identity). Only for real rooms —
   //    the `default` room has no record and stays on the env-token path below.
   if (roomId !== DEFAULT_ROOM) {
     const room = await getRoom(roomId);
-    if (room?.hostCodeHash) return room.hostCodeHash;
+    if (room?.hostCodeHash) {
+      return { token: room.hostCodeHash, epoch: normaliseSessionEpoch(room.sessionEpoch) };
+    }
     // A non-default room id with no record is not a configured venue → locked,
     // regardless of any global env token (which governs `default` only).
     return null;
   }
   // 2/3/4. Legacy env token / dev fallback / locked — for the `default` room.
   const env = process.env.HOST_TOKEN?.trim();
-  if (env) return env;
-  if (process.env.NODE_ENV !== "production") return DEV_FALLBACK_TOKEN;
+  if (env) return { token: env, epoch: 0 };
+  if (process.env.NODE_ENV !== "production") return { token: DEV_FALLBACK_TOKEN, epoch: 0 };
   return null; // locked: production must configure HOST_TOKEN
 }
 
@@ -145,11 +184,35 @@ export async function isHostConfigured(roomId: string): Promise<boolean> {
 }
 
 /**
+ * The HMAC message epoch 0 uses. Frozen: every session cookie issued before
+ * TICKET-118 was derived with exactly this string, so epoch 0 must keep
+ * producing the byte-identical value or the deploy logs every live host out.
+ */
+const SESSION_MESSAGE_V1 = "cantai-host-session-v1";
+
+/**
  * The opaque session value derived from a token. Storing this (not the token)
  * in the cookie means the raw secret is never held client-side.
+ *
+ * TICKET-118 — THE EPOCH IS WHAT MAKES A SESSION REVOCABLE. Before it, this was
+ * a pure function of the room secret, and that secret is immutable (the host
+ * code is shown once and only its hash is stored, so it cannot be rotated). So
+ * every session cookie a room ever issued was the same 64 hex characters for the
+ * room's whole life, two separate logins returned the byte-identical value, and
+ * nothing anywhere could end one. The security re-gate measured the result: an
+ * attacker's already-minted session kept moderating after the owner's logout and
+ * kept rolling itself a fresh 30-day cookie, forever. Mixing the room's
+ * `sessionEpoch` into the message means bumping that counter invalidates every
+ * outstanding session for the room at once.
+ *
+ * EPOCH 0 IS THE LEGACY MESSAGE, BYTE FOR BYTE. Every room that predates this
+ * change has no `sessionEpoch`, which `normaliseSessionEpoch` reads as 0, so
+ * shipping this is a no-op for every live session and needs no migration write.
+ * Only a room whose owner has actually used the revocation lever leaves epoch 0.
  */
-function sessionValue(token: string): string {
-  return createHmac("sha256", token).update("cantai-host-session-v1").digest("hex");
+function sessionValue(token: string, epoch: number): string {
+  const message = epoch === 0 ? SESSION_MESSAGE_V1 : `${SESSION_MESSAGE_V1}:e${epoch}`;
+  return createHmac("sha256", token).update(message).digest("hex");
 }
 
 /** Constant-time comparison of two hex strings of arbitrary length. */
@@ -178,16 +241,19 @@ export async function verifyHostToken(roomId: string, submitted: unknown): Promi
 
 /** Issue the session cookie value for a room, or null when locked. */
 export async function issueSession(roomId: string): Promise<string | null> {
-  const token = await resolveRoomToken(roomId);
-  return token ? sessionValue(token) : null;
+  const secret = await resolveRoomSecret(roomId);
+  return secret ? sessionValue(secret.token, secret.epoch) : null;
 }
 
 /** Verify a session cookie value against the room's configured token. */
 export async function verifySessionValue(roomId: string, cookieValue: unknown): Promise<boolean> {
-  const token = await resolveRoomToken(roomId);
-  if (!token) return false;
+  const secret = await resolveRoomSecret(roomId);
+  if (!secret) return false;
   if (typeof cookieValue !== "string" || cookieValue.length === 0) return false;
-  return timingSafeHexEqual(cookieValue, sessionValue(token));
+  // Compared against the CURRENT epoch only — a value derived from any earlier
+  // epoch is what a revocation is supposed to kill, so there is deliberately no
+  // grace window and no acceptance of a previous epoch's value (TICKET-118).
+  return timingSafeHexEqual(cookieValue, sessionValue(secret.token, secret.epoch));
 }
 
 /**
