@@ -21,6 +21,28 @@
 
 **THE RISK THAT MUST NOT BE FORGOTTEN:** on TICKET-104, **every mechanism that wrote on the authentication path recreated the lockout the ticket existed to remove — three times** (a capped list evicted another device; a rotation let two concurrent rolls each delete the presented hash, so a device could be **locked out by its own successful re-entry**; and the surviving cap evicts the owner on five staff logins — that is TICKET-120). The shipped TICKET-104 design works because it **writes nothing** on that path. **A revocation epoch IS a write on that path.** Require a concurrency probe proving a concurrent write cannot lock out the legitimate owner, and do not accept "it looks fine" — the round-4 race was only caught by a probe (`stored=1 aLives=false bLives=true`).
 
+### TICKET-118 amendment — the Dev's final checkpoint. DO NOT re-litigate the approach; DO NOT skip the reverse-check.
+
+It stopped cleanly after a jest run, started nothing new, and never started a server on this ticket. **Implementation complete, 32-test regression suite written and green, all committed and pushed.**
+
+**Approach A (rotatable per-room `sessionEpoch`) is settled, with B and C ruled out on recorded grounds — do not reopen this without new information:**
+- **C (rotate the host code) IS the shown-once-unrecoverable dead end TICKET-104 exists to remove.** Choosing it would reintroduce the problem.
+- **B (server-side session records)** would put a **write on `requireHost`** — the hottest authentication path — to buy per-session granularity nobody asked for.
+- **A costs zero extra store reads and zero writes** on that path: both derivation sites already fetched the room record for `hostCodeHash`, refactored into `resolveRoomSecret`. **Epoch 0 keeps the byte-identical legacy HMAC message**, so it deploys **without logging anyone out** and needs no migration.
+
+**The lockout risk is ruled out STRUCTURALLY, not by care** — which is the standard this surface requires after three failures. The revoke **keeps the acting device's own claim-token hash** and prunes only the others, in the **same single read-modify-write** that bumps the epoch. So the acting device's claim cookie stays live, and if the response is lost entirely its next admin mount auto-claims and gets a session at the new epoch. **There is no response-delivery lockout window — which the obvious clear-all-and-re-mint design would have had.** The replacement session cookie is derived *after* the write, from the epoch actually stored, so no path hands back a cookie that will not verify; exhausted contention returns **503 rather than a false success**. Three concurrency probes are in the suite.
+
+**The flagged product question was judged NOT an escalation, and I agree:** "does revoking force host-code re-entry?" dissolves rather than being answered — **no for the acting device, yes for every other**, which is already exactly what today's logout does to every other device's claim credential. No new product cost over shipped behaviour. The Dev explicitly marked that paragraph in its report as the one to argue with; if you disagree, argue with it there rather than silently redesigning.
+
+**WHAT IS STILL OWED — work through the resume note's order, and do not drop item 1:**
+1. **The two reverse-checks, especially part 2: a no-op epoch bump must still make the suite FAIL.** That is what proves the new tests are not merely being carried by the pre-existing claim revocation. Skipping it would leave 32 green tests that might assert nothing new.
+2. The **triggered mutation pass** on `normaliseSessionEpoch`.
+3. The **hollowing-out walk-through of the 18 existing `issueSession` call sites** — duty (c) **did** fire, because a primitive changed beneath them.
+4. The **e2e spec**, then the full gate runs **with the e2e distribution and its condition stated**.
+5. The **draft PR**, then the **security re-gate** — the Cyber gate rejected PR #81 on this same surface once, so the gate accepts this fix, not the TM.
+
+**Two environment facts from its note:** `tsc` carries **hundreds of pre-existing `__tests__` errors** and needs a filter to be useful here; and an **atomic Lua-EVAL epoch bump** is the right follow-up for the contention residual, but it needs a room-backend test seam that **does not exist yet** — so it is a follow-up ticket, not part of this PR.
+
 ### Environment facts that differ from older entries — use these, not the stale ones
 - **e2e now runs against a production build** (`next build` + `next start`, isolated `.next-e2e`) and is **deterministic: 126/126 on 6 of 6 cold runs, ~4 min**. The old cold-flake class is **gone**, so **a failure now means something** — do not dismiss one as environmental without evidence.
 - **`workers: 1` is deliberate** (17 of 20 specs share the `default` room — TICKET-121). **Do not raise it.**
