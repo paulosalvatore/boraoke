@@ -1,5 +1,33 @@
 # boraoke — Manager Log
 
+## 2026-10-02 — RESUME CHECK after a 4-day gap: nothing moved. Closing out the 2026-09-28 session: SEVEN merges, and two of this log's own claims corrected.
+
+**State verified from disk, not memory.** `main` at `c0e10cb`, identical to `origin/main`, zero commits in the gap. Only `#79` and `#80` open, both **the Global TM's drafts** (`t101-landing`, `t99-runtime` worktrees — do not touch). Tree clean apart from untracked `work/heartbeats/`. **Nothing was stranded over the gap and nothing new arrived.**
+
+### Merged in the 09-27/09-28 session
+**#83** TICKET-103 (TV focus state — live, production-verified), **#82** TICKET-106 (quota spike), **#85** TICKET-109 (join-card overlap), **#84** TICKET-108 (billed `search.list` **3.75 → 2.25 per queued song, −40%**, hit@10 held at 79% with an identical miss set), **#81** TICKET-104 (creator admin re-entry, on an APPROVED security re-gate), **#86** TICKET-116 (**e2e now runs against a production build** — 126/126 on 6 of 6 cold runs, ~1.8x faster), **#87** TICKET-122 (Vercel branch-deploy gate).
+
+### TWO CORRECTIONS TO THIS LOG'S OWN EARLIER CLAIMS — read these before trusting the prior entries
+
+**1. "Nothing in this house runs boraoke's e2e" was FALSE.** `.github/workflows/ci.yml` runs the suite, and **every workflow run in this repo's history is a `pull_request` event that passed.** The prior entry built a premise on a gap that did not exist. **The real gap is narrower: `on: pull_request` is the only trigger, so nothing re-verifies `main` after a merge** — filed as **TICKET-123**, with the caveat that the trigger must not land before deciding what happens when a post-merge run fails.
+
+**2. "`main`'s e2e is RED" was condition-specific, not absolute.** It fails **cold with a narrow spec selection** and **passes in a full-suite run** (on a CI runner, and locally when warm). The accurate statement is that **the suite's verdict depended on how it was invoked and how loaded the machine was** — which is worse for a gate than a plain failure, because a green run carried no information. The right framing, from the reviewer: **the gate already existed and was green; the change's value is that its verdict now means something.** A quiet runner cannot see a load-dependent race.
+
+**And the served-lang contradiction is RESOLVED with no production bug.** The two accounts were about **different routes**: the unexpected `es` was on the patron route `/{room}`, never on `/{room}/tv`. On the TV branch the cookie and `Accept-Language` are **structurally unreachable** (`resolve-request-locale.ts:46-48` returns `getRoomLanguage(room)`), so a wiped room can only yield `pt-BR`; on the patron branch the room tier is soft, so a visitor header wins. Verified by execution both ways, and corroborated by a sibling `/default/tv` assertion that **passed** in the same runs — which a missing pathname header would also have broken.
+
+### Open, and why
+- **TICKET-118 (HIGH)** — logout does not revoke a host session already minted from the credential; the session value is a deterministic HMAC with **no rotation lever**, so **a compromised venue has no recovery path**. Never describe this feature as providing one.
+- **TICKET-120 (MED-HIGH)** — the claim-token cap counts **issues, not devices** on the login path: five staff logins silently evict the owner's phone back onto a code they were shown once.
+- **TICKET-119** (client-controlled throttle key), **TICKET-121** (17 of 20 specs share the `default` room — the real blocker to parallel e2e, which `next dev` had been masking), **TICKET-123** (CI never runs on `main`), **TICKET-113/114**, **TICKET-107** (Vault + a **separate test** YouTube key), **TICKET-110** (real-LG validation), **TICKET-111** (search telemetry), **TICKET-117** (closed benign — prod does not set that variable), **TICKET-112**, **TICKET-115**.
+- **118 and 120 were deliberately held** for the account-wide Vercel deployment block (100/24h, exhausted at 119 account-wide). **That window has long since passed**, so they are startable — but confirm fleet priorities before opening branches, since four days have gone by.
+
+### Deployment discipline, measured
+Boraoke made **26 commits to `main` in one day**, each a *production* deployment. Measured breakdown: **9 of 18 were `chore(events)` auto-commits — every commit is doubled** — and the rest an un-batched evidence campaign. `#87` gates **branch** deploys only (verified: **0 deployments** on a gated push); the `main` share is a batching discipline, now adopted. Note the e2e change *reduces* pressure: a deterministic ~4-minute suite removes the re-run-until-green incentive a flaky 7-minute one creates.
+
+### The session's durable lessons
+**Every mechanism that writes on the authentication path recreated the lockout TICKET-104 existed to remove — three times.** The shipped design writes nothing. **A plausible mechanism is not evidence:** three confident explanations for one flaky test were all wrong, each settled cheaply by a measurement nobody had run. **A known-pre-existing failure class is still yours to investigate when it lands in a file you changed** — an agent's amendment to a TM instruction, and it caught a real bug. **Gate reports need a distribution AND their condition** (warm vs cold); two flawed measurements are on the record, including this TM's own control that never cleared `.next`.
+
+
 ## 2026-09-28 (end) — PR #81 MERGED on an APPROVED security re-gate. FIVE merges today. Only #79/#80 remain, both the Global TM's.
 
 `main` at `59a3813`+. **Two worktrees, both intentional and both the Global TM's: `t99-runtime` (#80), `t101-landing` (#79). Plus `t116-e2e-built-server`, newly cut for the next piece of work.**
