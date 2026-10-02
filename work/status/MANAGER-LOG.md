@@ -1,5 +1,37 @@
 # boraoke — Manager Log
 
+## CURRENT STATE — 2026-10-02, pre-reboot checkpoint. READ THIS FIRST; a cold tab can resume from this section alone.
+
+**A machine reboot is imminent (Tech-Lead request after a crash). Nothing is stranded. After the reboot: run `tm-resume`, then read this section.**
+
+### Where everything is
+- **`main` at `c0e10cb`+, clean, zero unpushed.** Only untracked `work/heartbeats/` (ephemeral per D-032, not the durable record — ignore it).
+- **Four worktrees. Two are NOT yours:** `t99-runtime` (PR #80) and `t101-landing` (PR #79) belong to the **Global TM** and are parked drafts — **do not touch, do not remove**.
+- **`t118-session-revocation` is the live lane** — branch `ticket/118-session-revocation`, **2 commits, everything committed and pushed, nothing uncommitted.** No PR opened yet.
+
+### The work queue, in order (agreed with the Global TM 2026-10-02)
+**TICKET-118 → TICKET-120 → TICKET-123.** Sequenced deliberately, **not parallel** — 118 and 120 both touch the auth surface. TICKET-121 (per-spec rooms, which unlocks parallel e2e) yields to anything product-facing. **One Dev lane at a time, one test suite at a time** — the Mac hit load ~286 recently.
+
+### TICKET-118 — mid-flight, implementation committed, NOT yet gated
+**The problem:** after the owner logs out, an attacker's *claim* 401s, but a host **session already minted** from a stolen credential keeps working and **rolls itself a fresh 30-day cookie** indefinitely. Re-entering the host code does not help — `sessionValue` is a **deterministic HMAC over `hostCodeHash`**, so two logins return the byte-identical value. **There is currently no action a venue owner can take that ends an unauthorised session.** Pre-existing on `main`, so no incident and no time pressure.
+
+**What the Dev chose and committed** (`0a4f54a`, "rotatable session epoch + sign out all devices"): the **rotatable server-side component** approach — a per-room epoch mixed into the session derivation, so bumping it invalidates every outstanding session at once — plus a venue-facing affordance and trilingual copy (`en`/`es`/`pt-BR`). Its reasoning is in `work/plans/TICKET-118-plan.md` and `work/reports/dev/TICKET-118-dev-report.md` **on that branch**. Read those before changing direction.
+
+**NOT yet done: no gates run, no PR, no review, no security gate.** Next steps are jest + e2e (as a **distribution with its condition stated**, not one run), then a PR, then the security gate — the Cyber gate rejected the related PR #81 once, so this surface re-gates rather than being judged by the TM.
+
+**THE RISK THAT MUST NOT BE FORGOTTEN:** on TICKET-104, **every mechanism that wrote on the authentication path recreated the lockout the ticket existed to remove — three times** (a capped list evicted another device; a rotation let two concurrent rolls each delete the presented hash, so a device could be **locked out by its own successful re-entry**; and the surviving cap evicts the owner on five staff logins — that is TICKET-120). The shipped TICKET-104 design works because it **writes nothing** on that path. **A revocation epoch IS a write on that path.** Require a concurrency probe proving a concurrent write cannot lock out the legitimate owner, and do not accept "it looks fine" — the round-4 race was only caught by a probe (`stored=1 aLives=false bLives=true`).
+
+### Environment facts that differ from older entries — use these, not the stale ones
+- **e2e now runs against a production build** (`next build` + `next start`, isolated `.next-e2e`) and is **deterministic: 126/126 on 6 of 6 cold runs, ~4 min**. The old cold-flake class is **gone**, so **a failure now means something** — do not dismiss one as environmental without evidence.
+- **`workers: 1` is deliberate** (17 of 20 specs share the `default` room — TICKET-121). **Do not raise it.**
+- **`e2e/_canary.spec.ts` is the harness canary:** if it fails, that run is **void** — discard it, do not triage the other failures.
+- **CI (`ci.yml`) DOES run the suite, but only `on: pull_request`** — nothing re-verifies `main` after a merge (TICKET-123).
+- **Deployment budget is account-wide** (100/24h across 17 projects). Branch deploys are gated by `vercel.json` (`main: true`, `**: false`) — **verified 0 deployments on a gated push**. A merge to `main` still costs a production deploy, so **batch doc/status commits: one main push per real merge.** Atek will need headroom on its eventual cutover day (slipped, no date — UOL's FTP is broken); the Global TM will warn a day ahead.
+
+### Open tickets, briefly
+**118** (in flight), **120** MED-HIGH (token cap counts *issues* not devices — five staff logins silently evict the owner's phone), **123** (CI never runs on `main`), **119** (client-controlled throttle key; whether Vercel's edge overwrites those headers is unverified and decides severity), **121** (shared `default` room blocks parallel e2e), **113**/**114**, **107** (Vault + a **separate test** YouTube key — testing with the prod key spends the very 100/day bucket under conservation), **110** (real-LG validation; the model/webOS version also answers PR #80's shim question), **111** (search telemetry), **112**, **115**. **117 is closed benign** — production does not set that variable.
+
+
 ## 2026-10-02 — RESUME CHECK after a 4-day gap: nothing moved. Closing out the 2026-09-28 session: SEVEN merges, and two of this log's own claims corrected.
 
 **State verified from disk, not memory.** `main` at `c0e10cb`, identical to `origin/main`, zero commits in the gap. Only `#79` and `#80` open, both **the Global TM's drafts** (`t101-landing`, `t99-runtime` worktrees — do not touch). Tree clean apart from untracked `work/heartbeats/`. **Nothing was stranded over the gap and nothing new arrived.**
