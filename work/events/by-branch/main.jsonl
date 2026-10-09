@@ -91,3 +91,4 @@
 {"v": "1", "ts": "2026-10-02T12:50:20Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "2df5f45", "message_slug": "docs(status): amend the pre-reboot checkpoint with TICKET-118's settled "}}
 {"v": "1", "ts": "2026-10-09T22:30:57Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-99", "pr": 80, "event": "merged", "payload": {"pr": 80, "tickets": ["TICKET-99"]}}
 {"v": "1", "ts": "2026-10-09T22:30:59Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-99", "pr": 80, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 80}}
+{"v": "1", "ts": "2026-10-09T22:31:47Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "211434b", "message_slug": "docs(status): PR #80 merged, sweep update"}}
