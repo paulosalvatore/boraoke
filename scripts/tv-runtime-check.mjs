@@ -65,7 +65,12 @@ import { join } from "node:path";
  * two TICKET-99-family gates. Raising this is a PRODUCT decision, not a
  * script tweak (see check-bundle-es-target.mjs's TARGET_ECMA comment).
  */
-const CHROMIUM_REVISION = "561733";
+/**
+ * The snapshot bucket is sparse and per-platform: Mac has 561733 but Linux_x64
+ * does not (HTTP 404 — this is what failed the first CI run). 561732 is the
+ * adjacent published Linux build, one commit earlier, same 68.0.3440.0 line.
+ */
+const CHROMIUM_REVISION = process.platform === "linux" ? "561732" : "561733";
 
 /**
  * Chromium snapshots are published per-platform under one revision number.
@@ -103,7 +108,7 @@ const SNAPSHOT_INFO = platformSnapshotInfo();
 const CHROMIUM_SNAPSHOT_URL = `https://commondatastorage.googleapis.com/chromium-browser-snapshots/${SNAPSHOT_INFO.dirSegment}/${CHROMIUM_REVISION}/${SNAPSHOT_INFO.zipName}`;
 
 /** Outside the repo entirely (OS temp dir) — never committed, no .gitignore entry needed. */
-const DEFAULT_CACHE_DIR = join(tmpdir(), "boraoke-tv-runtime-check-chromium");
+const DEFAULT_CACHE_DIR = join(tmpdir(), `boraoke-tv-runtime-check-chromium-${CHROMIUM_REVISION}`);
 const CDP_PORT = Number(process.env.TV_RUNTIME_CDP_PORT ?? 9333);
 const OVERALL_TIMEOUT_MS = Number(process.env.TV_RUNTIME_TIMEOUT_MS ?? 120_000);
 const LAUNCH_TIMEOUT_MS = Number(process.env.TV_RUNTIME_LAUNCH_TIMEOUT_MS ?? 60_000);

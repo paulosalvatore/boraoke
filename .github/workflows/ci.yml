@@ -31,10 +31,10 @@ jobs:
       - name: Cache pinned Chromium 68 snapshot (TICKET-99)
         uses: actions/cache@v4
         with:
-          path: /tmp/boraoke-tv-runtime-check-chromium
+          path: /tmp/boraoke-tv-runtime-check-chromium-561732
           # Bump the revision here if scripts/tv-runtime-check.mjs's
-          # CHROMIUM_REVISION ever changes — the key has no other way to know.
-          key: chromium-561733-linux
+          # CHROMIUM_REVISION (linux) ever changes — the key has no other way to know.
+          key: chromium-561732-linux
 
       - name: Old-Chromium runtime gate (TICKET-99)
         # Boots the pinned Chromium 68.0.3440.0 (webOS 4.5/5.0 floor) headless
