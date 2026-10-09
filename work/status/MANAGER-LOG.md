@@ -4,6 +4,12 @@
 
 **A machine reboot is imminent (Tech-Lead request after a crash). Nothing is stranded. After the reboot: run `tm-resume`, then read this section.**
 
+### UPDATE 2026-10-09 (PR sweep, Global TM brief 2026-10-09-product-tm-pr-sweep-brief.md) — supersedes the worktree/PR lines below
+- **PR #80 (TICKET-99) MERGED** as squash `61a3c06` — this tab took ownership per the Global TM brief. Rebased on main; CI fixed (Linux Chromium snapshot 561733 404s → Linux pins 561732, same Chrome 68.0.3440.0/V8 6.8.275; Mac keeps 561733). Gates: GitHub build-and-test pass (run 37995378344), jest 996 pass, opus Reviewer APPROVE, harness proven both ways (main build FAIL `globalThis is not defined`, PR build OK), 0 unresolved threads. `t99-runtime` worktree removed.
+- **`e2e/tv.spec.ts:740` (TICKET-89 fullscreen test) fails locally on main too** under host load (load 30–80, `Expected "IFRAME" Received null` at :769); passes in CI. Pre-existing, load-dependent — the "deterministic e2e" claim below holds only on a quiet machine. Candidate ticket.
+- **Reviewer nits for a follow-up ticket:** harness FAIL message claims the Chromium stderr log is kept but `cleanup()` deletes it first; CI cache key hand-repeats `561732` (use `hashFiles('scripts/tv-runtime-check.mjs')`); step's `RESULT=$?` unreachable under `bash -e` (harmless).
+- **PR #79 (TICKET-101, landing CSS → Chrome 68 floor) stays HELD for a TL decision**, sent up to the Global TM. Now ~78 behind main; rebase + re-gate before any merge.
+
 ### Where everything is
 - **`main` at `c0e10cb`+, clean, zero unpushed.** Only untracked `work/heartbeats/` (ephemeral per D-032, not the durable record — ignore it).
 - **Four worktrees. Two are NOT yours:** `t99-runtime` (PR #80) and `t101-landing` (PR #79) belong to the **Global TM** and are parked drafts — **do not touch, do not remove**.
