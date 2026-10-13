@@ -54,7 +54,10 @@
 }
 .header {
   margin-right: -0.75rem;
-  margin-bottom: -0.75rem;
+  /* The last row's trailing child margin is absorbed by the header's own
+     bottom padding (1rem - 0.75rem) rather than a negative margin, so the
+     header box keeps production's height. */
+  padding-bottom: 0.25rem;
 }
 
 .brand {
@@ -119,7 +122,11 @@
 }
 .venues {
   margin-right: -0.6rem;
-  margin-bottom: -0.35rem;
+  /* COMPUTED, not a bare -0.35rem: `.venues` already carries
+     margin-bottom: 1.25rem above, and a second declaration on the same
+     element replaces it rather than adding to it (that silently shifted the
+     whole hero up 0.35rem + 1.25rem). 1.25rem - 0.35rem trailing row margin. */
+  margin-bottom: 0.9rem;
 }
 
 .venuesLead {
@@ -145,8 +152,12 @@
   margin-bottom: 0.35rem;
 }
 .venueList {
-  margin-right: -0.55rem;
-  margin-bottom: -0.35rem;
+  /* `.venueList` is ALSO a child of `.venues`, so `.venues > *` gives it
+     margin-right: 0.6rem / margin-bottom: 0.35rem. These declarations replace
+     those (same specificity, later wins), so they are the NET of both: its own
+     compensation (-0.55rem, -0.35rem) plus the parent's child spacing. */
+  margin-right: calc(0.6rem - 0.55rem);
+  margin-bottom: 0;
 }
 
 .venueList li {
@@ -352,15 +363,26 @@ a.cta {
 .qr {
   background: #fff;
   border-radius: 8px;
-  /* TICKET-101 fallback for Chrome < 88. `.qr` sits inside `.phone` (138px wide,
-     0.7rem padding each side), so its width resolves to ~115px and this keeps the
-     box approximately square there. On engines that DO support aspect-ratio the
-     computed height is >= this, so the min-height never binds. */
-  min-height: 115px;
-  aspect-ratio: 1; /* css-target-allow: min-height fallback above for <88 */
+  aspect-ratio: 1; /* css-target-allow: @supports-not min-height fallback below for <88 */
   display: grid;
   place-items: center;
   margin-bottom: 0.5rem;
+}
+
+/* TICKET-101 fallback for Chrome < 88, scoped to engines WITHOUT aspect-ratio.
+   It must not apply where aspect-ratio works: a min-height there is transferred
+   through the ratio into a min-WIDTH, which grew the 99.6px mobile QR to 115px.
+   (Unlike flex gap, aspect-ratio has no grid-vs-flex split, so @supports is an
+   honest guard here.) Values are the `.qr` content width at each breakpoint. */
+@supports not (aspect-ratio: 1) {
+  .qr {
+    min-height: 114px;
+  }
+  @media (max-width: 860px) {
+    .qr {
+      min-height: 100px;
+    }
+  }
 }
 
 .qr svg {
@@ -427,8 +449,11 @@ a.cta {
   margin-bottom: 1rem;
 }
 .joinStrip {
-  margin-right: -1rem;
-  margin-bottom: -1rem;
+  /* The strip has a background and border, so a negative margin would visibly
+     widen it. Instead the trailing child margins are absorbed by its own
+     padding: right 1.25rem - 1rem, bottom 1.1rem - 1rem. */
+  padding-right: 0.25rem;
+  padding-bottom: 0.1rem;
 }
 
 .joinStrip h2 {
@@ -465,14 +490,19 @@ button.joinBtn {
   flex-basis: 100%;
   font-size: 0.8rem;
   color: var(--text-muted);
-  margin: 0;
+  /* NOT `margin: 0`: this is a `.joinStrip` child, and a later margin
+     shorthand here would replace the `.joinStrip > *` row spacing (same
+     specificity, later wins). Zero top/left resets the <p> default; right and
+     bottom are the strip's child spacing. */
+  margin: 0 1rem 1rem 0;
 }
 
 .lastRoom {
   flex-basis: 100%;
   font-size: 0.85rem;
   color: var(--text-muted);
-  margin: 0;
+  /* `.joinStrip` child: keep its row spacing (see `.joinHint`). */
+  margin: 0 1rem 1rem 0;
 }
 
 /*
@@ -544,7 +574,17 @@ button.joinBtn {
   .rail li {
     /* Long song titles must wrap rather than push the page sideways. */
     flex-wrap: wrap;
-    gap: 0 0.5rem;
+    /* Was `gap: 0 0.5rem` (flex gap, Chrome 84). Replaced with a TRAILING
+       margin on every child, absorbed by trimming the row's right padding by
+       the same 0.5rem: a wrapped `.who` starts flush left like production
+       (a leading `* + *` margin would indent it), and the row's background box
+       is unchanged (a negative margin would widen it). */
+    padding-right: 0;
+  }
+  .rail li > *,
+  .rail li > * + * {
+    margin-left: 0;
+    margin-right: 0.5rem;
   }
 
   .rail .who {

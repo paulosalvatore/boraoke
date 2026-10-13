@@ -89,9 +89,6 @@
   cursor: pointer;
   transition: transform 0.12s ease;
 }
-.fab > * + * {
-  margin-left: 8px;
-}
 .fab:hover {
   transform: translateY(-1px);
 }
@@ -116,6 +113,10 @@
   }
 }
 .fabIcon {
+  /* Was `gap: 8px` on .fab (flex gap, Chrome 84). The label is a bare text
+     node, which no `* + *` selector can reach, so the space hangs off the
+     icon instead. */
+  margin-right: 8px;
   font-size: 18px;
   line-height: 1;
 }
