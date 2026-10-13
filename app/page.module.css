@@ -555,15 +555,23 @@ button.joinBtn {
 /* ── Returning-creator hero secondary links (TICKET-104) ─────────────────── */
 /*
  * The row of quieter links under the "open admin" CTA (TV, public room, create
- * another). Plain flex + gap + wrap, which is the same Chrome-68-safe vocabulary
- * the rest of this file uses (see scripts/check-css-target.mjs).
+ * another). Flex-wrap with child margins instead of flex gap (Chrome 84): a
+ * bottom-only negative margin cancels the last row's trailing space, and a
+ * RIGHT-only negative margin gives back the width the trailing child margin
+ * consumed (see scripts/check-css-target.mjs).
  */
 .creatorLinks {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem 1rem;
   margin-top: 0.9rem;
+  margin-right: -1rem;
+  margin-bottom: -0.35rem;
   font-size: 0.9rem;
+}
+
+.creatorLinks a {
+  margin-right: 1rem;
+  margin-bottom: 0.35rem;
 }
 
 .creatorLinks a {
