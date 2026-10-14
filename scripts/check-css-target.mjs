@@ -32,7 +32,17 @@ const TARGET_CHROME = Number(process.env.CSS_TARGET_CHROME ?? 68);
  * than it buys. Which TVs we support is a product decision (TICKET-101); this
  * split is what lets the TV be fixed without waiting for that decision.
  */
-const STRICT = ["components/tv/tv.module.css", "app/globals.css"];
+const STRICT = [
+  "components/tv/tv.module.css",
+  "app/globals.css",
+  // Promoted 2026-09-01 (TICKET-101): a TV browser does not only render /tv. A
+  // venue pointing its television at the landing page — the obvious thing to do
+  // when setting a room up — hit the same silent spacing collapse. These three
+  // are what a TV can actually reach.
+  "app/page.module.css",
+  "components/LanguageSwitcher.module.css",
+  "components/feedback/FeedbackWidget.module.css",
+];
 
 const FEATURES = [
   { name: "aspect-ratio", chrome: 88, re: /(^|[;{\s])aspect-ratio\s*:/g },
@@ -87,10 +97,35 @@ if (files.length === 0) {
 
 const findings = [];
 for (const f of files) {
-  const css = readFileSync(f, "utf8");
+  const raw = readFileSync(f, "utf8");
+  // Strip block comments before matching. A comment is not shipped CSS, and
+  // prose that merely NAMES a feature (this file's own explanations do) is not a
+  // use of it — matching them produced a false positive that could only be
+  // silenced by not writing the explanation, which is the wrong incentive.
+  // Newlines are preserved so the per-line annotation check still lines up.
+  const css = raw.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
   for (const feat of FEATURES) {
     if (feat.chrome <= TARGET_CHROME) continue;
-    const n = (css.match(feat.re) || []).length;
+    // A newer feature is ALLOWED when the author has written a fallback and said
+    // so on the same line with `css-target-allow: <why>`. Progressive enhancement
+    // via the plain cascade (an old engine drops the declaration it cannot parse
+    // and keeps the one before it) is the CORRECT way to use these — a gate that
+    // banned it outright would push people toward worse CSS, not better. The
+    // annotation is deliberate and reviewable: it cannot be applied by accident,
+    // and it shows up in the diff for whoever reviews the PR.
+    // Match against the comment-stripped text (so prose naming a feature is not a
+    // use of it), but read the annotation from the RAW line — stripping blanks the
+    // comment the annotation lives in.
+    const strippedLines = css.split("\n");
+    const rawLines = raw.split("\n");
+    let n = 0;
+    for (let i = 0; i < strippedLines.length; i++) {
+      feat.re.lastIndex = 0;
+      if (!feat.re.test(strippedLines[i])) continue;
+      if (/css-target-allow/.test(rawLines[i] ?? "")) continue;
+      n++;
+    }
+    feat.re.lastIndex = 0;
     if (n > 0) findings.push({ file: f, feature: feat.name, chrome: feat.chrome, count: n });
   }
   if (FLEX_GAP_CHROME > TARGET_CHROME) {
