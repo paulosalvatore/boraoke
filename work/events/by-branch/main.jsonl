@@ -94,3 +94,4 @@
 {"v": "1", "ts": "2026-10-09T22:31:47Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "211434b", "message_slug": "docs(status): PR #80 merged, sweep update"}}
 {"v": "1", "ts": "2026-10-14T15:17:59Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-101", "pr": 79, "event": "merged", "payload": {"pr": 79, "tickets": ["TICKET-101"]}}
 {"v": "1", "ts": "2026-10-14T15:18:00Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-101", "pr": 79, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 79}}
+{"v": "1", "ts": "2026-10-14T15:18:44Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "e67d431", "message_slug": "docs(status): PR #79 merged, live-verified"}}
