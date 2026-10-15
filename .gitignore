@@ -44,3 +44,6 @@ next-env.d.ts
 
 # TICKET-108 production search oracle = YouTube API data: local only, never committed (removed 2026-10-15).
 /work/measurements/ticket-108/production-search-results.json
+
+# TICKET-143 labelled sample = YouTube titles + labels derived from them: local only, never committed.
+/work/measurements/ticket-143/labelled-sample.json
