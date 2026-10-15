@@ -8,6 +8,7 @@ Implemented, measured and self-verified. Draft PR open, base `ticket/124-index-p
 - Worktree: `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t125-enter-idle-search`
 - Branch: `ticket/125-enter-idle-search`, cut from `origin/ticket/124-index-primary` @ `882260c`
 - App/e2e port: 3125
+- PR: #89 https://github.com/paulosalvatore/boraoke/pull/89 (draft, base `ticket/124-index-primary`)
 - Plan: `work/plans/TICKET-125-plan.md` (approved via the TM dispatch brief).
 
 ## Log
@@ -88,6 +89,9 @@ The 3 that pass on the pre-fix route are companions, not regression tests: cache
 
 - Hollowing-out: no primitive beneath existing assertions changed (the legacy suites now send `live=1` explicitly, and their billing assertions are unchanged).
 - Triggered mutation pass: not triggered. There is no new parsing/normalisation function on a money/quantity/identity path.
+
+### 2026-10-14 draft PR
+#89 opened as a draft against `ticket/124-index-primary`. The body carries the measurement table, the idle justification, the server-enforcement section and the Testing Handoff. Commits: `0f79c48` (implementation), then the e2e clock fix plus this report.
 
 ### 2026-10-14 self-verification
 - jest: **61 suites, 1,066 passed, 5 skipped, 0 failed**. Load ~5.5-8.8 on 10 cores, with no other jest of mine running.
