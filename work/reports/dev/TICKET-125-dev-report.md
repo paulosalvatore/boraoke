@@ -133,7 +133,7 @@ jest after the change: **61 suites, 1,071 passed, 5 skipped, 0 failed** (load ~1
 
 ## Open items for the TM
 - Deploy skew: resolved by the `v=2` protocol marker (see above).
-- **Legacy client + cooldown:** an old page that hits the 2 s cooldown (two billed misses less than 2 s apart from one uuid) gets `{results: [], deferred}`. It doesn't know `deferred`, so it shows an empty list for that keystroke; its next debounced fetch after 2 s recovers. Under #88 the same old client usually narrows locally, so this needs two consecutive live-needing pauses inside 2 s.
+- **Legacy client + cooldown:** an old page that hits the 2 s cooldown (two billed misses less than 2 s apart from one uuid) gets `{results: [], deferred}`. It doesn't know `deferred`, so it shows an empty list for that keystroke; it recovers on the patron's next keystroke after the 2 s window (if they stop typing, the empty list stays until they type or reload). Under #88 the same old client usually narrows locally, so this needs two consecutive live-needing pauses inside 2 s.
 - The timing model is an assumption. Real keystroke timing would need client telemetry (pause lengths), which is not collected. A possible follow-up.
 - The cooldown is per instance (in memory), like the existing rate limiter. The cross-instance hard cap is still the TICKET-87 budget.
 
