@@ -173,6 +173,9 @@ export async function POST(req: NextRequest) {
   //
   // Best-effort: a failure here costs the creator the no-typing path (they still
   // have the code, shown right now on this page), never the room they just made.
-  await attachClaimCookie(res, created.room.id);
+  //
+  // TICKET-120: this token is pinned as the OWNER's, so staff logins that fill
+  // the room's claim list evict each other, never the creator's device.
+  await attachClaimCookie(res, created.room.id, { owner: true });
   return res;
 }
