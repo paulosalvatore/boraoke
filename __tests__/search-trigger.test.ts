@@ -126,6 +126,23 @@ describe("Enter", () => {
     expect(fired).toEqual(["bohemian"]);
   });
 
+  it("the once-guard is per mode: the same text in another mode may fire", () => {
+    trigger.setScope("sing");
+    trigger.enter("bohemian");
+    trigger.setScope("listen-dance");
+    expect(trigger.enter("bohemian")).toBe(true);
+    // a second Enter in the same mode is still a repeat
+    expect(trigger.enter("bohemian")).toBe(false);
+    expect(fired).toEqual(["bohemian", "bohemian"]);
+  });
+
+  it("a mode change alone never fires anything (TICKET-83)", () => {
+    trigger.edited("bohemian");
+    trigger.setScope("listen-dance");
+    jest.advanceTimersByTime(IDLE_SEARCH_MS * 3);
+    expect(fired).toEqual([]);
+  });
+
   it("can retry after a failed live search (allowRetry)", () => {
     trigger.enter("bohemian");
     trigger.allowRetry("bohemian");

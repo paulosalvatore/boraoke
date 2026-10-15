@@ -176,6 +176,9 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
   const modeRef = useRef<Mode>(mode);
   useEffect(() => {
     modeRef.current = mode;
+    // The once-per-text guard is per mode: the same text in another mode has
+    // not been searched yet. This fires nothing (TICKET-83).
+    triggerRef.current?.setScope(mode);
   }, [mode]);
 
   /**
@@ -581,9 +584,14 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
   /** Enter / the phone keyboard's search key: spend a live search NOW. */
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (!isSearchKey({ key: e.key, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode })) return;
-    e.preventDefault();
     const trimmed = input.trim();
-    if (trimmed.length < MIN_CHARS || parseYouTubeVideoId(trimmed)) return;
+    // A pasted link is already resolved and selected: let Enter submit the
+    // queue form exactly as before (no preventDefault).
+    if (parseYouTubeVideoId(trimmed)) return;
+    // Plain text: Enter searches; it must not submit the queue form (which
+    // would only show the "paste a link" error).
+    e.preventDefault();
+    if (trimmed.length < MIN_CHARS) return;
     triggerRef.current?.enter(trimmed);
   }
 

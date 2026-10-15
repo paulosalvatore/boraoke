@@ -804,3 +804,20 @@ test("the search input asks phone keyboards for a 'search' key (TICKET-125)", as
   await expect(input).toHaveAttribute("enterkeyhint", "search");
   await expect(input).toHaveAttribute("inputmode", "search");
 });
+
+test("Enter inside the search field on a pasted link still queues it (TICKET-125)", async ({ page }) => {
+  let searches = 0;
+  await page.route("**/api/search**", async (route) => {
+    searches++;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) });
+  });
+  await joinAs(page, "PasteEnterUser");
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("https://youtu.be/dQw4w9WgXcQ");
+  await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 5000 });
+  // The patron goes back to the field and presses Enter / Go there.
+  await input.focus();
+  await input.press("Enter");
+  await expect(page.getByText(/música na fila/i)).toBeVisible({ timeout: 5000 });
+  expect(searches).toBe(0);
+});
