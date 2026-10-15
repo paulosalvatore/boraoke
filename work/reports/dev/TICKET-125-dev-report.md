@@ -157,6 +157,78 @@ C4 S 0.05 -> 0.5              billed 18.44 -> 22.28  -> rises with S, as require
   - Load was 9.9 at the start and 9.7 at the end on 10 cores.
   - `e2e/_canary` passed, as did `e2e/tv.spec.ts:740`.
 
+### 2026-10-14 gate fix batch: Security FAIL (HIGH 1) and Reviewer REQUEST-CHANGES (B1 + items 2-6); App Tester PASS (c9e1539)
+Commits: `93c3799` (H1, B1) and `632d2c3` (legacy 429, Enter on a pasted link, per-mode guard, copy).
+
+**H1. Index lookups evicted the billed per-IP bucket.** `lib/youtube-search.ts`:
+- Index buckets now live in their own `indexHits` map with their own LRU cap, so they can never evict a billed `u:`/`ip:` key.
+- `indexRateLimitOk` checks the IP bucket first. Once it rejects, no uuid key is added.
+- Regression suite `__tests__/search-rate-isolation.test.ts`:
+  - unit: a full billed IP bucket survives 5,000 fresh-uuid index lookups from the same IP.
+  - unit: index lookups add 0 billed buckets, and the rejected lookups add no uuid key.
+  - route: Security's probe (d) shape over one 10 s window, ≤ RATE_IP_MAX billed.
+- Run against the previous head's limiter (`git show HEAD:lib/youtube-search.ts`, before `93c3799`), verbatim:
+```
+  ● index-only lookups cannot evict the billed per-IP bucket › unit: a full billed IP bucket stays full after 5,000 free lookups with fresh uuids from the same IP
+    Expected: 0
+    Received: 30
+  ● index-only lookups cannot evict the billed per-IP bucket › route (probe d): ONE real IP, rotating uuids + a free index flood stays at the per-IP billed ceiling
+    Expected: <= 30
+    Received:    300
+Tests:       2 failed, 2 total
+```
+  On the fixed head, the same route test bills ≤ 30 in a 10 s window, which is 180/min, #88's figure. Before the fix it billed 300 in 10 s, which is 1,800/min.
+- Partial mutants:
+  - H1a (index buckets back in the shared map) and H1b (uuid key inserted before the IP check) are each killed by the bucket-count unit test.
+  - H1a alone does not reopen the route drain, because the IP-first ordering already stops rejected lookups from churning the map. The separate map is the second layer, for the case where more than 2,000 accepted keys arrive (e.g. spoofed XFF, TICKET-119).
+
+**B1. A deferred request must cost no daily budget.** The per-keystroke test now reserves one probe slot afterwards and asserts `remaining === SEARCH_DAILY_BUDGET - 2`, i.e. the four keystrokes spent exactly one slot.
+
+**Other review items:**
+- **Old tab inside the cooldown** now gets the existing 429 ("too many searches, wait"), not `deferred`. Tested.
+- **Enter on a pasted link:** the pasted-link check runs before `preventDefault`, so the queue form submits. New e2e "Enter inside the search field on a pasted link still queues it".
+- **Once-guard keyed on mode + text:** `LiveSearchTrigger.setScope(mode)`, called from the mode effect; it fires nothing (TICKET-83). Tests: "the once-guard is per mode…" and "a mode change alone never fires anything".
+- **Copy, my call:**
+
+  | Locale | Text |
+  |---|---|
+  | en | "Tap Search (or press Enter) to search YouTube" |
+  | es | "Toca Buscar (o Enter) para buscar en YouTube" |
+  | pt-BR | "Toque em Buscar (ou Enter) para pesquisar no YouTube" |
+
+  Why: patrons are on phones, where `enterKeyHint="search"` labels the key "Search"/"Buscar" (iOS) or shows a magnifier (Android), and "Enter" is not on the screen. Desktop keeps Enter in parentheses. pt-BR says "pesquisar" to avoid "Buscar … buscar". The strings are longer than before, so one-line fit at 390 px is UNVERIFIED; the App Tester checked the shorter copy.
+- **Reviewer item 5 (Android keyCode 229):** not changed. The App Tester's CDP simulation showed no submit and the idle search fired. A real Android keyboard is UNVERIFIED.
+
+Mutation pass (each mutation restored afterwards; files verified back in place):
+```
+
+B1 cooldown moved after reserveSearchCall(): Tests:       1 failed, 20 passed, 21 total
+   FAIL: index-only vs live-allowed requests › a client sending live=1 on EVERY keystroke bills at most once per cooldown
+      Expected: 88
+      Received: 85
+
+H1a index buckets back in the shared billed map: Tests:       1 failed, 2 passed, 3 total
+   FAIL: index-only lookups cannot evict the billed per-IP bucket › unit: index lookups never add billed buckets, and a rejected lookup adds no uuid key
+      Expected: 0
+      Received: 241
+
+H1b uuid key added before the IP check: Tests:       1 failed, 2 passed, 3 total
+   FAIL: index-only lookups cannot evict the billed per-IP bucket › unit: index lookups never add billed buckets, and a rejected lookup adds no uuid key
+      Expected: 241
+      Received: 2000
+
+L4 legacy cooldown answered with deferred (no 429): Tests:       1 failed, 20 passed, 21 total
+   FAIL: index-only vs live-allowed requests › legacy requests stay under the per-uuid billed cooldown (no per-keystroke billing by omitting v=2)
+      Expected: 429
+      Received: 200
+```
+plus "setScope is a no-op": FAILS "the once-guard is per mode: the same text in another mode may fire".
+
+Security LOWs are noted in the PR body only:
+- LOW 2: the cooldown does not lower the paced single-uuid ceiling (30/min, same as #88).
+- LOW 3: the legacy path is a permanent marker bypass, so a sunset ticket is needed.
+- INFO 6: the anon cooldown key embeds the raw XFF hop; fold into TICKET-126.
+
 ## Open items for the TM
 - Deploy skew: resolved by the `v=2` protocol marker (see above).
 - **Legacy client + cooldown:** an old page that hits the 2 s cooldown (two billed misses less than 2 s apart from one uuid) gets `{results: [], deferred}`. It doesn't know `deferred`, so it shows an empty list for that keystroke; it recovers on the patron's next keystroke after the 2 s window (if they stop typing, the empty list stays until they type or reload). Under #88 the same old client usually narrows locally, so this needs two consecutive live-needing pauses inside 2 s.
