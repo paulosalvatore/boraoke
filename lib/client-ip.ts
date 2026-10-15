@@ -16,13 +16,17 @@
  *     x-forwarded-for could be overwritten if you're using a proxy on top of
  *     Vercel."
  *   x-real-ip — "identical to the x-forwarded-for header."
- * Verified against production on 2026-10-14: 14 failed claims, each rotating a
- * forged x-forwarded-for, x-real-ip AND x-vercel-forwarded-for, returned
- * 401 x10 then 429 x4 — one bucket, so the edge overwrote what the client sent.
+ * Verified against production on 2026-10-14, and only for `x-real-ip`: 14
+ * failed claims, each sending a different forged value in all three headers,
+ * returned 401 x10 then 429 x4 — one bucket. The deployed code at the time
+ * keyed on `x-real-ip` first, so that run proves the edge overwrites a
+ * client-sent `x-real-ip`. It says nothing about the other two headers, whose
+ * client-sent copies were never read.
  *
- * So on Vercel the edge-written headers ARE the client's address, and
- * `x-vercel-forwarded-for` is preferred because it is the one Vercel documents
- * as surviving a proxy placed in front of the deployment.
+ * So on Vercel `x-real-ip` is read first, because it is the header proven
+ * against production. `x-vercel-forwarded-for` and then `x-forwarded-for` are
+ * fallbacks for a request that somehow arrives without it; the docs say the
+ * edge writes both, but a forged copy surviving is not ruled out by a probe.
  *
  * ─── Everywhere else nothing overwrites anything ────────────────────────────
  * Under `next start` / `next dev` / any other host, every one of these headers
@@ -42,8 +46,8 @@
 /** The shared bucket for a request whose address cannot be trusted or found. */
 export const UNKNOWN_CLIENT_IP = "unknown";
 
-/** Headers Vercel's edge writes, most robust first (see header). */
-const VERCEL_IP_HEADERS = ["x-vercel-forwarded-for", "x-real-ip", "x-forwarded-for"] as const;
+/** Headers Vercel's edge writes, production-verified first (see header). */
+const VERCEL_IP_HEADERS = ["x-real-ip", "x-vercel-forwarded-for", "x-forwarded-for"] as const;
 
 /** Longest value we will use as a key, so a hostile header cannot bloat one. */
 const MAX_KEY_LENGTH = 64;

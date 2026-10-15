@@ -78,12 +78,20 @@ describe("on Vercel (edge-written headers)", () => {
     delete process.env.TRUSTED_CLIENT_IP_HEADER;
   });
 
-  it("prefers x-vercel-forwarded-for, then x-real-ip, then x-forwarded-for", () => {
+  it("prefers x-real-ip (the production-verified header), then x-vercel-forwarded-for, then x-forwarded-for", () => {
     expect(
       clientIpFrom(req({ "x-vercel-forwarded-for": "192.0.2.1", "x-real-ip": "192.0.2.2", "x-forwarded-for": "192.0.2.3" })),
-    ).toBe("192.0.2.1");
-    expect(clientIpFrom(req({ "x-real-ip": "192.0.2.2", "x-forwarded-for": "192.0.2.3" }))).toBe("192.0.2.2");
+    ).toBe("192.0.2.2");
+    expect(clientIpFrom(req({ "x-vercel-forwarded-for": "192.0.2.1", "x-forwarded-for": "192.0.2.3" }))).toBe("192.0.2.1");
     expect(clientIpFrom(req({ "x-forwarded-for": "192.0.2.3, 10.0.0.1" }))).toBe("192.0.2.3");
+  });
+
+  it("a forged x-vercel-forwarded-for cannot move the bucket while x-real-ip is present", () => {
+    const keys = new Set<string>();
+    for (let i = 1; i <= 20; i++) {
+      keys.add(clientIpFrom(req({ "x-real-ip": "198.51.100.7", "x-vercel-forwarded-for": `203.0.113.${i}` })));
+    }
+    expect([...keys]).toEqual(["198.51.100.7"]);
   });
 
   it("returns the shared bucket when no header is present", () => {

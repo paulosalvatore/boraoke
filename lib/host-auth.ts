@@ -391,10 +391,11 @@ function loginKey(ip: string): string {
 //
 // So this round takes both lessons at once, and the shape is what matters:
 //
-//   * The key is **server-derived** (the edge-set client IP), never a value the
-//     caller chose. Bucket cardinality is therefore bounded by real clients, the
-//     same bound `login:<ip>` has always had — a claim flood can no longer evict
-//     anything that a login flood could not already.
+//   * The key is the client IP from `clientIpFrom`: edge-written (not
+//     client-chosen) on Vercel or behind a declared trusted proxy, and the
+//     shared "unknown" bucket elsewhere. Bucket cardinality is therefore bounded
+//     by real clients, the same bound `login:<ip>` has always had — a claim
+//     flood can no longer evict anything that a login flood could not already.
 //   * A **valid credential is never denied by it.** The route verifies the claim
 //     token FIRST and only consults or charges this counter on a failure. That is
 //     what kills round 1's shared fate at the root rather than by re-keying: the
@@ -444,7 +445,7 @@ export function resetClaimThrottle(ip: string): Promise<void> {
  *
  * Trust boundary (TICKET-119, correcting TICKET-78's claim): the value is
  * trustworthy ON VERCEL, because Vercel's edge overwrites the client IP headers
- * (documented, and verified against production), or where the operator names
+ * (documented; `x-real-ip` verified against production), or where the operator names
  * the header their own proxy sets in `TRUSTED_CLIENT_IP_HEADER`. Anywhere else
  * no header is trusted and every request shares the "unknown" bucket. It is not
  * "server-derived" in any stronger sense than that.

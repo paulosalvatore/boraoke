@@ -218,6 +218,31 @@ describe("module protocol (Redis path)", () => {
     expect((await m.acquireSearchFlight("k3")).role).toBe("solo");
   });
 
+  it("a lock for query X:err is never read as query X's error marker (key namespaces cannot collide)", async () => {
+    const m = await mod();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { cacheKey } = require("@/lib/youtube-search") as typeof import("@/lib/youtube-search");
+    const plain = cacheKey("abc", "BR");
+    const suffixed = cacheKey("abc:err", "BR");
+    // Key level: no lock key equals any error-marker key, in either direction.
+    expect(m.lockKey(suffixed)).not.toBe(m.errKey(plain));
+    expect(m.errKey(suffixed)).not.toBe(m.lockKey(plain));
+    // Behaviour level: someone leads a flight for "abc:err" while "abc" has a
+    // leader that abandons; the "abc" waiter must see VACANT, not "failed".
+    const other = await m.acquireSearchFlight(suffixed);
+    expect(other.role).toBe("leader");
+    const leader = await m.acquireSearchFlight(plain);
+    expect(leader.role).toBe("leader");
+    const waiting = m.waitForSearchFlight(plain, { pollMs: 5, deadlineMs: 2000 });
+    if (leader.role === "leader") await leader.release("abandoned");
+    expect(await waiting).toEqual({ kind: "vacant" });
+    // And a failed "abc" leader does not block "abc:err" from leading.
+    if (other.role === "leader") await other.release("abandoned");
+    const failing = await m.acquireSearchFlight(plain);
+    if (failing.role === "leader") await failing.release("failed");
+    expect((await m.acquireSearchFlight(suffixed)).role).toBe("leader");
+  });
+
   it("a waiter that cannot read the store defers rather than bills", async () => {
     const m = await mod();
     await m.acquireSearchFlight("k4");

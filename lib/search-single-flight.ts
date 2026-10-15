@@ -11,11 +11,11 @@
  * answer out of the cache when it lands. Waiters are never charged anything.
  *
  * Protocol (Redis path):
- *   acquire  — `SET sf:<cacheKey> <random token> NX PX LOCK_TTL_MS`.
+ *   acquire  — `SET sf:lock:<cacheKey> <random token> NX PX LOCK_TTL_MS`.
  *              "OK" → leader. null → waiter. A thrown Redis error → "solo".
  *   release  — compare-and-delete in a script, so a leader whose lock already
  *              expired can never delete the NEXT leader's lock. A failed
- *              upstream call first sets a short `sf:<cacheKey>:err` marker so
+ *              upstream call first sets a short `sf:err:<cacheKey>` marker so
  *              waiters stop waiting instead of timing out.
  *   wait     — poll the cache every POLL_MS until DEADLINE_MS. A hit → the
  *              page. The err marker → "failed". The lock gone with no page
@@ -55,13 +55,19 @@ export const WAIT_DEADLINE_MS = 6_000;
 /** Waiter poll interval. */
 export const WAIT_POLL_MS = 150;
 
-const PREFIX = "sf:";
+// The lock and the error marker each get their own fixed namespace IN FRONT of
+// the cache key. The cache key ends in user-typed query text, so a marker
+// appended AFTER it can be forged: with `sf:<key>` / `sf:<key>:err`, the query
+// "abc:err" owned a lock key equal to query "abc"'s error marker. Distinct
+// leading prefixes cannot collide, whatever the query contains.
+const LOCK_PREFIX = "sf:lock:";
+const ERR_PREFIX = "sf:err:";
 
-function lockKey(cacheKey: string): string {
-  return `${PREFIX}${cacheKey}`;
+export function lockKey(cacheKey: string): string {
+  return `${LOCK_PREFIX}${cacheKey}`;
 }
-function errKey(cacheKey: string): string {
-  return `${PREFIX}${cacheKey}:err`;
+export function errKey(cacheKey: string): string {
+  return `${ERR_PREFIX}${cacheKey}`;
 }
 
 /**
