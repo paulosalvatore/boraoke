@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-10-15T21:50:40Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-140", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/140-paste-link", "short_sha": "c8b37bd", "message_slug": "fix(TICKET-140): close the paste-a-YouTube-link gaps"}}
