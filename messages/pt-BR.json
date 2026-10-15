@@ -224,7 +224,8 @@
     "loadMore": "Ver mais resultados",
     "loadingMore": "Carregando mais…",
     "noMoreResults": "Isso é tudo que a gente achou.",
-    "refineSearch": "Não achou? Tenta buscar com outras palavras."
+    "refineSearch": "Não achou? Tenta buscar com outras palavras.",
+    "enterToSearch": "Aperte Enter para buscar no YouTube"
   },
   "Feedback": {
     "trigger": "Enviar feedback",

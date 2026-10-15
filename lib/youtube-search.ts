@@ -454,6 +454,25 @@ export function rateLimitOk(uuid: string, ip = "", now = Date.now()): boolean {
   return uuidOk && ipOk;
 }
 
+/**
+ * Index-only lookups (the free as-you-type tier: cache + karaoke index, never a
+ * billed call) get their own, more generous buckets. They fire on every
+ * debounced pause while a patron types, so the strict billed-search window
+ * above (5 per 10 s per uuid) would throttle ordinary typing. They cost one
+ * in-process index lookup each (~2 ms), so the ceiling only has to stop a
+ * flood, not protect quota. Separate keys: they never consume the billed
+ * window, and billed requests never consume theirs.
+ */
+const INDEX_RATE_MAX = 30; // per-uuid index-only lookups per window
+const INDEX_RATE_IP_MAX = 240; // per-IP (a whole bar shares one venue IP)
+
+export function indexRateLimitOk(uuid: string, ip = "", now = Date.now()): boolean {
+  const uuidOk = bucketOk(`iu:${uuid}`, INDEX_RATE_MAX, now);
+  const ipOk = ip ? bucketOk(`iip:${ip}`, INDEX_RATE_IP_MAX, now) : true;
+  evictOverflow();
+  return uuidOk && ipOk;
+}
+
 /** Test helper — clear rate-limit state. */
 export function _resetRateLimit(): void {
   hits.clear();
@@ -469,4 +488,6 @@ export const RATE_LIMIT = {
   ipMax: RATE_IP_MAX,
   windowMs: RATE_WINDOW_MS,
   bucketsMax: RATE_BUCKETS_MAX,
+  indexMax: INDEX_RATE_MAX,
+  indexIpMax: INDEX_RATE_IP_MAX,
 };

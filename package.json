@@ -14,7 +14,8 @@
     "measure:t108": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' work/measurements/ticket-108/replay.ts",
     "check:tv-runtime": "node scripts/tv-runtime-check.mjs",
     "index:harvest": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' scripts/karaoke-index-harvest.ts",
-    "measure:t124": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' work/measurements/ticket-124/replay.ts"
+    "measure:t124": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' work/measurements/ticket-124/replay.ts",
+    "measure:t125": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' work/measurements/ticket-125/replay.ts"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

@@ -682,3 +682,110 @@ test("a local narrowing supersedes a search already in flight (TICKET-108)", asy
   await expect(page.getByRole("button", { name: /Borbu Stale Page/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Borbulhas de Amor - versão 0/ })).toBeVisible();
 });
+
+// ── TICKET-125: billed live search only on Enter or after an idle pause ──────
+
+/**
+ * A server-faithful mock of the free/billed split: a request WITHOUT live=1 is
+ * index-only, and here the "index" misses (`liveRequired`), exactly like the
+ * real route for a song the karaoke index doesn't hold. Only live=1 returns
+ * rows. Every request is logged with its live flag.
+ */
+async function mockIndexMissLiveHit(page: Page) {
+  const log: { q: string; live: boolean }[] = [];
+  await page.route("**/api/search**", async (route) => {
+    const url = new URL(route.request().url());
+    const live = url.searchParams.get("live") === "1";
+    log.push({ q: url.searchParams.get("q") ?? "", live });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(live ? { results: MOCK_RESULTS } : { results: [], liveRequired: true }),
+    });
+  });
+  return log;
+}
+const liveCalls = (log: { live: boolean }[]) => log.filter((r) => r.live).length;
+
+test("an index miss shows the Enter hint and bills NOTHING until Enter (TICKET-125)", async ({ page }) => {
+  const log = await mockIndexMissLiveHit(page);
+  await joinAs(page, "EnterUser");
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("evidencias");
+
+  // The free lookup ran and missed: a subtle hint, no rows, no billed call.
+  await expect(page.getByTestId("search-enter-hint")).toBeVisible();
+  expect(log).toEqual([{ q: "evidencias karaoke", live: false }]);
+
+  // Enter (the phone's search key) spends ONE live search, immediately.
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
+  expect(log).toEqual([
+    { q: "evidencias karaoke", live: false },
+    { q: "evidencias karaoke", live: true },
+  ]);
+  await expect(page.getByTestId("search-enter-hint")).toHaveCount(0);
+
+  // Pressing Enter again on the same text does not bill again.
+  await input.press("Enter");
+  await page.waitForTimeout(300);
+  expect(liveCalls(log)).toBe(1);
+});
+
+test("idle: ONE live search after 4 s of no typing — none before, none repeated (TICKET-125)", async ({ page }) => {
+  // Playwright's clock: real time keeps flowing for the join flow, and
+  // fastForward jumps the idle timer without real 4 s sleeps.
+  await page.clock.install();
+  const log = await mockIndexMissLiveHit(page);
+  await joinAs(page, "IdleUser");
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("evidencias");
+  await expect(page.getByTestId("search-enter-hint")).toBeVisible();
+
+  await page.clock.fastForward(3000);
+  await page.waitForTimeout(150);
+  expect(liveCalls(log)).toBe(0); // 3 s of quiet is not enough
+
+  await page.clock.fastForward(1200);
+  await expect.poll(() => liveCalls(log)).toBe(1);
+  await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
+
+  // Once: a long further silence on the same text never re-bills.
+  await page.clock.fastForward(20_000);
+  await page.waitForTimeout(150);
+  expect(liveCalls(log)).toBe(1);
+
+  // An edit starts a new idle period, which may fire again (for the new text).
+  await input.fill("bohemian rhapsody");
+  await expect(page.getByTestId("search-enter-hint")).toBeVisible();
+  await page.clock.fastForward(4200);
+  await expect.poll(() => liveCalls(log)).toBe(2);
+  expect(log.filter((r) => r.live).map((r) => r.q)).toEqual(["evidencias karaoke", "bohemian rhapsody karaoke"]);
+});
+
+test("an index answer never triggers the idle live search (TICKET-125)", async ({ page }) => {
+  await page.clock.install();
+  const log: { live: boolean }[] = [];
+  await page.route("**/api/search**", async (route) => {
+    log.push({ live: new URL(route.request().url()).searchParams.get("live") === "1" });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: MOCK_RESULTS, nextPageToken: "IDXLIVE", source: "index" }),
+    });
+  });
+  await joinAs(page, "IndexHitUser");
+  await page.getByLabel(/Buscar música/i).fill("evidencias");
+  await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
+  await expect(page.getByTestId("search-enter-hint")).toHaveCount(0);
+  await page.clock.fastForward(15_000);
+  await page.waitForTimeout(150);
+  expect(log).toEqual([{ live: false }]);
+});
+
+test("the search input asks phone keyboards for a 'search' key (TICKET-125)", async ({ page }) => {
+  await joinAs(page, "KeyboardUser");
+  const input = page.getByLabel(/Buscar música/i);
+  await expect(input).toHaveAttribute("enterkeyhint", "search");
+  await expect(input).toHaveAttribute("inputmode", "search");
+});

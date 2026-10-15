@@ -3,6 +3,7 @@ import {
   searchYouTubePage,
   cacheKey,
   rateLimitOk,
+  indexRateLimitOk,
   SEARCH_DEFAULTS,
   MAX_SEARCH_PAGES,
   YouTubeQuotaError,
@@ -13,9 +14,10 @@ import { track } from "@/lib/telemetry";
 import { getKaraokeIndex } from "@/lib/karaoke-index/store";
 import { decideTier, INDEX_MORE_TOKEN } from "@/lib/karaoke-index/tier";
 import { getTranslations } from "next-intl/server";
+import { liveAllowed, liveCooldown } from "@/lib/live-search-gate";
 
 /**
- * GET /api/search?q=<query>&uuid=<patronUuid>[&pageToken=<token>&page=<n>]
+ * GET /api/search?q=<query>&uuid=<patronUuid>[&live=1][&pageToken=<token>&page=<n>]
  *
  * Server-side YouTube Data API v3 search. The API key is read from the
  * YOUTUBE_API_KEY env var HERE (server only) and never sent to the client.
@@ -23,6 +25,8 @@ import { getTranslations } from "next-intl/server";
  * Response contract (all non-throwing so the client fails soft to paste-link):
  *   200 { results: SearchResult[], nextPageToken?: string }  — success
  *   200 { degraded: true, reason, results: [] }        — no key / quota / daily-limit / upstream error
+ *   200 { results: [], liveRequired: true }            — index-only request the free tiers can't answer
+ *   200 { results: [], deferred: "live-cooldown", retryAfterMs } — billed attempt inside the per-uuid cooldown
  *   400 { error }                                      — bad query/uuid/pageToken, or page past the depth cap
  *   429 { error }                                      — per-uuid OR per-IP rate limit exceeded
  *
@@ -34,6 +38,14 @@ import { getTranslations } from "next-intl/server";
  * Google page — another whole daily search on a miss — and is folded into the
  * cache key, so paging back to an already-seen page costs zero. Page depth is
  * hard-capped at MAX_SEARCH_PAGES; nothing is ever prefetched.
+ *
+ * LIVE PERMISSION: a first page is INDEX-ONLY unless the request carries
+ * `live=1` — the client sends that on Enter, after an idle pause, or on "search
+ * again". Index-only requests are answered from the free tiers (cache, karaoke
+ * index) or get `liveRequired`; they never reach the key, the daily budget or
+ * Google. A `pageToken` request ("load more") is a deliberate tap and is
+ * live-allowed. A per-uuid cooldown in front of the budget stops a modified
+ * client from billing per keystroke. See lib/live-search-gate.ts.
  */
 
 const MIN_QUERY = 3;
@@ -122,7 +134,11 @@ export async function GET(req: NextRequest) {
 
   // Dual rate limit (quota hygiene): per-uuid AND per-IP — rotating uuids from
   // one host is capped by the IP bucket. Reject politely; paste-link keeps working.
-  if (!rateLimitOk(uuid, clientIp(req))) {
+  // Index-only requests (free) and live-allowed ones (may bill) are rate-limited
+  // in separate buckets: as-you-type lookups must not starve the patron's Enter.
+  const mayBill = liveAllowed(params, pageToken);
+  const ip = clientIp(req);
+  if (!(mayBill ? rateLimitOk(uuid, ip) : indexRateLimitOk(uuid, ip))) {
     // i18n (TICKET-30): user-facing copy follows the request locale.
     const te = await getTranslations("Errors");
     return NextResponse.json(
@@ -176,6 +192,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Index-only request and neither free tier answered: tell the client a live
+  // search is available on Enter / idle. Nothing billed, no key needed.
+  if (!mayBill) {
+    return NextResponse.json({ results: [], liveRequired: true });
+  }
+
   // Degraded mode: no key provisioned → this is the local-dev / CI / outage path.
   // (Placed below the cache + index tiers, which spend nothing
   // and need no key: a configured index keeps answering when live search can't.)
@@ -208,6 +230,18 @@ export async function GET(req: NextRequest) {
   // cannot be used to probe whether our Redis is down, and it never leaks how
   // much budget remains (that would tell an attacker exactly how far a drain has
   // progressed) — remaining budget is server-log-only.
+  // Per-uuid cooldown BEFORE the budget reservation, so a deferred request
+  // spends nothing. Pre-boot "anon" callers are keyed by IP so they don't share
+  // one cooldown across every anonymous patron on the instance.
+  const cooldown = liveCooldown(uuid === "anon" ? `anon@${ip}` : uuid);
+  if (!cooldown.ok) {
+    return NextResponse.json({
+      results: [],
+      deferred: "live-cooldown",
+      retryAfterMs: cooldown.retryAfterMs,
+    });
+  }
+
   const reservation = await reserveSearchCall();
   if (!reservation.ok) {
     return NextResponse.json({
