@@ -398,3 +398,16 @@ The machine was not quiet (other tabs keep load at 100-250 on 10 cores); per the
 
 ### Correction
 Earlier sections say `npx tsc --noEmit -p .` exits 0. In this worktree it does not: `@types/jest` is not a declared dependency (never in `package.json` history), so every `__tests__/` and `e2e/` file reports `Cannot find name 'jest'/'expect'` (3,908 errors). Zero errors are outside `__tests__/` and `e2e/`, and `next build` type-checks the app clean. Pre-existing and not from this diff (`package.json` is untouched here); worth a small ticket if the TM wants `tsc` over tests.
+
+## 2026-10-15 — caps raised at the TL OK (30/device, 90/IP)
+
+TL (via Global TM prompt 033): "Lets increase the numbers, because we are rebuilding the search mechanism to allow more searchs. Otherwise the app will be shitty". The caps only stop one abuser; they must never throttle a normal patron.
+
+- `lib/search-budget.ts`: `DEFAULT_DEVICE_DAILY_CAP` 10 → **30**; `DEFAULT_IP_DAILY_CAP` 45 → **`SEARCH_DAILY_BUDGET` (90)**, so the per-network share never binds before the platform cap in one bar. Reasoning comment rewritten with the new intent and the TL quote. Env overrides and the clamp to the platform budget unchanged. No Vercel env vars set; the defaults carry it.
+- `.env.example`: commented defaults now 30/90.
+- `__tests__/api-search-personal-caps.test.ts`: new `default caps` block (defaults load as 30/90 and `ipDailyCap() === SEARCH_DAILY_BUDGET`; overrides load and clamp; with default caps one network spends the whole platform day and the 91st call is `daily-limit`, not `personal-limit`). The per-IP cap test now sets `SEARCH_IP_DAILY_CAP=5` (at 90 the platform cap answers first). `parseCapOverride` fallbacks 45 → 30.
+- Mutation check: with the old defaults (10/45) restored, `-t "default caps"` gives `Tests: 2 failed, 15 skipped, 1 passed` (the 30/90 assertion and the one-network-drains-the-day test fail); restored to 30/90 after.
+- Targeted (load 88.59): personal-caps, budget-principal, search-budget, api-search-budget, single-flight, client-ip, i18n-completeness, i18n-locales → `Test Suites: 8 passed, 8 total` / `Tests: 150 passed, 150 total`.
+- Full jest (load 70.70 → 68.09): `Test Suites: 70 passed, 70 total` / `Tests: 18 skipped, 1185 passed, 1203 total` (1182 + 3 new).
+- `tsc --noEmit`: zero errors outside `__tests__/` and `e2e/` (pre-existing `@types/jest` gap, see Correction above).
+- e2e: no spec asserts 10/45 (only `e2e/search.spec.ts` mocks a `personal-limit` reply), so no re-run for a constant change.

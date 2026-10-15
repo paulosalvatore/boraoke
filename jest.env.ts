@@ -5,7 +5,7 @@
 // this per test and restore it afterwards.
 process.env.VERCEL = "1";
 
-// TICKET-140: the queue route and the paste preview look titles up through
+// The queue route and the paste preview look titles up through
 // YouTube oEmbed. Point that at a closed loopback port for every suite, so a
 // test that does not mock `fetch` fails fast and fail-open instead of calling
 // the real youtube.com. Suites that test the lookup mock `fetch` themselves.

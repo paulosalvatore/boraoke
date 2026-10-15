@@ -1,3 +1,9 @@
+---
+ticket: TICKET-128
+product: boraoke
+status: filed
+---
+
 # TICKET-128 — "Load more" past an index answer is silent when live search fails
 
 **Filed:** 2026-10-15, from the App Tester pass on PR #88 (TICKET-124), finding 1.

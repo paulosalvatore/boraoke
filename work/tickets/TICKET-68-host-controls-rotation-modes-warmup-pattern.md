@@ -1,3 +1,9 @@
+---
+ticket: TICKET-68
+product: boraoke
+status: filed
+---
+
 # TICKET-68 — Adopt the TICKET-65-proven warm-up pattern in `host-controls.spec.ts` and `rotation-modes.spec.ts`
 
 **Status:** OPEN — filed, not yet scheduled

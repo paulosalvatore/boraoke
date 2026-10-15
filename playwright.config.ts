@@ -143,7 +143,7 @@ export default defineConfig({
       // x-forwarded-for, so it declares that header explicitly, which is the
       // same posture a non-Vercel deployment behind a known proxy would take.
       TRUSTED_CLIENT_IP_HEADER: "x-forwarded-for",
-      // TICKET-140 — the server's outbound YouTube calls (the videos.list
+      // The server's outbound YouTube calls (the videos.list
       // embeddability check and the oEmbed title lookup) go to a LOCAL stub on
       // PORT+1000, which e2e/paste-link.spec.ts starts for its own tests. With
       // no stub listening (every other spec) the calls fail fast and fail

@@ -2,6 +2,8 @@
 
 Status: APPROVED by the boraoke Product TM 2026-10-14 ("Good plan; go"), with these amendments: PR A base `ticket/125-enter-idle-search`; device/IP caps env-configurable (defaults 10/45); production header check only if it writes no prod data; Upstash type checked before relying on a multi-key script; the room-write race filed as TICKET-127; TICKET-120 as PR B from `main` after PR A is up.
 
+**Caps raised at the TL OK (2026-10-15):** the defaults below (10/device, 45/IP) were superseded before merge. The TL: "Lets increase the numbers, because we are rebuilding the search mechanism to allow more searchs. Otherwise the app will be shitty". Shipped defaults: **30 per device, 90 per IP (= the platform budget, so it never binds before the platform cap for one bar)**, platform 90 unchanged. The caps exist only to stop one abuser, never to throttle normal patrons. Env overrides and the clamp are unchanged. §2's numbers below are the original proposal, kept for the record.
+
 Implementation outcomes that changed this plan are recorded in `work/reports/dev/TICKET-126-dev-report.md` (notably: §1's production check was run, read-only for data, and settled the header question; the Upstash database is standalone, so the multi-key script needs no hash tags).
 
 ## 0. What I read

@@ -1,3 +1,9 @@
+---
+ticket: TICKET-97
+product: boraoke
+status: filed
+---
+
 # TICKET-97 — a rate-limited advance is swallowed, turning the TV into a retry loop
 
 **Filed:** 2026-09-01, from the TICKET-96 opus reviewer (FU-1). Pre-existing — NOT introduced by TICKET-96.

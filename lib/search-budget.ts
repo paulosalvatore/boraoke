@@ -124,26 +124,30 @@ export const LOW_WATER_MARK = 15;
 // search for every venue until midnight Pacific. Two sub-budgets sit inside it,
 // both counted on the same Pacific day, in the same atomic script:
 //
-//   per DEVICE (default 10). Measured cost after the karaoke index and the
-//   Enter/idle protocol: ~0.89 billed calls per queued song (replayed over
+//   per DEVICE (default 30). This cap exists only to stop ONE abuser (a
+//   script, or someone typing searches they never queue) from taking the whole
+//   day; it must never throttle a normal patron. The TL raised it from the
+//   first proposal of 10 on 2026-10-15: "Lets increase the numbers, because we
+//   are rebuilding the search mechanism to allow more searchs. Otherwise the
+//   app will be shitty". Measured cost after the karaoke index and the
+//   Enter/idle protocol is ~0.89 billed calls per queued song (replayed over
 //   real production traces, work/measurements/ticket-125), ~1.3 on a bad night
-//   of retries. A patron queues ~3-6 songs a night, so 6 x 1.3 = ~8: ten binds
-//   only someone who is not queueing what they search, and caps one device at
-//   ~11% of the day instead of 100%. The device key is client-minted (an
-//   identity cookie or the uuid param), so this is a FAIRNESS bound for honest
-//   patrons, not a security control.
+//   of retries, so 30 covers ~20+ songs of heavy searching for one device while
+//   still capping it at a third of the day instead of all of it. The device key
+//   is client-minted (an identity cookie or the uuid param), so this is a
+//   FAIRNESS bound for honest patrons, not a security control.
 //
-//   per IP (default 45 = half the platform day). This is the anti-drain bound,
-//   and it is only meaningful because the IP is edge-written and keyed by /64
-//   (lib/client-ip.ts, TICKET-119). It has to be large: a venue night's patrons
-//   share ONE bar Wi-Fi address, and a busy night (~60 songs) costs ~50 billed
-//   calls. 90/day only buys ~100 queued songs platform-wide, so one busy bar is
-//   most of the platform's capacity whatever the cap is. The line drawn is "no
-//   single network takes more than half the day", which always leaves 45 for a
-//   second venue. The trade-off, stated: a cap low enough to stop a one-IP
-//   attacker taking a big share (say 15) starves an ordinary bar by its 15th
-//   live search; at 45 a one-IP attacker can take half. A many-IP attacker can
-//   still drain the day 45 at a time — the platform cap stays the hard ceiling.
+//   per IP (default 90 = the platform budget). A venue night's patrons share
+//   ONE bar Wi-Fi address, so any per-IP cap below the platform day can starve
+//   an ordinary busy bar; with the search mechanism being rebuilt to allow more
+//   searches, the per-network share is set equal to the platform budget so it
+//   never binds before the platform cap does for a single bar. The IP is still
+//   edge-written and keyed by /64 (lib/client-ip.ts, TICKET-119), and the
+//   counter is still kept and enforced, so the cap can be tightened with
+//   SEARCH_IP_DAILY_CAP alone if one network is ever seen draining the day.
+//   The trade-off, stated: one network (or a many-IP attacker) can spend the
+//   whole platform day; the platform cap stays the hard ceiling, and the
+//   device cap still stops a single device doing it.
 //
 // A capped person keeps everything free: cache hits and karaoke-index answers
 // never reach a reservation, and paste-a-link costs nothing.
@@ -154,9 +158,9 @@ export const LOW_WATER_MARK = 15;
 // anything else is ignored with a warning, so a typo can never remove a cap.
 
 /** Default per-device daily sub-budget (see above). */
-export const DEFAULT_DEVICE_DAILY_CAP = 10;
+export const DEFAULT_DEVICE_DAILY_CAP = 30;
 /** Default per-IP daily sub-budget (see above). */
-export const DEFAULT_IP_DAILY_CAP = 45;
+export const DEFAULT_IP_DAILY_CAP = SEARCH_DAILY_BUDGET;
 
 /**
  * Parse a cap override: a positive integer, clamped to the platform budget.

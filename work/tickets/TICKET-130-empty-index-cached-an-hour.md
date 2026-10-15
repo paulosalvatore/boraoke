@@ -1,3 +1,9 @@
+---
+ticket: TICKET-130
+product: boraoke
+status: filed
+---
+
 # TICKET-130 — An empty karaoke index is cached for the full hourly reload interval
 
 **Filed:** 2026-10-15, observed during the karaoke index rollout.

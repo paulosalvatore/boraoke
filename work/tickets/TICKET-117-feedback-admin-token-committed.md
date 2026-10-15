@@ -1,3 +1,9 @@
+---
+ticket: TICKET-117
+product: boraoke
+status: filed
+---
+
 # TICKET-117 — A value for `FEEDBACK_ADMIN_TOKEN` is committed on `main`, and that variable gates a live admin route
 
 **Filed:** 2026-09-28, found during the TICKET-104 security work. **Not** introduced by any PR in flight — it is on `main` and in git history.

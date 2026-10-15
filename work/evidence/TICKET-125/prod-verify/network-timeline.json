@@ -1,0 +1,306 @@
+{
+  "base": "https://boraoke.com",
+  "startedAt": "2026-10-15T13:07:01.879Z",
+  "results": {
+    "room": "t125-prod-verify-throwaway",
+    "a": {
+      "rowsWhileTyping_evid": 0,
+      "rowsAfter_evidencias": 8,
+      "liveCalls": 0,
+      "waitedPastIdle": true
+    },
+    "b": {
+      "query": "hoppipolla sigur ros",
+      "hintPt": "Toque em Buscar (ou Enter) para pesquisar no YouTube",
+      "liveCallsBeforeEnter": 0,
+      "msSinceLastKey": 1229
+    },
+    "c": {
+      "query": "hoppipolla sigur ros",
+      "liveCalls": 1,
+      "rows": 8,
+      "hintGone": true
+    },
+    "d": {
+      "query": "tamacun rodrigo y gabriela",
+      "liveCalls": 1,
+      "liveAtMsAfterLastKey": [
+        3897
+      ],
+      "rows": 8
+    },
+    "bEn": {
+      "query": "diablo rojo rodrigo y gabriela",
+      "hintEn": "Tap Search (or press Enter) to search YouTube",
+      "liveCalls": 0,
+      "liveCallsAfterClose": 0
+    }
+  },
+  "timeline": [
+    {
+      "tMs": 4081,
+      "at": "2026-10-15T13:07:05.960Z",
+      "ctx": "pt",
+      "kind": "note",
+      "msg": "created throwaway room t125-prod-verify-throwaway (https://boraoke.com/t125-prod-verify-throwaway)"
+    },
+    {
+      "tMs": 4906,
+      "at": "2026-10-15T13:07:06.785Z",
+      "ctx": "pt",
+      "kind": "step",
+      "step": "a",
+      "msg": "type 'evidencias'"
+    },
+    {
+      "tMs": 5656,
+      "at": "2026-10-15T13:07:07.535Z",
+      "ctx": "pt",
+      "kind": "request",
+      "q": "evid karaoke",
+      "v": "2",
+      "live": false,
+      "page": null
+    },
+    {
+      "tMs": 7054,
+      "at": "2026-10-15T13:07:08.933Z",
+      "ctx": "pt",
+      "kind": "request",
+      "q": "evidencias karaoke",
+      "v": "2",
+      "live": false,
+      "page": null
+    },
+    {
+      "tMs": 7128,
+      "at": "2026-10-15T13:07:09.007Z",
+      "ctx": "pt",
+      "kind": "response",
+      "status": 200,
+      "q": "evid karaoke",
+      "live": false,
+      "results": 16,
+      "liveRequired": null,
+      "deferred": null,
+      "source": "index"
+    },
+    {
+      "tMs": 7402,
+      "at": "2026-10-15T13:07:09.281Z",
+      "ctx": "pt",
+      "kind": "response",
+      "status": 200,
+      "q": "evidencias karaoke",
+      "live": false,
+      "results": 16,
+      "liveRequired": null,
+      "deferred": null,
+      "source": "index"
+    },
+    {
+      "tMs": 12505,
+      "at": "2026-10-15T13:07:14.384Z",
+      "ctx": "pt",
+      "kind": "step",
+      "step": "a-done",
+      "rowsWhileTyping_evid": 0,
+      "rowsAfter_evidencias": 8,
+      "liveCalls": 0,
+      "waitedPastIdle": true
+    },
+    {
+      "tMs": 13020,
+      "at": "2026-10-15T13:07:14.899Z",
+      "ctx": "pt",
+      "kind": "step",
+      "step": "b",
+      "msg": "type an index miss"
+    },
+    {
+      "tMs": 15563,
+      "at": "2026-10-15T13:07:17.442Z",
+      "ctx": "pt",
+      "kind": "request",
+      "q": "hoppipolla sigur ros karaoke",
+      "v": "2",
+      "live": false,
+      "page": null
+    },
+    {
+      "tMs": 16476,
+      "at": "2026-10-15T13:07:18.355Z",
+      "ctx": "pt",
+      "kind": "response",
+      "status": 200,
+      "q": "hoppipolla sigur ros karaoke",
+      "live": false,
+      "results": 0,
+      "liveRequired": true,
+      "deferred": null,
+      "source": null
+    },
+    {
+      "tMs": 16502,
+      "at": "2026-10-15T13:07:18.381Z",
+      "ctx": "pt",
+      "kind": "step",
+      "step": "c",
+      "msg": "press Enter on 'hoppipolla sigur ros'"
+    },
+    {
+      "tMs": 16507,
+      "at": "2026-10-15T13:07:18.386Z",
+      "ctx": "pt",
+      "kind": "request",
+      "q": "hoppipolla sigur ros karaoke",
+      "v": "2",
+      "live": true,
+      "page": null
+    },
+    {
+      "tMs": 17521,
+      "at": "2026-10-15T13:07:19.400Z",
+      "ctx": "pt",
+      "kind": "response",
+      "status": 200,
+      "q": "hoppipolla sigur ros karaoke",
+      "live": true,
+      "results": 50,
+      "liveRequired": null,
+      "deferred": null,
+      "source": null
+    },
+    {
+      "tMs": 23812,
+      "at": "2026-10-15T13:07:25.691Z",
+      "ctx": "pt",
+      "kind": "step",
+      "step": "c-done",
+      "query": "hoppipolla sigur ros",
+      "liveCalls": 1,
+      "rows": 8,
+      "hintGone": true
+    },
+    {
+      "tMs": 23813,
+      "at": "2026-10-15T13:07:25.692Z",
+      "ctx": "pt",
+      "kind": "step",
+      "step": "d",
+      "msg": "fresh miss, then idle"
+    },
+    {
+      "tMs": 27047,
+      "at": "2026-10-15T13:07:28.926Z",
+      "ctx": "pt",
+      "kind": "request",
+      "q": "tamacun rodrigo y gabriela karaoke",
+      "v": "2",
+      "live": false,
+      "page": null
+    },
+    {
+      "tMs": 27502,
+      "at": "2026-10-15T13:07:29.381Z",
+      "ctx": "pt",
+      "kind": "response",
+      "status": 200,
+      "q": "tamacun rodrigo y gabriela karaoke",
+      "live": false,
+      "results": 0,
+      "liveRequired": true,
+      "deferred": null,
+      "source": null
+    },
+    {
+      "tMs": 30654,
+      "at": "2026-10-15T13:07:32.533Z",
+      "ctx": "pt",
+      "kind": "request",
+      "q": "tamacun rodrigo y gabriela karaoke",
+      "v": "2",
+      "live": true,
+      "page": null
+    },
+    {
+      "tMs": 31959,
+      "at": "2026-10-15T13:07:33.838Z",
+      "ctx": "pt",
+      "kind": "response",
+      "status": 200,
+      "q": "tamacun rodrigo y gabriela karaoke",
+      "live": true,
+      "results": 50,
+      "liveRequired": null,
+      "deferred": null,
+      "source": null
+    },
+    {
+      "tMs": 33320,
+      "at": "2026-10-15T13:07:35.199Z",
+      "ctx": "pt",
+      "kind": "step",
+      "step": "d-done",
+      "query": "tamacun rodrigo y gabriela",
+      "liveCalls": 1,
+      "liveAtMsAfterLastKey": [
+        3897
+      ],
+      "rows": 8
+    },
+    {
+      "tMs": 37895,
+      "at": "2026-10-15T13:07:39.774Z",
+      "ctx": "en",
+      "kind": "request",
+      "q": "svefn g englar sigur ros karaoke",
+      "v": "2",
+      "live": false,
+      "page": null
+    },
+    {
+      "tMs": 38915,
+      "at": "2026-10-15T13:07:40.794Z",
+      "ctx": "en",
+      "kind": "note",
+      "msg": "candidate 'svefn g englar sigur ros' was not a miss (no hint) — clearing"
+    },
+    {
+      "tMs": 39019,
+      "at": "2026-10-15T13:07:40.898Z",
+      "ctx": "en",
+      "kind": "response",
+      "status": 200,
+      "q": "svefn g englar sigur ros karaoke",
+      "live": false,
+      "results": 0,
+      "liveRequired": true,
+      "deferred": null,
+      "source": null
+    },
+    {
+      "tMs": 42967,
+      "at": "2026-10-15T13:07:44.846Z",
+      "ctx": "en",
+      "kind": "request",
+      "q": "diablo rojo rodrigo y gabriela karaoke",
+      "v": "2",
+      "live": false,
+      "page": null
+    },
+    {
+      "tMs": 43285,
+      "at": "2026-10-15T13:07:45.164Z",
+      "ctx": "en",
+      "kind": "response",
+      "status": 200,
+      "q": "diablo rojo rodrigo y gabriela karaoke",
+      "live": false,
+      "results": 0,
+      "liveRequired": true,
+      "deferred": null,
+      "source": null
+    }
+  ]
+}
