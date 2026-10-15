@@ -1,7 +1,7 @@
 # TICKET-126 — Dev report (PR A: TICKET-119 + per-person caps + single-flight)
 
 ## Status
-PR A implemented and self-verified with jest, the real-Redis Lua suites and `npm run build`. **e2e not run yet**: the machine was busy with #89's gate run (an App Tester headless Chrome was live), so per the TM's machine rule it is deferred. Draft PR, no gate requested. PR B (TICKET-120) not started; it follows on its own branch from `main`.
+PR A implemented and self-verified with jest, the real-Redis Lua suites, `npm run build` and the full e2e suite (132/132). Draft PR #90, no gate requested. PR B (TICKET-120) not started; it follows on its own branch from `main`.
 
 ## Context
 - Picking up from: fresh start. Phase 1 plan approved by the Product TM 2026-10-14 with amendments (recorded at the top of `work/plans/TICKET-126-plan.md`).
@@ -60,7 +60,8 @@ Read-only, via `vercel env pull` to a mode-600 scratch file that was deleted rig
 - `npm run build`: compiled; `bundle-es-target: OK — all 50 chunk(s) parse at ES2019`; `css-target: OK` for the TV surface (6 pre-existing phone/desktop advisories).
 - `tsc`: no errors outside `__tests__` / `e2e/advance-auth.spec.ts` (both pre-existing classes; the new test files only add the same missing-jest-types class).
 - `node --test` at the repo root picks up the jest suites and fails on every one. CI runs it only for the rotation engine, so this is pre-existing and unrelated.
-- **e2e: NOT RUN YET** (machine rule: #89's App Tester Chrome was live). One new spec: `personal search share spent: own copy + paste-link still queues a song` in `e2e/search.spec.ts`.
+- **e2e full suite: 132/132 passed in 3.9 min**, `workers: 1`, `PORT=3126`, cold `.next-e2e` build. Load 5.8 at the start and 5.4 at the end on 10 cores. Before starting I checked that no playwright runner, `next start` or App Tester Chrome was live (#89's gate run had finished). `e2e/_canary` passed, and so did `e2e/tv.spec.ts:740`. The new spec `personal search share spent: own copy + paste-link still queues a song` passed.
+- **e2e prove-can-fail:** with `limitCopyFor("personal-limit")` mutated to return null (generic copy), the new spec FAILS: `Error: expect(locator).toContainText(expected) failed ... Received string: "Busca indisponível — cola o link do YouTube"` (canary 2/2 passed in that run; source restored and tree verified clean).
 
 ### Concurrency probes
 - **Single-flight** (`__tests__/search-single-flight.test.ts`): 20 concurrent identical requests on 4 simulated instances (separate module registries, so separate L1 caches) sharing one fake Upstash with seeded random per-command latency. **Exactly 1 `search.list` call**, all 20 answered with the same rows, platform +1, exactly one IP key and one device key charged, lock released. **8 seeds: `[1,1,1,1,1,1,1,1]`.** Negative control (lock disabled): **20 calls**. Upstream failure: 1 call, all 20 degraded.
