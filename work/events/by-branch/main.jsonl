@@ -103,3 +103,7 @@
 {"v": "1", "ts": "2026-10-15T00:49:41Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-124", "pr": 88, "event": "work_committed", "payload": {"note": "fix batch pushed"}}
 {"v": "1", "ts": "2026-10-15T01:38:18Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-120", "pr": 91, "event": "pr_opened", "payload": {"pr_number": 91, "title": "TICKET-120: claim-token cap counts devices on login and never evicts the owner", "draft": true}}
 {"v": "1", "ts": "2026-10-15T20:40:51Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "9309d03", "message_slug": "docs(status): backlog cleanup ledger, tickets 134-151, catalogue epic pl"}}
+{"v": "1", "ts": "2026-10-15T21:25:59Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-143", "pr": 93, "event": "merged", "payload": {"pr": 93, "tickets": ["TICKET-143"]}}
+{"v": "1", "ts": "2026-10-15T21:25:59Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-143", "pr": 93, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 93}}
+{"v": "1", "ts": "2026-10-15T21:33:37Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-152", "pr": 94, "event": "merged", "payload": {"pr": 94, "tickets": ["TICKET-152"]}}
+{"v": "1", "ts": "2026-10-15T21:33:38Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-152", "pr": 94, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 94}}

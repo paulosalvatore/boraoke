@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-10-15T21:33:50Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-152", "pr": null, "event": "worktree_removed", "payload": {"branch": "ticket/152-owner-pin-flake"}}
