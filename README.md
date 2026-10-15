@@ -57,18 +57,25 @@ The Upstash driver uses [Upstash Redis](https://upstash.com/) via the Vercel Mar
 YouTube `search.list` is capped at 100 calls/day platform-wide, so `/api/search` answers in three tiers, cheapest first:
 
 1. **Search cache** (`lib/search-cache.ts`) — 12h Redis + memory cache of live answers. Free.
-2. **Karaoke index** (`lib/karaoke-index/`) — the uploads of ~60 karaoke channels, harvested with `playlistItems.list` + `videos.list` (the separate 10,000-unit/day pool, never `search.list`) and searched in process memory. It answers only a sing-mode first page with a confident match (`GOOD_MATCH_THRESHOLD` in `lib/karaoke-index/tier.ts`). "Load more" past an index answer escapes to live search.
+2. **Karaoke index** (`lib/karaoke-index/`) — the uploads of 71 karaoke channels, harvested with `playlistItems.list` + `videos.list` (the separate 10,000-unit/day pool, never `search.list`) and searched in process memory over **song titles only** (channel names are not indexed: a channel called "… Karaokê Brasil" would otherwise match every one of its videos for `brasil`). It answers only a sing-mode first page with a confident match (`GOOD_MATCH_THRESHOLD` in `lib/karaoke-index/tier.ts`), at most 16 rows (two "load more" taps); "load more" past an index answer escapes to live search. Queries with more than 8 distinct words, and fuzzy typo scans beyond 2 per query, are bounded (hostile-input cost).
 3. **Live `search.list`** — the fallback, behind the fail-closed daily budget (`lib/search-budget.ts`).
 
-**Storage.** One Upstash key per channel (`ki:shard:<channelId>`, gzip+base64 JSON) plus `ki:stamps` (channelId → harvestedAt). Each row stores only videoId, title and duration; the channel title is stored once per shard.
+**Storage.** One Upstash key per channel (`ki:shard:<channelId>`, gzip+base64 JSON, ~1.46 MB total) plus `ki:stamps` (channelId → harvestedAt). Each row stores only videoId, title and duration; the channel title is stored once per shard (for display only). `ki:stamps` has **no TTL** on purpose: it holds only channel ids and timestamps (no API data beyond ids), and it must outlive an expired shard so the cron re-harvests that channel first.
 
-**Refresh and retention.** A Vercel Cron (`vercel.json`, daily 09:00 UTC) calls `GET /api/cron/karaoke-index`, which re-harvests the oldest channels (≤400 units, ≤40s per run), so every channel is refreshed about weekly. Shards are written with a Redis TTL of 30 days and are never served once older than that (`INDEX_MAX_AGE_MS`) — an expired or missing index means live search, never stale rows. The route is fail-closed: it needs `CRON_SECRET` (Vercel sends it as a bearer token), `YOUTUBE_API_KEY` and Upstash; without `CRON_SECRET` it refuses every call. The channel list is `lib/karaoke-index/channels.json`.
+**Loading and bandwidth.** Each instance loads the shards once and reloads hourly, but a reload first reads the tiny `ki:stamps` hash and skips the ~1.46 MB `MGET` when nothing changed — so a warm instance re-downloads the index about once a day (after the cron) plus once per cold start. A failed load is retried after 60 s, not an hour.
 
-**Local / test-gate use.** Outside production, `KARAOKE_INDEX_FILE=<path to a .json.gz>` loads shards from a file when Upstash is not configured (e.g. the test fixture `work/measurements/ticket-124/index-fixture.json.gz`). The index needs no API key, so this exercises the index tier with zero quota.
+**Refresh and retention.** A Vercel Cron (`vercel.json`, daily 09:00 UTC; Hobby allows one run per day) calls `GET /api/cron/karaoke-index`, which re-harvests the oldest channels 6 at a time, starting no channel after 34 s and no page after 50 s (≤600 units/run, 60 s function limit). Simulated at the measured 0.54 s per Data API call: 18 channels per run, so all 71 channels — and the first fill — take about 4 daily runs (6 at 0.8 s/call), far inside the 30-day limit. Only complete channel harvests are written; a channel cut short by the deadline or an HTTP error never replaces a stored shard. Shards are written with a Redis TTL of 30 days and are never served once older than that (`INDEX_MAX_AGE_MS`), even by a warm instance — an expired or missing index means live search, never stale rows. The route is fail-closed: it needs `CRON_SECRET` (Vercel sends it as a bearer token), `YOUTUBE_API_KEY` and Upstash; without `CRON_SECRET` it refuses every call. The channel list is `lib/karaoke-index/channels.json` (channel ids only).
 
-**One-off harvest.** `YOUTUBE_API_KEY=… npm run index:harvest -- --seeds … --out … --channels-out … --max-units N` (see `scripts/karaoke-index-harvest.ts`). It never writes Redis.
+**Local / test-gate use.** Outside production, `KARAOKE_INDEX_FILE=<path to a .json.gz>` loads shards from a file when Upstash is not configured. The index needs no API key, so this exercises the index tier with zero quota. The harvested file is YouTube API data: it is **gitignored and never committed** — regenerate it locally and delete or regenerate it within 30 days:
 
-**Measurement.** `npm run measure:t124 -- --controls` replays the real production traces through cache → index → live and prints calls per queued song and hit@10 across the threshold curve.
+```bash
+YOUTUBE_API_KEY=… npm run index:harvest -- --channels lib/karaoke-index/channels.json \
+  --out work/measurements/ticket-124/index-fixture.json.gz --max-units 1600 --max-pages 14
+```
+
+(~1,600 units of the 10k/day pool, zero `search.list`; never writes Redis. `--seeds-from-oracle work/measurements/ticket-108/production-search-results.json --channels-out …` re-derives the channel list from scratch.)
+
+**Measurement.** `npm run measure:t124 -- --controls` (needs the local fixture above; it refuses to run without it) replays the real production traces through cache → index → live and prints calls per queued song and hit@10 across the threshold curve, the long-tail simulation, the answer-size sweep and the channel-collision probe. `work/measurements/ticket-124/refresh-sim.ts` simulates one cron run at a given per-call latency.
 
 ## Prototype limitations
 

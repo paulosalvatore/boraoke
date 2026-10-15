@@ -37,3 +37,7 @@ cdk.out/
 # Residual cost: a fresh clone has no next-env.d.ts until the first `next`
 # command generates one. This is a deliberate deviation from the Next.js default.
 next-env.d.ts
+
+# Harvested karaoke index = YouTube API data (30-day retention): local only, never committed.
+/work/measurements/ticket-124/index-fixture.json.gz
+*.index.json.gz
