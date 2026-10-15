@@ -707,11 +707,24 @@ async function mockIndexMissLiveHit(page: Page) {
 }
 const liveCalls = (log: { live: boolean }[]) => log.filter((r) => r.live).length;
 
+/**
+ * Freeze the page clock after joining, so the idle timer can only advance when
+ * the test says so (runFor). Without this a real 4 s pause inside a slow
+ * assertion could fire the idle search and make an Enter test pass for the
+ * wrong reason.
+ */
+async function freezeClock(page: Page) {
+  await page.clock.pauseAt(new Date(Date.now() + 60_000));
+}
+
 test("an index miss shows the Enter hint and bills NOTHING until Enter (TICKET-125)", async ({ page }) => {
+  await page.clock.install();
   const log = await mockIndexMissLiveHit(page);
   await joinAs(page, "EnterUser");
+  await freezeClock(page);
   const input = page.getByLabel(/Buscar música/i);
   await input.fill("evidencias");
+  await page.clock.runFor(500); // past the 400 ms debounce only
 
   // The free lookup ran and missed: a subtle hint, no rows, no billed call.
   await expect(page.getByTestId("search-enter-hint")).toBeVisible();
@@ -728,37 +741,38 @@ test("an index miss shows the Enter hint and bills NOTHING until Enter (TICKET-1
 
   // Pressing Enter again on the same text does not bill again.
   await input.press("Enter");
-  await page.waitForTimeout(300);
+  await page.clock.runFor(10_000);
   expect(liveCalls(log)).toBe(1);
 });
 
 test("idle: ONE live search after 4 s of no typing — none before, none repeated (TICKET-125)", async ({ page }) => {
-  // Playwright's clock: real time keeps flowing for the join flow, and
-  // fastForward jumps the idle timer without real 4 s sleeps.
+  // Playwright's clock, frozen after joining: time moves only via runFor, so
+  // the idle timer is exercised without real 4 s sleeps.
   await page.clock.install();
   const log = await mockIndexMissLiveHit(page);
   await joinAs(page, "IdleUser");
+  await freezeClock(page);
   const input = page.getByLabel(/Buscar música/i);
   await input.fill("evidencias");
+  await page.clock.runFor(500); // the debounced free lookup
   await expect(page.getByTestId("search-enter-hint")).toBeVisible();
 
-  await page.clock.fastForward(3000);
-  await page.waitForTimeout(150);
-  expect(liveCalls(log)).toBe(0); // 3 s of quiet is not enough
+  await page.clock.runFor(3000); // 3.5 s since the last keystroke
+  expect(liveCalls(log)).toBe(0); // not enough
 
-  await page.clock.fastForward(1200);
+  await page.clock.runFor(600); // 4.1 s
   await expect.poll(() => liveCalls(log)).toBe(1);
   await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
 
   // Once: a long further silence on the same text never re-bills.
-  await page.clock.fastForward(20_000);
-  await page.waitForTimeout(150);
+  await page.clock.runFor(20_000);
   expect(liveCalls(log)).toBe(1);
 
   // An edit starts a new idle period, which may fire again (for the new text).
   await input.fill("bohemian rhapsody");
+  await page.clock.runFor(500);
   await expect(page.getByTestId("search-enter-hint")).toBeVisible();
-  await page.clock.fastForward(4200);
+  await page.clock.runFor(3700);
   await expect.poll(() => liveCalls(log)).toBe(2);
   expect(log.filter((r) => r.live).map((r) => r.q)).toEqual(["evidencias karaoke", "bohemian rhapsody karaoke"]);
 });
@@ -775,11 +789,12 @@ test("an index answer never triggers the idle live search (TICKET-125)", async (
     });
   });
   await joinAs(page, "IndexHitUser");
+  await freezeClock(page);
   await page.getByLabel(/Buscar música/i).fill("evidencias");
+  await page.clock.runFor(500);
   await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
   await expect(page.getByTestId("search-enter-hint")).toHaveCount(0);
-  await page.clock.fastForward(15_000);
-  await page.waitForTimeout(150);
+  await page.clock.runFor(15_000);
   expect(log).toEqual([{ live: false }]);
 });
 
