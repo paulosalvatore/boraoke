@@ -231,3 +231,25 @@ Triggered mutation pass: not strictly triggered (YouTube titles, not money, quan
 - `verify-green-local.sh` and the full jest suite: not run. Host load was about 165, so I ran only targeted jest. Both are owed before merge.
 - App Tester: the diff touches no UI. The `app-tester-waived` row is still a TM item.
 - Cyber: PASS-WITH-NOTES. M1 is resolved, as verified above. M2 (the sample in branch history) stays a squash-merge-only condition for the TM.
+
+---
+
+## Re-review r4 (D-022 opus), head bcfe87a: APPROVE
+
+Scope: confirm the 3 round-3 blocking tests and their mutants. Targeted jest only.
+
+- **Diff since db7f98c:** `git diff --stat db7f98c bcfe87a` touches 4 files, `__tests__/karaoke-index-title-parser.test.ts` (+12), the dev report, this review report and the event log. `git diff --quiet db7f98c bcfe87a -- lib/` exits 0, so the parser is unchanged.
+- **Baseline:** `npx jest __tests__/karaoke-index-title-parser.test.ts` gives `Tests: 53 passed, 53 total`.
+- **Mutants**, each applied by `sed` to `lib/karaoke-index/title-parser.ts` and reverted with `git checkout` (`cmp` against a saved copy confirms the restore):
+
+| Mutant | Edit | Result | Killed by |
+|---|---|---|---|
+| N4b | line 345 `words.length > 4` to `> 5` | `1 failed, 52 passed` | KILLED, 5-word bracket test (upper boundary) |
+| N4c | line 345 `words.length > 4` to `> 3` | `1 failed, 52 passed` | KILLED, 4-word band name test (lower boundary) |
+| N7d | line 349 `!lw \|\|` dropped | `1 failed, 52 passed` | KILLED, `(Acoustic - Piano)` test |
+
+Each mutant is killed by exactly the test written for it. The PR body's mutation line now reads "13 mutants: 12 killed, 1 survived-equivalent, 0 real gaps", which matches.
+
+The full-jest failure in `claim-token-owner-pin` (reported by the Dev, passed alone on re-run) is outside this diff and is tracked as TICKET-152. It does not block this PR.
+
+Open items still owed by the TM before merge (unchanged from r3): `verify-green-local.sh`, the `app-tester-waived` row, and squash-merge only (Cyber M2). The non-blocking notes for TICKET-145 stand.
