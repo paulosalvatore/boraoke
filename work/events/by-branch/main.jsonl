@@ -107,3 +107,4 @@
 {"v": "1", "ts": "2026-10-15T21:25:59Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-143", "pr": 93, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 93}}
 {"v": "1", "ts": "2026-10-15T21:33:37Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-152", "pr": 94, "event": "merged", "payload": {"pr": 94, "tickets": ["TICKET-152"]}}
 {"v": "1", "ts": "2026-10-15T21:33:38Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-152", "pr": 94, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 94}}
+{"v": "1", "ts": "2026-10-15T21:34:34Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "103e3cb", "message_slug": "docs(status): #93/#94 merged, lanes update"}}
