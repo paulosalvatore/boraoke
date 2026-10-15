@@ -8,7 +8,7 @@ import {
   HOST_COOKIE_PATH,
   claimCookieName,
   rollClaimCookie,
-  verifyClaim,
+  claimStatus,
   isCrossSiteRequest,
   claimTokenFrom,
 } from "@/lib/host-auth";
@@ -42,7 +42,13 @@ export async function GET(req: NextRequest) {
     // 401 — no cookie is set, minted or extended on this path.
     return noStore(NextResponse.json({ authed: false, configured }, { status: 401 }));
   }
-  const res = noStore(NextResponse.json({ authed: true, configured }));
+  // TICKET-104 / TICKET-118: one read answers both "is this device's claim token
+  // live" (for the roll below) and "is it the owner's" (so the admin page shows
+  // "sign out other devices" only where the route will accept it, S3). It
+  // replaces the `verifyClaim` read this path already made: no extra round trip,
+  // no write.
+  const claim = await claimStatus(req, roomId);
+  const res = noStore(NextResponse.json({ authed: true, configured, owner: claim.owner }));
   // Verified above by requireHost(), so this value is the room's valid session.
   const verified = req.cookies.get(hostCookieName(roomId))?.value;
   if (verified) {
@@ -55,7 +61,7 @@ export async function GET(req: NextRequest) {
   // no-typing path and land on a code it does not have. Only on a verified
   // session, and only when the device already presents a live claim token: this
   // path must never MINT authority for a caller, merely extend what it proved.
-  if (await verifyClaim(req, roomId)) {
+  if (claim.live) {
     rollClaimCookie(res, req, roomId);
   }
   return res;

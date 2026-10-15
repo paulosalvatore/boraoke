@@ -1,0 +1,31 @@
+# Mutation pass on the fixed code (throwaway worktree, suites: host-session-revocation + room-session-epoch-backend, 56 tests)
+# Baseline on the fixed code: 56/56 pass. Each mutant applied alone, then restored.
+=== M1: claim route derives session from a SECOND read (issueSession)
+  ● Cyber S1 — a claim verified before a revoke cannot mint a session that survives it › a claim request straddling the bump gets a session that is ALREADY dead
+  ● Cyber S1 — a claim verified before a revoke cannot mint a session that survives it › the claim route makes ONE store read for a valid claim (verify and derive share it)
+Tests:       2 failed, 54 passed, 56 total
+=== M2: rebind keeps the owner hash only if found in the in-loop list (pre-S2)
+  ● Cyber S2 — a concurrent login between bump and rebind costs nobody their credential › the acting device can still re-claim after a LOST response, and the concurrent login stays in
+Tests:       1 failed, 55 passed, 56 total
+=== M3: helper owner check removed (live token enough)
+  ● revokeRoomHostSessions — the helper's own contract › a LIVE but non-owner (staff) token is refused: no bump, nobody signed out (S3)
+  ● Cyber S3 — only the owner's device can sign out other devices › a STAFF device (session + its own live claim) is refused: nothing changes, the owner stays in
+Tests:       2 failed, 54 passed, 56 total
+=== M4: throttle never refuses
+  ● the acting device is never locked out by its own successful use of the lever › CONCURRENT revokes from the acting device never leave it without a credential
+  ● Cyber S3 — only the owner's device can sign out other devices › is throttled per room: the 4th use inside 10 minutes is a 429 that bumps nothing
+Tests:       2 failed, 54 passed, 56 total
+=== M5: S4 persist removed
+  ● UpstashRoomBackend session epoch › a retention ON->OFF flip: the next bump makes the counter permanent like its record
+Tests:       1 failed, 55 passed, 56 total
+=== M6: post-bump login hashes not carried
+  ● Cyber S2 — a concurrent login between bump and rebind costs nobody their credential › the acting device can still re-claim after a LOST response, and the concurrent login stays in
+Tests:       1 failed, 55 passed, 56 total
+=== M7: fallback mint not owner
+  ● the acting device is never locked out by its own successful use of the lever › when every rebind is clobbered, the owner is minted a fresh OWNER claim, so the pin survives
+Tests:       1 failed, 55 passed, 56 total
+=== M8: owner flag from live instead of pin
+  ● revokeRoomHostSessions — the helper's own contract › a LIVE but non-owner (staff) token is refused: no bump, nobody signed out (S3)
+  ● Cyber S3 — only the owner's device can sign out other devices › a STAFF device (session + its own live claim) is refused: nothing changes, the owner stays in
+  ● Cyber S3 — only the owner's device can sign out other devices › the server tells the admin page which device is the owner's (session probe, claim, login)
+Tests:       3 failed, 53 passed, 56 total

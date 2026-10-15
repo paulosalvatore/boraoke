@@ -51,6 +51,10 @@ class FakeRedis {
     this.ttl.set(k, ms);
     return 1;
   }
+  async persist(k: string) {
+    this.calls.push(`persist ${k}`);
+    return this.ttl.delete(k) ? 1 : 0;
+  }
 }
 
 function room(id: string, extra: Partial<Room> = {}): Room {
@@ -140,13 +144,28 @@ describe("UpstashRoomBackend session epoch", () => {
     expect(fake.ttl.get(roomSessionEpochKey("bar"))).toBe(123_456);
   });
 
-  it("with retention OFF, the counter gets no TTL (and no extra commands)", async () => {
+  it("with retention OFF, the counter gets no TTL", async () => {
     delete process.env.ROOM_RETENTION_DAYS;
     const { fake, be } = backend();
     await be.create(room("bar"));
-    fake.calls = [];
     await be.bumpSessionEpoch("bar", 0);
-    expect(fake.calls).toEqual([`incr ${roomSessionEpochKey("bar")}`]);
+    expect(fake.ttl.has(roomSessionEpochKey("bar"))).toBe(false);
+  });
+
+  // Cyber S4: retention ON when the counter was first bumped, then switched OFF.
+  // The next plain-SET update makes the RECORD permanent while the counter kept the
+  // TTL an earlier bump copied onto it, so the counter would expire first and the
+  // epoch fall back to the record's floor. The next bump must clear that TTL.
+  it("a retention ON->OFF flip: the next bump makes the counter permanent like its record", async () => {
+    process.env.ROOM_RETENTION_DAYS = "30";
+    const { fake, be } = backend();
+    await be.create(room("bar"));
+    fake.ttl.set(roomKey("bar"), 123_456);
+    await be.bumpSessionEpoch("bar", 0);
+    expect(fake.ttl.get(roomSessionEpochKey("bar"))).toBe(123_456);
+    delete process.env.ROOM_RETENTION_DAYS;
+    fake.ttl.delete(roomKey("bar")); // a plain SET dropped the record's TTL (measured -1 in Redis)
+    await be.bumpSessionEpoch("bar", 1);
     expect(fake.ttl.has(roomSessionEpochKey("bar"))).toBe(false);
   });
 });

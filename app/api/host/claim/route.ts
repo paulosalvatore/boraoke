@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  claimSession,
   claimTokenFrom,
   clientIpFrom,
   hostCookieName,
   hostCookieOptions,
   isClaimThrottled,
-  issueSession,
   registerClaimFailure,
   resetClaimThrottle,
   rollClaimCookie,
   roomIdFromRequest,
-  verifyClaim,
 } from "@/lib/host-auth";
 
 /**
@@ -51,8 +50,17 @@ import {
  *     consulted ONLY after verification has already failed, so a valid token can
  *     never be denied by other traffic on a shared venue IP, and a caller cannot
  *     choose its own bucket key. See the long note beside `isClaimThrottled`.
+ *  6. The session is derived from the SAME store read that verified the claim
+ *     (TICKET-118, Cyber S1). MECHANISM: `claimSession` reads the room once,
+ *     checks the token against that snapshot's live list, and derives the session
+ *     from that snapshot's epoch. The earlier version verified with one read and
+ *     derived with a second, so a request straddling "sign out other devices"
+ *     passed on the pre-revoke list and was handed a POST-revoke session: the
+ *     just-revoked credential survived the revoke. Now such a request gets a value
+ *     at the old epoch, which is already dead. (This is also one read instead of
+ *     two.)
  *
- * Responses: 200 `{ authed: true }` + the room's session cookie (and a rolled
+ * Responses: 200 `{ authed: true, owner }` + the room's session cookie (and a rolled
  * claim cookie) on a match; 400 on a malformed room id; 401 on any non-match
  * (no token, wrong token, revoked, unknown room) — deliberately undifferentiated;
  * 429 `{ throttled: true }` once this IP's failure budget is spent; 503 when host
@@ -73,8 +81,10 @@ export async function POST(req: NextRequest) {
 
   // Verify BEFORE touching the throttle: a live credential is never subject to a
   // failure budget, which is what keeps a shared venue IP from locking out the
-  // room's own owner (contract line 5).
-  if (!(await verifyClaim(req, roomId))) {
+  // room's own owner (contract line 5). Verification and derivation are one
+  // snapshot (contract line 6).
+  const claim = await claimSession(req, roomId);
+  if (claim.status === "invalid") {
     const ip = clientIpFrom(req);
     if (await isClaimThrottled(ip)) {
       return NextResponse.json({ authed: false, throttled: true }, { status: 429 });
@@ -83,8 +93,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ authed: false }, { status: 401 });
   }
 
-  const session = await issueSession(roomId);
-  if (!session) {
+  if (claim.status === "locked") {
     // Host controls locked for this room (production with nothing configured).
     // Not a failed attempt — don't charge the budget.
     return NextResponse.json(
@@ -92,9 +101,12 @@ export async function POST(req: NextRequest) {
       { status: 503 },
     );
   }
+  const session = claim.session;
   await resetClaimThrottle(clientIpFrom(req));
 
-  const res = NextResponse.json({ authed: true });
+  // `owner` lets the admin page show "sign out other devices" only where it works
+  // (owner-only, TICKET-118 S3). Read from the same snapshot; not a credential.
+  const res = NextResponse.json({ authed: true, owner: claim.owner });
   res.cookies.set(hostCookieName(roomId), session, hostCookieOptions());
   // Extend the claim credential's window too, so an active venue's device never
   // ages out of it. This re-sends the value just verified above with a fresh

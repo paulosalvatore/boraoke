@@ -43,6 +43,7 @@ import type { NextRequest } from "next/server";
 import {
   isThrottled,
   registerFailure,
+  registerFailureCount,
   resetKey,
   _clearAll,
   type CounterOptions,
@@ -54,7 +55,9 @@ import {
   isValidRoomId,
   issueRoomClaimToken,
   normaliseSessionEpoch,
+  roomClaimTokenStatus,
   verifyRoomClaimToken,
+  type Room,
 } from "./rooms";
 
 /**
@@ -245,6 +248,47 @@ export async function issueSession(roomId: string): Promise<string | null> {
   return secret ? sessionValue(secret.token, secret.epoch) : null;
 }
 
+/**
+ * The session value a room SNAPSHOT derives: its host-code hash at the epoch that
+ * same snapshot reports. Null for a record with no host-code hash (locked).
+ *
+ * TICKET-118 / Cyber S1. Exists so a caller that has already read the room to
+ * check a credential derives the session from THAT read. Deriving it from a
+ * second, independent read let a claim token verified just before a revoke mint
+ * a session at the post-revoke epoch, surviving the very action that killed it.
+ * Derived from the snapshot, such a request gets an old-epoch value that is
+ * already dead.
+ */
+export function sessionForRoom(room: Room): string | null {
+  if (!room.hostCodeHash) return null;
+  return sessionValue(room.hostCodeHash, normaliseSessionEpoch(room.sessionEpoch));
+}
+
+/**
+ * Turn the claim token this request presents into a host session, verifying the
+ * token and deriving the session from ONE store read (Cyber S1). `owner` reports
+ * whether it is the room's owner-pinned token (TICKET-120), from the same read.
+ *
+ * `invalid`: no live claim token (or the `default` room, which has none).
+ * `locked`: a live claim but no host secret to derive from.
+ */
+export async function claimSession(
+  req: NextRequest,
+  roomId: string,
+): Promise<
+  { status: "ok"; session: string; owner: boolean } | { status: "invalid" } | { status: "locked" }
+> {
+  if (roomId === DEFAULT_ROOM) return { status: "invalid" };
+  const token = claimTokenFrom(req, roomId);
+  if (!token) return { status: "invalid" };
+  const room = await getRoom(roomId);
+  const claim = roomClaimTokenStatus(room, token);
+  if (!room || !claim.live) return { status: "invalid" };
+  const session = sessionForRoom(room);
+  if (!session) return { status: "locked" };
+  return { status: "ok", session, owner: claim.owner };
+}
+
 /** Verify a session cookie value against the room's configured token. */
 export async function verifySessionValue(roomId: string, cookieValue: unknown): Promise<boolean> {
   const secret = await resolveRoomSecret(roomId);
@@ -396,6 +440,22 @@ export async function verifyClaim(req: NextRequest, roomId: string): Promise<boo
 }
 
 /**
+ * The claim token this request presents, judged against one store read: whether
+ * it is live, and whether it is the owner-pinned one (TICKET-120). Same cost as
+ * `verifyClaim` (one read, no write), so a route that needs both answers swaps
+ * one for the other without adding a round trip to the auth path.
+ */
+export async function claimStatus(
+  req: NextRequest,
+  roomId: string,
+): Promise<{ live: boolean; owner: boolean }> {
+  if (roomId === DEFAULT_ROOM) return { live: false, owner: false };
+  const token = claimTokenFrom(req, roomId);
+  if (!token) return { live: false, owner: false };
+  return roomClaimTokenStatus(await getRoom(roomId), token);
+}
+
+/**
  * Path the session cookie is scoped to (least privilege, security LOW-1):
  * only the `/api/host/*` routes ever read it — the /admin page itself is a
  * public client bundle whose auth state comes from `GET /api/host/session`,
@@ -530,6 +590,33 @@ export function clientIpFrom(req: NextRequest): string {
     if (first) return first;
   }
   return "unknown";
+}
+
+// ─── "Sign out other devices" throttle (TICKET-118, Cyber S3) ────────────────
+//
+// Per ROOM, counting SUCCESSFUL uses. The action is owner-only, so this is not an
+// anti-abuse control against strangers; it bounds what a stolen owner credential
+// (or a confused double-tap loop) can do to a venue's staff in a short window,
+// and it keeps the store write rate on this route bounded. Refusals (not owner,
+// cross-site, no session) are never charged, so nobody else can spend the owner's
+// budget.
+const REVOKE_THROTTLE_OPTS: CounterOptions = { max: 3, windowMs: 10 * 60_000 };
+
+function revokeKey(roomId: string): string {
+  return `hostrevoke:${roomId}`;
+}
+
+/**
+ * Charge one "sign out other devices" to this room's budget and say whether it is
+ * within it. Charge-THEN-check, so a burst of concurrent requests cannot all pass
+ * a check before any of them is counted: the counter is an atomic INCR, and a
+ * request is allowed only if its own increment kept the count within `max`.
+ * Callers charge only a request that has already passed the owner check, so a
+ * refused caller can never spend the owner's budget.
+ */
+export async function chargeRevoke(roomId: string): Promise<boolean> {
+  const count = await registerFailureCount(revokeKey(roomId), REVOKE_THROTTLE_OPTS);
+  return count === null || count <= REVOKE_THROTTLE_OPTS.max;
 }
 
 /** True when this IP has exhausted its failure budget for the current window. */

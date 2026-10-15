@@ -496,6 +496,11 @@ test.describe("sign out other devices (TICKET-118) and this-device logout (TICKE
       await gateCodeInput(staffPage).fill(hostCode);
       await staffPage.getByRole("button", { name: /^entrar$/i }).click();
       await expect(dashboard(staffPage)).toBeVisible();
+      // "Sign out other devices" is the owner's device only (TICKET-118 S3), so a
+      // staff device never sees it; the owner's device does.
+      await expect(staffPage.getByTestId("admin-logout-button")).toBeVisible();
+      await expect(staffPage.getByTestId("admin-revoke-button")).toHaveCount(0);
+      await expect(page.getByTestId("admin-revoke-button")).toBeVisible();
 
       await staffPage.getByTestId("admin-logout-button").click();
       const confirm = staffPage.getByTestId("admin-logout-confirm");

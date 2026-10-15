@@ -62,10 +62,14 @@ async function mustCreateRoom(name: string) {
   return created;
 }
 
-/** A room, a live claim token for it, and a live host session — the venue's real state. */
+/**
+ * A room, the OWNER's live claim token for it (pinned, as room creation does —
+ * TICKET-120), and a live host session: the owner's device, the only one that may
+ * sign out other devices (S3).
+ */
 async function venue(name: string) {
   const { room, hostCode } = await mustCreateRoom(name);
-  const token = await issueRoomClaimToken(room.id);
+  const token = await issueRoomClaimToken(room.id, { owner: true });
   if (!token) throw new Error("claim token not issued");
   const session = await issueSession(room.id);
   if (!session) throw new Error("session not issued");
@@ -248,16 +252,33 @@ describe("the acting device is never locked out by its own successful use of the
     expect(await verifySessionValue(v.room.id, issued)).toBe(true);
   });
 
-  it("a device holding a session but NO claim token is minted one, so it is not left worse off", async () => {
-    const { room } = await mustCreateRoom("Bar Sem Claim");
-    const session = (await issueSession(room.id))!;
-    const res = await revokeRoute(revokeReq(room.id, { session }));
+  it("when every rebind is clobbered, the owner is minted a fresh OWNER claim, so the pin survives", async () => {
+    const v = await venue("Bar Rebind Perdido");
+    // Every rebind write (4 attempts) is silently lost: a stale writer wins each
+    // time. Later writes (the route's fresh mint) go through.
+    const original = roomBackend.update.bind(roomBackend);
+    let lost = 0;
+    const spy = jest.spyOn(roomBackend, "update").mockImplementation(async (rec) => {
+      if (lost++ < 4) return;
+      return original(rec);
+    });
+    let res: Response;
+    try {
+      res = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+    } finally {
+      spy.mockRestore();
+    }
     expect(res.status).toBe(200);
-    const mintedClaim = setCookie(res, claimCookieName(room.id));
-    const mintedSession = setCookie(res, hostCookieName(room.id))!;
+    const mintedClaim = setCookie(res, claimCookieName(v.room.id))!;
+    const mintedSession = setCookie(res, hostCookieName(v.room.id))!;
     expect(mintedClaim).toBeTruthy();
-    expect(await verifyRoomClaimToken(room.id, mintedClaim)).toBe(true);
-    expect((await moderationRoute(moderationReq(room.id, mintedSession))).status).toBe(200);
+    expect(mintedClaim).not.toBe(v.token);
+    expect((await moderationRoute(moderationReq(v.room.id, mintedSession))).status).toBe(200);
+    // The fresh token is the owner's, so this device can still use the lever.
+    const room = (await getRoom(v.room.id))!;
+    expect(room.ownerClaimTokenHash).toBe(
+      createHmac("sha256", "boraoke-claim-token-v1").update(mintedClaim).digest("hex"),
+    );
   });
 
   it("re-entering the host code after a revoke still works — the other devices' way back", async () => {
@@ -288,10 +309,12 @@ describe("the acting device is never locked out by its own successful use of the
         revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token })),
       ),
     );
-    // Every one succeeds: a 200 means its atomic bump happened, and there is no
-    // longer a "contended" outcome (the bump cannot be clobbered).
-    for (const r of results) expect(r.status).toBe(200);
-    expect(await getRoomSessionEpoch(v.room.id)).toBe(12);
+    // The per-room throttle (S3) is charged atomically BEFORE acting, so a burst
+    // cannot all slip past a check: exactly its budget (3) succeed, the rest are
+    // 429 with no bump. A 200 still means its atomic bump happened.
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses).toEqual([200, 200, 200, ...Array(9).fill(429)]);
+    expect(await getRoomSessionEpoch(v.room.id)).toBe(3);
 
     // The device is still in, and the pre-revoke session is still dead.
     expect(await verifyRoomClaimToken(v.room.id, v.token)).toBe(true);
@@ -466,7 +489,7 @@ describe("epoch 0 is the LEGACY derivation, so shipping this logs nobody out", (
 
   it("a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule)", async () => {
     const { room } = await mustCreateRoom("Bar Lista Velha");
-    const token = (await issueRoomClaimToken(room.id))!;
+    const token = (await issueRoomClaimToken(room.id, { owner: true }))!;
     const listAtEpoch0 = (await getRoom(room.id))!;
     await revokeRoomHostSessions(room.id, { presentedClaimToken: token });
     expect(await verifyRoomClaimToken(room.id, token)).toBe(true); // kept, rebound to epoch 1
@@ -547,28 +570,68 @@ describe("normaliseSessionEpoch", () => {
 describe("revokeRoomHostSessions — the helper's own contract", () => {
   it("bumps by exactly one and reports the new epoch", async () => {
     const { room } = await mustCreateRoom("Bar Helper");
-    expect(await revokeRoomHostSessions(room.id)).toEqual({ ok: true, epoch: 1, keptClaimToken: false });
-    expect(await revokeRoomHostSessions(room.id)).toEqual({ ok: true, epoch: 2, keptClaimToken: false });
+    const owner = (await issueRoomClaimToken(room.id, { owner: true }))!;
+    expect(await revokeRoomHostSessions(room.id, { presentedClaimToken: owner })).toMatchObject({
+      ok: true,
+      epoch: 1,
+      keptClaimToken: true,
+    });
+    expect(await revokeRoomHostSessions(room.id, { presentedClaimToken: owner })).toMatchObject({
+      ok: true,
+      epoch: 2,
+      keptClaimToken: true,
+    });
   });
 
-  it("keeps ONLY the presented token, and only when it is genuinely live", async () => {
+  it("keeps ONLY the owner's token, and never removes the owner pin", async () => {
     const { room } = await mustCreateRoom("Bar Preserva");
-    const mine = (await issueRoomClaimToken(room.id))!;
+    const mine = (await issueRoomClaimToken(room.id, { owner: true }))!;
     const others = [(await issueRoomClaimToken(room.id))!, (await issueRoomClaimToken(room.id))!];
+    const pin = (await getRoom(room.id))!.ownerClaimTokenHash;
+    expect(pin).toBeTruthy();
 
     const res = await revokeRoomHostSessions(room.id, { presentedClaimToken: mine });
-    expect(res).toEqual({ ok: true, epoch: 1, keptClaimToken: true });
+    expect(res).toMatchObject({ ok: true, epoch: 1, keptClaimToken: true });
     expect(await verifyRoomClaimToken(room.id, mine)).toBe(true);
     for (const dead of others) expect(await verifyRoomClaimToken(room.id, dead)).toBe(false);
+    expect((await getRoom(room.id))!.ownerClaimTokenHash).toBe(pin);
   });
 
-  it("an INVENTED token is not written into the record on its own say-so", async () => {
+  it("an INVENTED token is refused and nothing changes (not written into the record on its own say-so)", async () => {
     const { room } = await mustCreateRoom("Bar Inventado");
-    await issueRoomClaimToken(room.id);
+    await issueRoomClaimToken(room.id, { owner: true });
+    const before = await getRoom(room.id);
     const res = await revokeRoomHostSessions(room.id, { presentedClaimToken: "nunca-foi-emitido" });
-    expect(res).toEqual({ ok: true, epoch: 1, keptClaimToken: false });
-    expect((await getRoom(room.id))!.claimTokenHashes).toBeUndefined();
+    expect(res).toEqual({ ok: false, reason: "not-owner" });
+    expect(await getRoom(room.id)).toEqual(before);
     expect(await verifyRoomClaimToken(room.id, "nunca-foi-emitido")).toBe(false);
+  });
+
+  it("a LIVE but non-owner (staff) token is refused: no bump, nobody signed out (S3)", async () => {
+    const { room } = await mustCreateRoom("Bar Staff Helper");
+    const owner = (await issueRoomClaimToken(room.id, { owner: true }))!;
+    const staff = (await issueRoomClaimToken(room.id))!;
+    expect(await revokeRoomHostSessions(room.id, { presentedClaimToken: staff })).toEqual({
+      ok: false,
+      reason: "not-owner",
+    });
+    expect(await revokeRoomHostSessions(room.id)).toEqual({ ok: false, reason: "not-owner" });
+    expect(await getRoomSessionEpoch(room.id)).toBe(0);
+    expect(await verifyRoomClaimToken(room.id, owner)).toBe(true);
+    expect(await verifyRoomClaimToken(room.id, staff)).toBe(true);
+  });
+
+  it("an owner token in a list whose epoch tag is DEAD is refused (S5)", async () => {
+    const { room } = await mustCreateRoom("Bar Lista Morta");
+    const owner = (await issueRoomClaimToken(room.id, { owner: true }))!;
+    // The list is tagged with an earlier epoch than the room's current one.
+    await roomBackend.bumpSessionEpoch(room.id, 0);
+    expect(await verifyRoomClaimToken(room.id, owner)).toBe(false);
+    expect(await revokeRoomHostSessions(room.id, { presentedClaimToken: owner })).toEqual({
+      ok: false,
+      reason: "not-owner",
+    });
+    expect(await getRoomSessionEpoch(room.id)).toBe(1);
   });
 
   it("reports no-room for a room with no record", async () => {
@@ -807,4 +870,207 @@ describe("randomized stale-writer probe around a revoke (TICKET-127 x TICKET-118
       expect([ctx, await verifyRoomClaimToken(v.room.id, laterClaim)]).toEqual([ctx, true]);
     }
   }, 60_000);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * CYBER S1 (HIGH) — the claim route used to verify the claim with one store read
+ * and derive the session with a SECOND one. A revoke landing between the two let
+ * a just-revoked claim token mint a session at the NEW epoch: the attacker
+ * survived the very action that was meant to end them, then signed the owner out.
+ *
+ * The gate holds the claim request right AFTER its first store read has returned
+ * (a pre-revoke snapshot), runs the owner's revoke to completion, and then lets
+ * the claim finish. On the pre-fix route the second read sees the new epoch and
+ * the minted session verifies; with verification and derivation on one snapshot,
+ * the minted value is at the old epoch and is already dead.
+ */
+const claimCtx = new AsyncLocalStorage<{ reads: number }>();
+
+describe("Cyber S1 — a claim verified before a revoke cannot mint a session that survives it", () => {
+  it("a claim request straddling the bump gets a session that is ALREADY dead", async () => {
+    const v = await venue("Bar Toctou 118");
+    const copiedClaim = (await issueRoomClaimToken(v.room.id))!; // copied off a staff device
+    const origGet = roomBackend.get.bind(roomBackend);
+    let readReturned!: () => void;
+    const afterFirstRead = new Promise<void>((r) => (readReturned = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const spy = jest.spyOn(roomBackend, "get").mockImplementation(async (id) => {
+      const out = await origGet(id);
+      const s = claimCtx.getStore();
+      if (s && ++s.reads === 1) {
+        readReturned();
+        await gate;
+      }
+      return out;
+    });
+    let attackerRes: Response;
+    let ownerRes: Response;
+    try {
+      const pending = claimCtx.run({ reads: 0 }, () => claimRoute(claimReq(v.room.id, copiedClaim)));
+      await afterFirstRead; // the claim has read the PRE-revoke record
+      ownerRes = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+      release();
+      attackerRes = await pending;
+    } finally {
+      spy.mockRestore();
+    }
+    // Controls: the interleaving really happened — the revoke landed (epoch 1)
+    // while the claim held a snapshot on which its token was live.
+    expect(ownerRes.status).toBe(200);
+    expect(await getRoomSessionEpoch(v.room.id)).toBe(1);
+    const minted = setCookie(attackerRes, hostCookieName(v.room.id));
+
+    // THE PROPERTY: whatever the straddling claim was handed, it does not verify
+    // and cannot act. (Pre-fix: verifies true, moderation 200.)
+    expect(await verifySessionValue(v.room.id, minted)).toBe(false);
+    expect((await moderationRoute(moderationReq(v.room.id, minted))).status).toBe(401);
+    // ...so it cannot counter-revoke either, and the owner stays in.
+    expect((await revokeRoute(revokeReq(v.room.id, { session: minted }))).status).toBe(401);
+    const ownerSession = setCookie(ownerRes, hostCookieName(v.room.id))!;
+    expect(await verifySessionValue(v.room.id, ownerSession)).toBe(true);
+    expect(await verifyRoomClaimToken(v.room.id, v.token)).toBe(true);
+    expect(await verifyRoomClaimToken(v.room.id, copiedClaim)).toBe(false);
+  });
+
+  it("the claim route makes ONE store read for a valid claim (verify and derive share it)", async () => {
+    const v = await venue("Bar Uma Leitura");
+    const spy = jest.spyOn(roomBackend, "get");
+    try {
+      const res = await claimRoute(claimReq(v.room.id, v.token));
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * CYBER S2 (MEDIUM) — the rebind used to decide which hash to keep from the list
+ * it read INSIDE its loop. An ordinary concurrent host-code login between the bump
+ * and the rebind (not a stale write) replaced the list, so the acting device's own
+ * hash was "not found" and dropped, along with the new login's token. One lost
+ * response then locked the acting device out. Single fault: the login, plus the
+ * response never arriving.
+ */
+describe("Cyber S2 — a concurrent login between bump and rebind costs nobody their credential", () => {
+  it("the acting device can still re-claim after a LOST response, and the concurrent login stays in", async () => {
+    const v = await venue("Bar Rebind 118");
+    const bump = roomBackend.bumpSessionEpoch.bind(roomBackend);
+    let staffLogin: Response | undefined;
+    const spy = jest.spyOn(roomBackend, "bumpSessionEpoch").mockImplementationOnce(async (id, floor) => {
+      const n = await bump(id, floor);
+      // A staff member types the host code right now; it completes normally.
+      staffLogin = await loginRoute(loginReq(v.room.id, v.hostCode, "198.51.100.9"));
+      return n;
+    });
+    let res: Response;
+    try {
+      res = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+    } finally {
+      spy.mockRestore();
+    }
+    expect(res.status).toBe(200);
+    expect(staffLogin!.status).toBe(200);
+    // The response is LOST: the device holds only its pre-revoke cookies.
+    expect(await verifySessionValue(v.room.id, v.session)).toBe(false); // old session is dead
+    expect(await verifyRoomClaimToken(v.room.id, v.token)).toBe(true); // pre-fix: false
+    const reclaim = await claimRoute(claimReq(v.room.id, v.token));
+    expect(reclaim.status).toBe(200); // pre-fix: 401, locked out
+    expect(
+      (await moderationRoute(moderationReq(v.room.id, setCookie(reclaim, hostCookieName(v.room.id))))).status,
+    ).toBe(200);
+    // The concurrent login proved the host code after the bump, so it is kept.
+    const staffClaim = setCookie(staffLogin!, claimCookieName(v.room.id))!;
+    expect(await verifyRoomClaimToken(v.room.id, staffClaim)).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * CYBER S3 (MEDIUM; TM house default, pending TL confirmation) — any host session
+ * used to be able to sign out every other device, the owner included, and drop
+ * the owner pin, with no throttle. A stolen session could loop it and keep a
+ * code-holding owner out 20 times out of 20. Now: owner's device only, the pin is
+ * never removed, and successful uses are capped per room.
+ */
+function ownerLogin(roomId: string, hostCode: string) {
+  return loginRoute(loginReq(roomId, hostCode, "198.51.100.77"));
+}
+
+describe("Cyber S3 — only the owner's device can sign out other devices", () => {
+  it("a STAFF device (session + its own live claim) is refused: nothing changes, the owner stays in", async () => {
+    const v = await venue("Bar Staff 118");
+    const pin = (await getRoom(v.room.id))!.ownerClaimTokenHash;
+    const staff = await ownerLogin(v.room.id, v.hostCode); // a staff member who knows the code
+    const staffSession = setCookie(staff, hostCookieName(v.room.id))!;
+    const staffClaim = setCookie(staff, claimCookieName(v.room.id))!;
+    const res = await revokeRoute(revokeReq(v.room.id, { session: staffSession, claimToken: staffClaim }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ ownerOnly: true });
+    expect(res.headers.getSetCookie?.() ?? []).toEqual([]);
+    expect(await getRoomSessionEpoch(v.room.id)).toBe(0);
+    expect(await verifySessionValue(v.room.id, v.session)).toBe(true);
+    expect(await verifyRoomClaimToken(v.room.id, v.token)).toBe(true);
+    expect((await getRoom(v.room.id))!.ownerClaimTokenHash).toBe(pin);
+  });
+
+  it("a STOLEN session alone can no longer sign the owner out, and cannot loop it", async () => {
+    const v = await venue("Bar Roubado 118");
+    const stolen = v.session; // a copy of the owner's own session value, no claim cookie
+    for (let i = 0; i < 5; i++) {
+      expect((await revokeRoute(revokeReq(v.room.id, { session: stolen }))).status).toBe(403);
+    }
+    expect(await getRoomSessionEpoch(v.room.id)).toBe(0);
+    // Refusals were never charged to the throttle: the owner's own use still works,
+    // and it kills the stolen copy.
+    const owner = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+    expect(owner.status).toBe(200);
+    expect(await verifySessionValue(v.room.id, stolen)).toBe(false);
+  });
+
+  it("the owner pin is never removed by the action", async () => {
+    const v = await venue("Bar Pino 118");
+    const pin = (await getRoom(v.room.id))!.ownerClaimTokenHash;
+    await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+    expect((await getRoom(v.room.id))!.ownerClaimTokenHash).toBe(pin);
+    expect(await verifyRoomClaimToken(v.room.id, v.token)).toBe(true);
+  });
+
+  it("is throttled per room: the 4th use inside 10 minutes is a 429 that bumps nothing", async () => {
+    const v = await venue("Bar Limite 118");
+    let session = v.session;
+    for (let i = 0; i < 3; i++) {
+      const r = await revokeRoute(revokeReq(v.room.id, { session, claimToken: v.token }));
+      expect(r.status).toBe(200);
+      session = setCookie(r, hostCookieName(v.room.id))!;
+    }
+    const fourth = await revokeRoute(revokeReq(v.room.id, { session, claimToken: v.token }));
+    expect(fourth.status).toBe(429);
+    expect(await fourth.json()).toMatchObject({ throttled: true });
+    expect(await getRoomSessionEpoch(v.room.id)).toBe(3);
+    expect(await verifySessionValue(v.room.id, session)).toBe(true); // still signed in
+    // Another room's budget is its own.
+    const w = await venue("Bar Limite Outro 118");
+    expect((await revokeRoute(revokeReq(w.room.id, { session: w.session, claimToken: w.token }))).status).toBe(200);
+  });
+
+  it("the server tells the admin page which device is the owner's (session probe, claim, login)", async () => {
+    const v = await venue("Bar Dono 118");
+    const staffClaim = (await issueRoomClaimToken(v.room.id))!;
+    expect(await (await sessionProbe(probeReq(v.room.id, v.session, v.token))).json()).toMatchObject({
+      authed: true,
+      owner: true,
+    });
+    expect(await (await sessionProbe(probeReq(v.room.id, v.session, staffClaim))).json()).toMatchObject({
+      authed: true,
+      owner: false,
+    });
+    expect(await (await claimRoute(claimReq(v.room.id, v.token))).json()).toMatchObject({ owner: true });
+    expect(await (await claimRoute(claimReq(v.room.id, staffClaim))).json()).toMatchObject({ owner: false });
+    expect(await (await ownerLogin(v.room.id, v.hostCode)).json()).toMatchObject({ owner: false });
+  });
 });

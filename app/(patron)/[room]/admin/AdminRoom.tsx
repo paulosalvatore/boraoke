@@ -99,7 +99,15 @@ export default function AdminRoom({
   // makes it safe to use mid-service.
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
   const [revoking, setRevoking] = useState(false);
-  const [revokeMsg, setRevokeMsg] = useState<"done" | "error" | null>(null);
+  const [revokeMsg, setRevokeMsg] = useState<
+    "done" | "error" | "ownerOnly" | "throttled" | null
+  >(null);
+  // Owner-only (TICKET-118 S3): the route refuses "sign out other devices" for any
+  // device that is not the room owner's, so the button is shown only where it
+  // works. Reported by the server on every auth success (session probe, claim,
+  // login) from the claim cookie this device holds; it is a display hint, never a
+  // credential — the route re-checks it against the store.
+  const [isOwner, setIsOwner] = useState(false);
 
   const roomQuery = `?room=${encodeURIComponent(roomId)}`;
 
@@ -126,13 +134,19 @@ export default function AdminRoom({
       const data = await res.json().catch(() => ({}));
       setConfigured(data.configured !== false);
       if (res.ok && data.authed) {
+        setIsOwner(data.owner === true);
         setAuth("authed");
         return;
       }
       const claim = await fetch(`/api/host/claim${roomQuery}`, { method: "POST" })
-        .then((r) => ({ ok: r.ok, status: r.status }))
-        .catch(() => ({ ok: false, status: 0 }));
+        .then(async (r) => ({
+          ok: r.ok,
+          status: r.status,
+          owner: r.ok ? (await r.json().catch(() => ({}))).owner === true : false,
+        }))
+        .catch(() => ({ ok: false, status: 0, owner: false }));
       setClaimThrottled(claim.status === 429);
+      setIsOwner(claim.owner);
       setAuth(claim.ok ? "authed" : "gate");
     } catch {
       setAuth("gate");
@@ -219,6 +233,8 @@ export default function AdminRoom({
         body: JSON.stringify({ token }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setIsOwner(data.owner === true);
         setToken("");
         setAuth("authed");
       } else if (res.status === 503) {
@@ -274,7 +290,25 @@ export default function AdminRoom({
     setRevokeMsg(null);
     try {
       const res = await fetch(`/api/host/revoke-sessions${roomQuery}`, { method: "POST" });
-      setRevokeMsg(res.ok ? "done" : "error");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.signedOut) {
+        // The revoke landed but this device could not be kept in (host controls
+        // locked). Say so by showing the gate rather than "still signed in".
+        setAuth("gate");
+      } else if (res.ok) {
+        setRevokeMsg("done");
+      } else if (res.status === 403) {
+        // Not the owner's device after all (the hint was stale): hide the button.
+        setIsOwner(false);
+        setRevokeMsg("ownerOnly");
+      } else if (res.status === 429) {
+        setRevokeMsg("throttled");
+      } else {
+        setRevokeMsg("error");
+        // A 401 means this device's own session ended (another device acted):
+        // re-probe so the screen reflects that instead of a stale dashboard.
+        if (res.status === 401) checkSession();
+      }
     } catch {
       setRevokeMsg("error");
     } finally {
@@ -515,20 +549,23 @@ export default function AdminRoom({
         </button>
         {/* TICKET-118: "sign out other devices". Same muted secondary treatment
             as logout. Its confirm carries the warning that matters: the other
-            devices land on the host code. */}
-        <button
-          type="button"
-          className={styles.logoutBtn}
-          data-testid="admin-revoke-button"
-          disabled={revoking}
-          onClick={() => {
-            setRevokeMsg(null);
-            setConfirmingLogout(false);
-            setConfirmingRevoke((v) => !v);
-          }}
-        >
-          {t("signOutAll")}
-        </button>
+            devices land on the host code. Owner's device only (S3): staff
+            devices do not see it, because the route would refuse them. */}
+        {isOwner && (
+          <button
+            type="button"
+            className={styles.logoutBtn}
+            data-testid="admin-revoke-button"
+            disabled={revoking}
+            onClick={() => {
+              setRevokeMsg(null);
+              setConfirmingLogout(false);
+              setConfirmingRevoke((v) => !v);
+            }}
+          >
+            {t("signOutAll")}
+          </button>
+        )}
       </header>
 
       {confirmingLogout && (
@@ -580,11 +617,17 @@ export default function AdminRoom({
       )}
       {revokeMsg && (
         <p
-          className={revokeMsg === "error" ? styles.revokeError : styles.revokeDone}
+          className={revokeMsg === "done" ? styles.revokeDone : styles.revokeError}
           role="status"
           data-testid="admin-revoke-toast"
         >
-          {revokeMsg === "done" ? t("signOutAllDone") : t("signOutAllError")}
+          {revokeMsg === "done"
+            ? t("signOutAllDone")
+            : revokeMsg === "ownerOnly"
+              ? t("signOutAllOwnerOnly")
+              : revokeMsg === "throttled"
+                ? t("signOutAllThrottled")
+                : t("signOutAllError")}
         </p>
       )}
 

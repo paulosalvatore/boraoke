@@ -321,9 +321,10 @@ describe("logout REVOKES this device's credential in server state (B-S1, directi
     }
     // TICKET-112/118: ending every device's credential is the explicit "sign out
     // other devices" action now, not logout. It keeps only the acting device's.
-    const actor = tokens[tokens.length - 1];
+    // Only the OWNER's device may use it (S3), so the actor is the owner's token.
+    const actor = (await issueRoomClaimToken(room.id, { owner: true }))!;
     await revokeRoomHostSessions(room.id, { presentedClaimToken: actor });
-    for (const t of tokens.slice(0, -1)) {
+    for (const t of tokens) {
       expect(await verifyRoomClaimToken(room.id, t)).toBe(false);
     }
     expect(await verifyRoomClaimToken(room.id, actor)).toBe(true);

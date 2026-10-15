@@ -33,7 +33,7 @@ import {
   type RoomMode,
 } from "./rotation-modes";
 import { isLocale, normalizeLocale, type Locale } from "@/i18n/locales";
-import { roomCreateSetOptions, roomRetentionSeconds, roomUpdateSetOptions } from "./retention";
+import { roomCreateSetOptions, roomUpdateSetOptions } from "./retention";
 
 export interface RoomSettings {
   /**
@@ -301,27 +301,44 @@ export function capClaimHashes(hashes: string[], owner?: string): string[] {
 }
 
 /**
- * Whether `token` is one of the room's live claim tokens. Constant-time against
- * every stored hash, and false for a room that holds none — which is the state
- * after a logout (revoked), for every room created before TICKET-104, and for
- * any room whose mint failed.
+ * What a presented claim token is worth against ONE room snapshot: whether it is
+ * one of the room's live claim tokens, and whether it is the owner-pinned one
+ * (TICKET-120). Pure, so a caller that already holds the record can decide and
+ * then act on the SAME read (TICKET-118 S1: verifying with one read and deriving
+ * authority from another is how a just-revoked claim minted a new-epoch session).
+ *
+ * Constant-time against every stored hash, and `live: false` for a room that
+ * holds none — the state after a logout, for every room created before
+ * TICKET-104, for any room whose mint failed, and for a list tagged with an
+ * earlier session epoch (`claimListIsLive`).
  */
-export async function verifyRoomClaimToken(
-  roomId: string,
+export function roomClaimTokenStatus(
+  room: Room | null,
   token: unknown,
-): Promise<boolean> {
-  if (typeof token !== "string" || token.length === 0) return false;
-  const room = await getRoom(roomId);
-  if (!room || !claimListIsLive(room)) return false;
+): { live: boolean; owner: boolean } {
+  const none = { live: false, owner: false };
+  if (typeof token !== "string" || token.length === 0) return none;
+  if (!room || !claimListIsLive(room)) return none;
   const hashes = room.claimTokenHashes;
-  if (!Array.isArray(hashes) || hashes.length === 0) return false;
+  if (!Array.isArray(hashes) || hashes.length === 0) return none;
   const candidate = hashClaimToken(token);
   // Compare against all of them, without short-circuiting on the first miss.
   let match = false;
   for (const stored of hashes) {
     if (typeof stored === "string" && timingSafeHexEqual(candidate, stored)) match = true;
   }
-  return match;
+  if (!match) return none;
+  const pin = room.ownerClaimTokenHash;
+  return { live: true, owner: typeof pin === "string" && timingSafeHexEqual(candidate, pin) };
+}
+
+/** Whether `token` is one of the room's live claim tokens (one store read). */
+export async function verifyRoomClaimToken(
+  roomId: string,
+  token: unknown,
+): Promise<boolean> {
+  if (typeof token !== "string" || token.length === 0) return false;
+  return roomClaimTokenStatus(await getRoom(roomId), token).live;
 }
 
 /**
@@ -390,13 +407,9 @@ export async function getRoomSessionEpoch(roomId: string): Promise<number> {
   return normaliseSessionEpoch(room?.sessionEpoch);
 }
 
-/** How many times `revokeRoomHostSessions` re-tries binding the claim list after a concurrent write clobbered it. */
-const CLAIM_REBIND_ATTEMPTS = 4;
-
 /**
  * END EVERY OUTSTANDING HOST SESSION for a room, and every admin-claim
- * credential except the one the acting device presents ("sign out all devices",
- * TICKET-118).
+ * credential except the owner's ("sign out other devices", TICKET-118).
  *
  * This is the venue's recovery lever, the thing the TICKET-104 re-gate found did
  * not exist. Two halves, both needed, because `POST /api/host/claim` turns a
@@ -408,110 +421,124 @@ const CLAIM_REBIND_ATTEMPTS = 4;
  *      moment it returns, every session value derived from an earlier epoch fails
  *      to verify (`lib/host-auth.ts`, `sessionValue`), and nothing can bring it
  *      back: a stale login or settings write carries the old epoch only into the
- *      record's copy, and readers take the max of the two.
- *   2. CLAIMS. The claim-hash list is rewritten to just the presented token's
- *      hash, tagged with the new epoch (`claimTokenEpoch`). A stale write that
- *      puts the old list back also puts the old tag back, and a list tagged with
- *      an earlier epoch grants nothing (`claimListIsLive`). That race fails closed.
+ *      record's copy, and readers take the max of the two. Every path that turns a
+ *      claim into a session derives it from the SAME snapshot it verified the
+ *      claim against (`claimSession`), so a claim verified before the bump yields
+ *      an old-epoch value that is already dead (Cyber S1).
+ *   2. CLAIMS. The claim-hash list is rewritten for the new epoch
+ *      (`claimTokenEpoch`). A stale write that puts the old list back also puts
+ *      the old tag back, and a list tagged with an earlier epoch grants nothing
+ *      (`claimListIsLive`). That race fails closed.
  *
- * WHY IT KEEPS THE CALLER'S OWN TOKEN RATHER THAN CLEARING ALL AND RE-MINTING.
- * This is the anti-lockout property. Every mechanism this ticket's predecessors
- * added on the authentication path recreated a lockout (a capped list that
- * evicted another device; then a rotation whose two concurrent rolls each deleted
- * the presented hash, so a device was locked out by its own successful
- * re-entry). Keeping the presented hash means:
- *   - the acting device's `boraoke_claim_<room>` cookie is UNTOUCHED and still
- *     live, so nothing has to reach the browser for it to keep access;
- *   - if the response is lost (a network drop after the write commits), the
- *     device's next admin mount auto-claims with that surviving token and gets a
- *     fresh session at the new epoch.
- * When the caller presents no live claim token, every hash is dropped and the
- * route mints the caller a fresh one instead; that path depends on the response.
+ * OWNER ONLY (Cyber S3, TM house default pending the Tech Lead's confirmation).
+ * The caller must present the room's OWNER-PINNED claim token (TICKET-120), live
+ * in the snapshot read before the bump. A staff session, or a session copied off
+ * any device, gets `not-owner` and changes nothing: before this rule a stolen
+ * session could loop this action and keep a code-holding owner out for good. The
+ * host code is deliberately NOT the step-up, because owners are the people who
+ * most often no longer have it (TICKET-104). The owner pin is never removed by
+ * this action.
+ *
+ * WHAT IS KEPT, decided from the PRE-BUMP read (Cyber S2):
+ *   - the acting device's own token (= the owner's). Its cookie is untouched and
+ *     still live, so nothing has to reach the browser: if the response is lost,
+ *     the device's next admin mount auto-claims with it at the new epoch;
+ *   - any hash ALREADY tagged with the new epoch. Such a list can only have been
+ *     written after the bump, by someone who typed the host code (a login) — a
+ *     device that would get in a second later anyway. Dropping it would sign out
+ *     a legitimate concurrent login, and an earlier version did exactly that while
+ *     also dropping the acting device's own hash.
+ * Every rebind re-asserts the owner's hash whatever the current list holds, so a
+ * concurrent write can never cost the acting device its credential by making the
+ * presented hash "not found" at rebind time.
  *
  * WHAT A CONCURRENT WRITE CAN STILL DO, stated rather than implied:
  *   - It can NOT undo the session half: the counter only goes up.
  *   - It can NOT resurrect a pruned claim token: a restored list carries its old
  *     epoch tag.
- *   - It CAN leave the claim list tagged with an old epoch, if it lands after the
- *     rebind below has finished. Then EVERY claim token is dead, the acting
- *     device's included. The acting device still holds the session cookie this
- *     route hands back, which keeps rolling, so it stays signed in; it loses only
- *     the no-typing fallback, and a later login re-creates the list. The
- *     remaining lockout needs this race AND a lost response: then the acting
- *     device needs the host code. That is the residual until room writes are
- *     atomic (TICKET-127).
- *   - A concurrent login by someone who TYPED THE HOST CODE gets in, as it would
- *     a second later. This lever ends copied sessions and claim tokens; it does
- *     not change the host code (option C, rejected in the plan).
+ *   - It CAN leave the claim list tagged with an old epoch, if a stale write lands
+ *     after the rebind below has finished. Then every claim token is dead, the
+ *     owner's included. The acting device still holds the session cookie the
+ *     route hands back, which keeps rolling; it loses only the no-typing fallback.
+ *     The remaining lockout needs this race AND a lost response. That is the
+ *     residual until room writes are atomic (TICKET-127).
+ *   - A concurrent login by someone who TYPED THE HOST CODE gets in, as it would a
+ *     second later. This lever ends copied sessions and claim tokens; it does not
+ *     change the host code (option C, rejected in the plan).
  *
  * Returns `no-room` when there is no record (the `default` room is governed by
- * the env `HOST_TOKEN`, so it is not revocable here). There is no "contended"
- * failure any more: success means the atomic bump happened, and that alone is
- * what ends the sessions.
+ * the env `HOST_TOKEN`, so it is not revocable here), and `not-owner` when the
+ * caller does not present the owner's live claim token. `room` is the snapshot
+ * the result was decided on, so the route derives the caller's new session from
+ * the same read rather than a later one.
  */
 export type RevokeHostSessionsResult =
-  | { ok: true; epoch: number; keptClaimToken: boolean }
-  | { ok: false; reason: "no-room" };
+  | { ok: true; epoch: number; keptClaimToken: boolean; room: Room }
+  | { ok: false; reason: "no-room" | "not-owner" };
+
+/** How many times `revokeRoomHostSessions` re-tries binding the claim list after a concurrent write clobbered it. */
+const CLAIM_REBIND_ATTEMPTS = 4;
 
 export async function revokeRoomHostSessions(
   roomId: string,
   opts: { presentedClaimToken?: string } = {},
 ): Promise<RevokeHostSessionsResult> {
-  const presented =
-    typeof opts.presentedClaimToken === "string" && opts.presentedClaimToken.length > 0
-      ? hashClaimToken(opts.presentedClaimToken)
-      : undefined;
-
   const before = await getRoom(roomId);
   if (!before) return { ok: false, reason: "no-room" };
 
+  // Owner check and keep decision, both from the PRE-BUMP snapshot (S2, S3, S5):
+  // the presented hash must be live in that list AND be the owner pin.
+  if (!roomClaimTokenStatus(before, opts.presentedClaimToken).owner) {
+    return { ok: false, reason: "not-owner" };
+  }
+  const owner = hashClaimToken(opts.presentedClaimToken as string);
+  const beforeEpoch = normaliseSessionEpoch(before.sessionEpoch);
+
   // Half 1, sessions. Atomic and monotonic: from here on the old sessions are dead.
-  const bumped = await roomBackend.bumpSessionEpoch(
-    roomId,
-    normaliseSessionEpoch(before.sessionEpoch),
-  );
+  const bumped = await roomBackend.bumpSessionEpoch(roomId, beforeEpoch);
 
   // Half 2, claims. Rewrite the list for the CURRENT epoch (ours, or a later one if
-  // another revoke got there too), keeping only the acting device's hash. Then
-  // re-read: if a concurrent write left the list tagged with an older epoch, do it
-  // again. Every rewrite keeps only the PRESENTED hash, so a retry can never
-  // re-validate a list somebody else restored.
+  // another revoke got there too): the owner's hash, plus anything already tagged
+  // with an epoch after the one we read (written post-bump, so by a code login).
+  // Then re-read: if a concurrent write left the list tagged with an older epoch,
+  // do it again. Only hashes written after the bump are ever carried, so a retry
+  // can never re-validate a list somebody restored from before it.
+  let last: Room = before;
   for (let attempt = 0; attempt < CLAIM_REBIND_ATTEMPTS; attempt++) {
     const room = await getRoom(roomId);
     if (!room) break;
+    last = room;
     const epoch = normaliseSessionEpoch(room.sessionEpoch);
-    // Keep the acting device's hash only if it is in the stored list. It has just
-    // passed `requireHost`, so it is the owner of this action, but its presented
-    // value is never written into the record on its own say-so.
-    const live = Array.isArray(room.claimTokenHashes) ? room.claimTokenHashes : [];
-    const keep = presented !== undefined && live.includes(presented) ? [presented] : [];
-
-    const next: Room = { ...room, sessionEpoch: epoch, claimTokenEpoch: epoch };
-    if (keep.length > 0) next.claimTokenHashes = keep;
-    else delete next.claimTokenHashes;
-    // The owner pointer survives only if it points at the hash we kept.
-    if (next.ownerClaimTokenHash !== undefined && !keep.includes(next.ownerClaimTokenHash)) {
-      delete next.ownerClaimTokenHash;
-    }
+    const postBump =
+      epoch > beforeEpoch && claimListIsLive(room) && Array.isArray(room.claimTokenHashes)
+        ? room.claimTokenHashes.filter((h) => typeof h === "string" && h !== owner)
+        : [];
+    const next: Room = {
+      ...room,
+      sessionEpoch: epoch,
+      claimTokenEpoch: epoch,
+      claimTokenHashes: capClaimHashes([owner, ...postBump], owner),
+      ownerClaimTokenHash: owner,
+    };
     await roomBackend.update(next);
 
     const after = await getRoom(roomId);
     if (!after) break;
+    last = after;
     if (claimListIsLive(after)) {
       return {
         ok: true,
         epoch: normaliseSessionEpoch(after.sessionEpoch),
-        keptClaimToken:
-          presented !== undefined &&
-          Array.isArray(after.claimTokenHashes) &&
-          after.claimTokenHashes.includes(presented),
+        keptClaimToken: Array.isArray(after.claimTokenHashes) && after.claimTokenHashes.includes(owner),
+        room: after,
       };
     }
   }
   // Every rebind was clobbered. The sessions ARE ended (the bump is atomic); the
   // claim list is tagged with an old epoch, so it grants nothing. The route mints
-  // the caller a fresh claim token.
-  return { ok: true, epoch: bumped, keptClaimToken: false };
+  // the caller a fresh OWNER claim token, so the pin survives this path too.
+  const epoch = Math.max(bumped, normaliseSessionEpoch(last.sessionEpoch));
+  return { ok: true, epoch, keptClaimToken: false, room: { ...last, sessionEpoch: epoch } };
 }
 
 /** Constant-time comparison of two hex strings (mirrors lib/host-auth.ts). */
@@ -698,13 +725,15 @@ export class UpstashRoomBackend implements RoomBackend {
     // The counter can only be behind the record's copy if the key was lost. Jump
     // past the copy so the bump still ends every session the copy describes.
     if (next <= floor) next = Number(await this.redis.incrby(key, floor + 1 - next));
-    // TICKET-91: when retention is on, the counter expires with its room rather
-    // than outliving it. Copied from the record's remaining TTL (the record keeps
-    // its create-time TTL across updates), so both go at the same moment.
-    if (roomRetentionSeconds() != null) {
-      const ttl = await this.redis.pttl(roomKey(id));
-      if (ttl > 0) await this.redis.pexpire(key, ttl);
-    }
+    // TICKET-91: the counter expires with its room rather than outliving it, and
+    // never BEFORE it. Mirror the record's actual remaining TTL whatever the
+    // current config says (Cyber S4): a record with an expiry gives the counter the
+    // same one; a record with none (retention off, or switched off since the room
+    // was created, which a plain-SET update makes permanent) makes the counter
+    // permanent too, clearing any TTL an earlier bump copied onto it.
+    const ttl = await this.redis.pttl(roomKey(id));
+    if (ttl > 0) await this.redis.pexpire(key, ttl);
+    else if (ttl === -1) await this.redis.persist(key);
     return next;
   }
   async create(room: Room): Promise<void> {
