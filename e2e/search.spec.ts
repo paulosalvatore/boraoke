@@ -745,6 +745,30 @@ test("an index miss shows the Enter hint and bills NOTHING until Enter (TICKET-1
   expect(liveCalls(log)).toBe(1);
 });
 
+test("a mode switch re-arms the once-per-text guard: Enter in the new mode bills once more (TICKET-125)", async ({ page }) => {
+  await page.clock.install();
+  const log = await mockIndexMissLiveHit(page);
+  await joinAs(page, "ScopeUser");
+  await freezeClock(page);
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("evidencias");
+  await page.clock.runFor(500);
+  await expect(page.getByTestId("search-enter-hint")).toBeVisible();
+
+  // Sing mode (default): Enter spends one live search and settles.
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
+  expect(liveCalls(log)).toBe(1);
+
+  // Same text, other mode: Enter is a new (text, mode) pair, so exactly one more.
+  await page.getByRole("radio", { name: /Só curtir/i }).check();
+  await input.press("Enter");
+  await expect.poll(() => liveCalls(log)).toBe(2);
+  await page.clock.runFor(10_000);
+  expect(liveCalls(log)).toBe(2);
+  expect(log.filter((r) => r.live).map((r) => r.q)).toEqual(["evidencias karaoke", "evidencias"]);
+});
+
 test("idle: ONE live search after 4 s of no typing — none before, none repeated (TICKET-125)", async ({ page }) => {
   // Playwright's clock, frozen after joining: time moves only via runFor, so
   // the idle timer is exercised without real 4 s sleeps.

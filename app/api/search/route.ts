@@ -27,7 +27,8 @@ import { isLegacyClient, liveAllowed, liveCooldown } from "@/lib/live-search-gat
  *   200 { results: SearchResult[], nextPageToken?: string }  — success
  *   200 { degraded: true, reason, results: [] }        — no key / quota / daily-limit / upstream error
  *   200 { results: [], liveRequired: true }            — v2 index-only request the free tiers can't answer
- *   200 { results: [], deferred: "live-cooldown", retryAfterMs } — billed attempt inside the per-uuid cooldown
+ *   200 { results: [], deferred: "live-cooldown", retryAfterMs } — v2 billed attempt inside the per-uuid cooldown
+ *   (a legacy, non-v2 client inside the cooldown gets the 429 below instead)
  *   400 { error }                                      — bad query/uuid/pageToken, or page past the depth cap
  *   429 { error }                                      — per-uuid OR per-IP rate limit exceeded
  *

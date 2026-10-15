@@ -282,10 +282,16 @@ C4 S 0.05 -> 0.5              billed 18.44 -> 22.28  -> rises with S, as require
 
 ## Open items for the TM
 - Deploy skew: resolved by the `v=2` protocol marker (see above).
-- **Legacy client + cooldown:** an old page that hits the 2 s cooldown (two billed misses less than 2 s apart from one uuid) gets `{results: [], deferred}`. It doesn't know `deferred`, so it shows an empty list for that keystroke; it recovers on the patron's next keystroke after the 2 s window (if they stop typing, the empty list stays until they type or reload). Under #88 the same old client usually narrows locally, so this needs two consecutive live-needing pauses inside 2 s.
+- **Legacy client + cooldown:** an old page (no `v=2`) that hits the 2 s cooldown gets the existing 429 ("too many searches, wait"), not `deferred`, which it would render as an empty list; its next keystroke refetches. Tested. Only v2 clients receive `deferred`.
 - The timing model is an assumption. Real keystroke timing would need client telemetry (pause lengths), which is not collected. A possible follow-up.
 - The cooldown is per instance (in memory), like the existing rate limiter. The cross-instance hard cap is still the TICKET-87 budget.
 
 ## Friction
 - A clock-flowing e2e passed under the mutation it was meant to catch. Idle-timer e2e must freeze the clock. Recorded above.
 - The first replay run took over 10 min (decideTier ran 4000 × per point). Memoising per query brought it down to 2.5 min.
+
+## Reviewer nits 7-9 (follow-up)
+
+- Nit 7: new e2e "a mode switch re-arms the once-per-text guard" (`e2e/search.spec.ts`). Mutation: commenting out `triggerRef.current?.setScope(mode)` in `SongSearch.tsx` makes it FAIL at `expect.poll(() => liveCalls(log)).toBe(2)` (Expected 2, Received 1); restored, it passes.
+- Nit 8: route response-contract comment, README cooldown sentence and the open item above now say an old tab inside the cooldown gets the 429.
+- Nit 9: PR body corrected (search-trigger suite is 19 tests; 390 px fit now the App Tester's finding).
