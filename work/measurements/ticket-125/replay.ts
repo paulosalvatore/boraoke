@@ -40,7 +40,7 @@
  * Run:  npm run measure:t125            (add --controls for the falsifiability pass)
  */
 
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { gunzipSync } from "zlib";
 
@@ -56,6 +56,7 @@ type Row = SearchResult;
 const CLIENT_MIN_CHARS = 4; // components/SongSearch.tsx MIN_CHARS (unchanged)
 const RUNS = 4000;
 const MEASURED = { baselinePerSong: 3.75 }; // production day: 90 billed / 24 queued
+// PR #88 after its fix batch (work/measurements/ticket-124/RESULTS.txt, title-only predicate).
 const PR88 = { billed: 26, perSong: 1.22, h10: 25 };
 
 const ORACLE: Record<string, Row[]> = Object.fromEntries(
@@ -65,9 +66,20 @@ const ORACLE: Record<string, Row[]> = Object.fromEntries(
     ) as Record<string, { videoId: string; title: string; channelTitle: string }[]>,
   ).map(([k, rows]) => [k, rows.map((r) => ({ ...r, duration: "", thumbnailUrl: "" }))]),
 );
-const FIXTURE = JSON.parse(
-  gunzipSync(readFileSync(join(__dirname, "../ticket-124/index-fixture.json.gz"))).toString("utf8"),
-) as { harvestedAt: number; shards: ChannelShard[] };
+/**
+ * TICKET-124's harvested index fixture. It is YouTube API data, so it is
+ * gitignored and local only (see work/measurements/ticket-124/replay.ts for
+ * the regeneration command). Refuse to report numbers without it.
+ */
+const FIXTURE_PATH = join(__dirname, "../ticket-124/index-fixture.json.gz");
+if (!existsSync(FIXTURE_PATH)) {
+  console.error(`FATAL: ${FIXTURE_PATH} is missing (gitignored YouTube API data; regenerate it as described in work/measurements/ticket-124/replay.ts).`);
+  process.exit(2);
+}
+const FIXTURE = JSON.parse(gunzipSync(readFileSync(FIXTURE_PATH)).toString("utf8")) as {
+  harvestedAt: number;
+  shards: ChannelShard[];
+};
 
 // ── raw-input space (identical to TICKET-108/124) ─────────────────────────────
 
@@ -112,11 +124,14 @@ function reconstructTraces(raws: string[]): string[][] {
   return traces;
 }
 
-// ── grading (identical predicate to the spike, TICKET-108 and TICKET-124) ─────
+// ── grading (identical predicate to TICKET-124 after its fix batch) ──────────
+// TITLE ONLY, so a row cannot "hit" through its channel name. `--legacy-predicate`
+// restores the spike/TICKET-108 title+channel predicate for comparison.
+const LEGACY_PREDICATE = process.argv.includes("--legacy-predicate");
 
 function hit(rows: readonly Row[], want: string[], n: number): boolean {
   return rows.slice(0, n).some((r) => {
-    const t = normalizeQuery(`${r.title} ${r.channelTitle ?? ""}`);
+    const t = normalizeQuery(LEGACY_PREDICATE ? `${r.title} ${r.channelTitle ?? ""}` : r.title);
     return want.every((w) => t.includes(w));
   });
 }
@@ -292,7 +307,8 @@ function main(): void {
   console.log("=".repeat(110));
   console.log("TICKET-125 — Enter / idle live search: billed calls AND quality, replayed over real production traces");
   console.log("=".repeat(110));
-  console.log(`index fixture: ${FIXTURE.shards.length} channels, ${index.size} videos; oracle: ${perKey} production cache keys; traces: ${traces.length} families`);
+  console.log(`predicate: ${LEGACY_PREDICATE ? "LEGACY title+channel" : "title only (TICKET-124 fix batch)"}`);
+  console.log(`index fixture: ${FIXTURE.shards.length} channels, ${index.size} videos, harvested ${new Date(FIXTURE.harvestedAt).toISOString()}; oracle: ${perKey} production cache keys; traces: ${traces.length} families`);
   console.log(`client: MIN_CHARS=${CLIENT_MIN_CHARS}, MIN_LOCAL_MATCHES=${MIN_LOCAL_MATCHES}, shipped decideTier; Monte Carlo ${RUNS} runs per point, seed 125`);
   console.log(`trace elements >= MIN_CHARS: ${mids} mid-title pauses + ${finals} settle points; billed when EVERY pause may bill (TICKET-124 client): ${midMisses}`);
   console.log(

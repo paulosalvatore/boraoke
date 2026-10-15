@@ -46,6 +46,20 @@ export class UnitLedger {
     if (this.used >= this.max) throw new UnitBudgetExhausted(this.max);
     this.used++;
   }
+  /**
+   * Atomically reserve `n` units (false = not enough left). Concurrent
+   * channel harvests reserve a whole page up front, so two workers can never
+   * both start a page the budget can only pay for once.
+   */
+  tryReserve(n: number): boolean {
+    if (this.max - this.used < n) return false;
+    this.used += n;
+    return true;
+  }
+  /** Return reserved units that were not spent (e.g. a page with no new ids). */
+  refund(n: number): void {
+    this.used = Math.max(0, this.used - n);
+  }
 }
 
 export class UnitBudgetExhausted extends Error {
@@ -65,12 +79,13 @@ async function api<T>(
   endpoint: "videos" | "playlistItems",
   params: Record<string, string>,
   deps: HarvestDeps,
+  prepaid = false,
 ): Promise<{ ok: true; json: T } | { ok: false; status: number }> {
   const url = new URL(`${API_BASE}${endpoint}`, API_ORIGIN);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   url.searchParams.set("key", deps.key);
   assertNoSearchList(url.toString());
-  deps.ledger.charge(); // charged BEFORE the call: a failed call still bills
+  if (!prepaid) deps.ledger.charge(); // charged BEFORE the call: a failed call still bills
   const res = await (deps.fetchImpl ?? fetch)(url.toString(), {
     signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
   });
@@ -152,6 +167,13 @@ export function isPlayableHere(v: NonNullable<VideosJson["items"]>[number]): boo
 
 export interface HarvestChannelResult {
   shard: ChannelShard | null;
+  /**
+   * True only when the channel was harvested to its natural end (last page) or
+   * to the `maxPages` policy cap. Anything cut short — unit budget, time budget,
+   * an HTTP error mid-channel — is incomplete, and an incomplete shard must
+   * never replace a stored complete one.
+   */
+  complete: boolean;
   /** Why the shard is null / partial, for the run log. */
   note?: string;
   calls: number;
@@ -168,21 +190,27 @@ export async function harvestChannel(
   opts: { maxPages: number; now?: number; /** Epoch ms after which no new page starts. */ deadline?: number },
 ): Promise<HarvestChannelResult> {
   const playlistId = uploadsPlaylistId(channelId);
-  if (!playlistId) return { shard: null, note: "not a UC channel id", calls: 0 };
+  if (!playlistId) return { shard: null, complete: false, note: "not a UC channel id", calls: 0 };
   const startUnits = deps.ledger.used;
   const rows: IndexRow[] = [];
   const seen = new Set<string>();
   let channelTitle = "";
   let pageToken = "";
   let note: string | undefined;
-  for (let page = 0; page < opts.maxPages; page++) {
-    // Each page costs 2 units; never start a page we cannot finish.
-    if (deps.ledger.remaining < 2) {
-      note = "unit budget reached mid-channel";
+  let complete = false;
+  for (let page = 0; ; page++) {
+    if (page >= opts.maxPages) {
+      complete = true; // the per-channel policy cap is a full harvest
       break;
     }
     if (opts.deadline !== undefined && Date.now() >= opts.deadline) {
       note = "time budget reached mid-channel";
+      break;
+    }
+    // Each page costs up to 2 units, reserved atomically up front so a page is
+    // never started that the (shared, concurrent) budget cannot finish.
+    if (!deps.ledger.tryReserve(2)) {
+      note = "unit budget reached mid-channel";
       break;
     }
     const pl = await api<PlaylistItemsJson>(
@@ -194,8 +222,10 @@ export async function harvestChannel(
         ...(pageToken ? { pageToken } : {}),
       },
       deps,
+      true,
     );
     if (!pl.ok) {
+      deps.ledger.refund(1); // the videos.list half of the reservation was not spent
       note = `playlistItems HTTP ${pl.status}`;
       break;
     }
@@ -212,6 +242,7 @@ export async function harvestChannel(
         "videos",
         { part: "contentDetails,status", id: [...titles.keys()].join(",") },
         deps,
+        true,
       );
       if (vids.ok) {
         for (const v of vids.json.items ?? []) {
@@ -227,12 +258,17 @@ export async function harvestChannel(
         note = `videos.list HTTP ${vids.status}`;
         break;
       }
+    } else {
+      deps.ledger.refund(1);
     }
     pageToken = pl.json.nextPageToken ?? "";
-    if (!pageToken) break;
+    if (!pageToken) {
+      complete = true;
+      break;
+    }
   }
   const calls = deps.ledger.used - startUnits;
-  if (rows.length === 0) return { shard: null, note: note ?? "no playable rows", calls };
+  if (rows.length === 0) return { shard: null, complete, note: note ?? "no playable rows", calls };
   return {
     shard: {
       v: 1,
@@ -241,6 +277,7 @@ export async function harvestChannel(
       harvestedAt: opts.now ?? Date.now(),
       rows,
     },
+    complete,
     note,
     calls,
   };

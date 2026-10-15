@@ -10,7 +10,7 @@
 
 import { containsKaraoke } from "../search-query";
 import type { SearchResult } from "../youtube-search";
-import type { KaraokeIndex } from "./matcher";
+import { MAX_QUERY_TOKENS, type KaraokeIndex } from "./matcher";
 
 /**
  * THE "GOOD MATCH" THRESHOLD.
@@ -58,6 +58,18 @@ export const MIN_INDEX_QUERY_CHARS = 4;
  */
 export const INDEX_MORE_TOKEN = "IDXLIVE";
 
+/**
+ * How many rows an index answer returns: 16 = two client pages (8 rows per
+ * "load more" tap). The replay sweep (limit 10 / 16 / 24 / 50) measures the
+ * SAME billed calls and hit@1/5/10 at every size — the right song, when the
+ * index has it, sits in the top rows — so the only thing the size changes is
+ * how far a patron must scroll past a wrong index answer before "load more"
+ * escapes to live search: 2 taps at 16 versus 7 at 50. 16 rather than 10 keeps
+ * a full second page of alternatives (versions/keys of the same song) and a
+ * little more room for local narrowing as the patron keeps typing.
+ */
+export const INDEX_RESULT_LIMIT = 16;
+
 export type TierDecision =
   | { tier: "index"; results: SearchResult[]; confidence: number }
   | {
@@ -68,6 +80,7 @@ export type TierDecision =
         | "index-escape"
         | "index-unavailable"
         | "query-too-short"
+        | "query-too-long"
         | "weak-match";
       confidence?: number;
     };
@@ -94,7 +107,7 @@ export function decideTier({
   index,
   threshold = GOOD_MATCH_THRESHOLD,
   minChars = MIN_INDEX_QUERY_CHARS,
-  limit = 50,
+  limit = INDEX_RESULT_LIMIT,
 }: TierInput): TierDecision {
   if (pageToken === INDEX_MORE_TOKEN) return { tier: "live", reason: "index-escape" };
   if (pageToken) return { tier: "live", reason: "deep-page" };
@@ -105,6 +118,7 @@ export function decideTier({
   if (!index || index.size === 0) return { tier: "live", reason: "index-unavailable" };
   const r = index.search(q, limit);
   if (r.tokens.join("").length < minChars) return { tier: "live", reason: "query-too-short" };
+  if (r.tokens.length > MAX_QUERY_TOKENS) return { tier: "live", reason: "query-too-long" };
   if (r.hits.length === 0 || r.confidence < threshold) {
     return { tier: "live", reason: "weak-match", confidence: r.confidence };
   }

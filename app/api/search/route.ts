@@ -13,6 +13,7 @@ import { reserveSearchCall } from "@/lib/search-budget";
 import { track } from "@/lib/telemetry";
 import { getKaraokeIndex } from "@/lib/karaoke-index/store";
 import { decideTier, INDEX_MORE_TOKEN } from "@/lib/karaoke-index/tier";
+import { containsKaraoke } from "@/lib/search-query";
 import { getTranslations } from "next-intl/server";
 import { liveAllowed, liveCooldown } from "@/lib/live-search-gate";
 
@@ -181,7 +182,9 @@ export async function GET(req: NextRequest) {
   // answers are not written to the search cache: the index is already local,
   // and caching would keep serving rows past a shard's retention expiry.
   // Fail-open: a missing/expired/unreadable index is simply "no answer".
-  if (!pageToken) {
+  // Sing mode and first page are checked BEFORE the index is loaded, so a
+  // listen-mode request on a cold instance never pays the index load.
+  if (!pageToken && containsKaraoke(q)) {
     const decision = decideTier({ q, pageToken, index: await getKaraokeIndex() });
     if (decision.tier === "index") {
       void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: decision.results.length, source: "index" } }); // fire-and-forget, fail-open

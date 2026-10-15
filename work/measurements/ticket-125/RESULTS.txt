@@ -1,7 +1,8 @@
 ==============================================================================================================
 TICKET-125 — Enter / idle live search: billed calls AND quality, replayed over real production traces
 ==============================================================================================================
-index fixture: 71 channels, 38275 videos; oracle: 80 production cache keys; traces: 32 families
+predicate: title only (TICKET-124 fix batch)
+index fixture: 71 channels, 38275 videos, harvested 2026-10-14T23:52:24.533Z; oracle: 80 production cache keys; traces: 32 families
 client: MIN_CHARS=4, MIN_LOCAL_MATCHES=3, shipped decideTier; Monte Carlo 4000 runs per point, seed 125
 trace elements >= MIN_CHARS: 42 mid-title pauses + 29 settle points; billed when EVERY pause may bill (TICKET-124 client): 26
 pause model (ASSUMPTION): pause length log-normal, median 1 s, sigma 1, conditioned on >= 0.4 s (every trace element already passed the debounce)
