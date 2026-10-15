@@ -94,3 +94,61 @@ A client can force a `videos.list` miss per submit by sending a fresh random 11-
 ## Friction
 
 - The same "parser regex without a length cap" pattern has appeared before. Proposed class-level guardrail: a `prove-your-test-can-fail` addendum, or a reviewer checklist line, saying that any new regex on untrusted text gets a length cap before matching plus a pathological-input timing test.
+
+## Delta re-gate — head `fb373ed` (2026-10-15)
+
+**Verdict: PASS** (MEDIUM-1, LOW-1, LOW-3 fixed and verified; the new test seam cannot activate on a deployed site; no regression of #90's limits. INFO notes only.)
+
+**Head audited:** `fb373ed` (verified with `git rev-parse HEAD`). Delta `71a6d5e..fb373ed`: fix commit `4ac1870`, merge `2221dc5` (main squash `a0f2b59`, #90), docs/evidence commits. `git diff --quiet -- lib app` passed before every probe run (shared worktree, nothing tracked was modified; probes ran from copies in the scratchpad).
+
+### Evidence run here
+
+- Targeted jest, START 20:38:42, END 20:39:39 (load average ~150): `npx jest __tests__/youtube.test.ts __tests__/api-video-meta.test.ts __tests__/api-queue.test.ts __tests__/video-meta-cache.test.ts __tests__/api-search-personal-caps.test.ts __tests__/client-ip.test.ts` → `Test Suites: 6 passed, 6 total`, `Tests: 206 passed, 206 total`.
+- Parser timing probe (ts-node transpile-only) on copies of `lib/youtube.ts` at `71a6d5e` (old) and at `fb373ed` (new), table below.
+- Grep of every reader of `BORAOKE_TEST_CLIENT_TITLES` / `clientTitleFallbackAllowed` (excluding `node_modules`, `.git`, build dirs), plus a look at the compiled server chunk and the client chunks in `.next` (built 19:51, contains `clientTitleFallbackAllowed`, so post-fix code) and `.next-e2e` (built 20:15).
+- `git diff a0f2b59 HEAD` on #90's limit files.
+
+### MEDIUM-1 — FIXED
+
+`parseYouTubeVideoId` returns `null` when `input.length > MAX_PARSE_INPUT` (512) before `trim` or any regex (`lib/youtube.ts`). `stripSharePunctuation` is now two index walks over `Set`s, linear. `SongSearch` input has `maxLength={MAX_PARSE_INPUT}`, and the compiled patron chunk shows `maxLength:p` with `p=512`.
+
+Single-run timings (old code at load ~150, so absolute numbers are inflated; the shape is what matters):
+
+| input | old `71a6d5e` | new `fb373ed` |
+|---|---|---|
+| 4,000 `.` + `a` | 749.7 ms | 0.04 ms (refused by the cap) |
+| `youtu` + 4,000 `.` + `a b` | 642.4 ms | 0.001 ms (refused) |
+| 100,000 `.` + `a` | 396,134 ms | 0.001 ms (refused) |
+| `youtu.be/<id>` + 492 `.` (len 512) | 0.18 ms → id | id |
+| same, len 513 | id | `null` (cap) |
+
+Warm-loop worst cases at or under the cap on the new code (2,000 iterations each): 511 `.` + `a` 0.12 ms, `youtu` + 505 `.` 0.03 ms, four share tokens of 120 `)` 0.10 ms, link + 484 `?` 0.015 ms, 511 `(` 0.014 ms, against 0.010 ms for a normal link. Cost is flat and bounded. Look-alikes still refused (`youtube.com.evil.com`, `evil.com/youtube.com/…`, `youtube.com@evil.com`, `…"><script>`, `javascript:…//youtu.be/…`); `(https://youtu.be/<id>).` and `<youtu.be/<id>>` still resolve; `Imagination` still `null`.
+
+### LOW-1 — FIXED
+
+- `app/api/queue/route.ts`: the entry is built without `title`. `entry.title` / `channelTitle` / `duration` are set only from `lookup.meta` (server lookup). The only other write is the test seam below. The body `title` is still length-checked (400 over 120 chars), then ignored.
+- Injection by field: `videoId` must pass `isValidVideoId` (11 chars of `[A-Za-z0-9_-]`); `youtubeUrl` only yields a validated id; `channelTitle`, `duration` and any other body key are not destructured, so they never reach the entry; `mode` collapses to `sing` or `listen-dance`; `source` is a telemetry label only. `nickname` (30) and `table` remain free text by design, as before this PR.
+- Moderated rooms get the same `entry` object, so the pending path stores no client title either. Host approve (`app/api/host/pending/approve`) moves the stored entry and takes no title. No other `app/api` route writes a queue title. `song_played` (the analytics top-songs title) is server-emitted; `/api/t` accepts only `patron_joined`.
+- Tests prove it: "every lookup failed: the client title is never stored…", and "a non-existent id (videos.list empty, oEmbed 404) cannot put client text on the TV", which also asserts `GET /api/queue` does not contain the text. The patron form's title input is gone (no `maxLength:120` field left in the compiled chunk).
+
+### LOW-3 — FIXED
+
+`lib/youtube-server.ts` starts with `import "server-only"` (package installed); `lib/video-meta.ts` already had it. It holds `videoApiKey`, `fetchVideoDetails`, `fetchOEmbed`, the override logic and the new seam. Importers: `app/api/queue/route.ts` and `lib/video-meta.ts`, both server only; no `"use client"` file imports either. `lib/youtube.ts` (the shared parser) has no `process.env` read and no `fetch`. In both builds, `.next*/static` contains none of `YOUTUBE_API_KEY`, `local-stub-key`, `BORAOKE_E2E_STUBS`, `BORAOKE_TEST_CLIENT_TITLES`, `youtube/v3/videos`, `oembed`; no `AIza…` string in either build.
+
+### New surface: `BORAOKE_TEST_CLIENT_TITLES` seam — SAFE
+
+- `clientTitleFallbackAllowed()` = `BORAOKE_TEST_CLIENT_TITLES === "1" && overrideAllowed()`, and `overrideAllowed()` = `NODE_ENV !== "production"` or (`BORAOKE_E2E_STUBS === "1" && !VERCEL`). It reads only `process.env`. Its only caller is the queue route, and only on the branch where the server lookup produced no title.
+- Readers (grep): `lib/youtube-server.ts:111-112` (the definition), `app/api/queue/route.ts:241` (the caller), `playwright.config.ts:163` (sets it for the local e2e web server), `__tests__/api-queue.test.ts` (gating test), plus dev report and evidence text. It is not in `.env.example` or `vercel.json`, and the prod `.env` files in the worktree do not exist.
+- **Production builds drop the NODE_ENV branch at build time.** The compiled server chunk (`.next/server/chunks/3349.js`) reads `function i(){return"1"===process.env.BORAOKE_E2E_STUBS&&!process.env.VERCEL}function j(){return"1"===process.env.BORAOKE_TEST_CLIENT_TITLES&&i()}`. On Vercel, `VERCEL=1` is always set, so `j()` is false whatever the project env holds. Even a mistaken setting of both test flags in the Vercel dashboard cannot turn it on.
+- Request-controlled input cannot reach it: no header, cookie, query or body field is read by either function, and `process.env` is not written anywhere on a request path.
+- Residual, by design: a local `next dev` with the flag exported keeps client titles. That is a developer machine, not a deployed site.
+
+### Main merge `2221dc5` — no regression of #90
+
+`a0f2b59` is an ancestor of HEAD. `lib/client-ip.ts`, `lib/search-budget.ts`, `app/api/search/route.ts`, `lib/host-auth.ts` (re-exports `clientIpFrom` from `./client-ip`) and `lib/queue-rate-limit.ts` are byte-identical to `a0f2b59`. In the queue route diff against `a0f2b59`, only the import lines change (`lookupForSubmit`, the seam); the body cap, the dual-bucket `submitRateLimitOk(…, clientIpFrom(req))` and its position before any lookup are unchanged. The new `/api/video-meta` limiter keys on `clientIpFrom` from `@/lib/client-ip` (#90's trusted IP). `api-search-personal-caps` and `client-ip` suites pass (above).
+
+### INFO (delta)
+
+- **INFO-4:** stale comments still describe the dropped behaviour: `lib/store/types.ts:19-22` ("the patron-sent title is only the fallback when every lookup failed") and the `__tests__/api-queue.test.ts` block header around line 147. Wording only; fix opportunistically.
+- **INFO-5:** for defense in depth, `clientTitleFallbackAllowed()` could also check `!process.env.VERCEL` itself, so it does not lean on build-time NODE_ENV inlining. Not needed today (proved above in the compiled chunk).
+- LOW-2 (pool drain) stays a follow-up, now filed as TICKET-153.
