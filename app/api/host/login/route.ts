@@ -11,6 +11,8 @@ import {
   registerLoginFailure,
   resetLoginThrottle,
   attachClaimCookie,
+  rollClaimCookie,
+  verifyClaim,
 } from "@/lib/host-auth";
 
 const MAX_BODY_BYTES = 1024;
@@ -86,6 +88,15 @@ export async function POST(req: NextRequest) {
   // acquires one at all. It is deliberately a new token rather than the
   // resurrection of an old one: a revoked credential must stay dead, including
   // any copy an attacker took.
-  await attachClaimCookie(res, roomId);
+  //
+  // TICKET-120: a device that ALREADY presents a live claim token for this room
+  // gets that token re-sent (no mint, no store write), exactly like a roll. The
+  // cap counts devices, not issues: before this, five logins from one tablet
+  // consumed every slot and evicted the creator's phone.
+  if (await verifyClaim(req, roomId)) {
+    rollClaimCookie(res, req, roomId);
+  } else {
+    await attachClaimCookie(res, roomId);
+  }
   return res;
 }
