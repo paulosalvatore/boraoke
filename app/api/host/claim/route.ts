@@ -46,10 +46,12 @@ import {
  *     the previous design got wrong.
  *  4. `default` is never claimable: it has no room record and is governed by the
  *     shared env `HOST_TOKEN`.
- *  5. The failure budget is keyed on the SERVER-DERIVED client IP and is
- *     consulted ONLY after verification has already failed, so a valid token can
- *     never be denied by other traffic on a shared venue IP, and a caller cannot
- *     choose its own bucket key. See the long note beside `isClaimThrottled`.
+ *  5. The failure budget is keyed on the client IP from `clientIpFrom`, which
+ *     is edge-written (not client-chosen) on Vercel or behind a declared trusted
+ *     proxy, and the shared "unknown" bucket elsewhere. It is consulted ONLY
+ *     after verification has already failed, so a valid token can never be
+ *     denied by other traffic on a shared venue IP. See the long note beside
+ *     `isClaimThrottled`.
  *  6. The session is derived from the SAME store read that verified the claim
  *     (TICKET-118, Cyber S1). MECHANISM: `claimSession` reads the room once,
  *     checks the token against that snapshot's live list, and derives the session

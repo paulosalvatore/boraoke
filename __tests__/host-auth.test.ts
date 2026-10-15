@@ -205,7 +205,7 @@ describe("login throttle helpers (security M-1)", () => {
   });
 });
 
-describe("clientIpFrom — trusted-proxy IP derivation (TICKET-78)", () => {
+describe("clientIpFrom — trusted-proxy IP derivation (TICKET-78; runs under VERCEL=1, see jest.env.ts and client-ip.test.ts for off-Vercel)", () => {
   function reqWith(headers: Record<string, string>): NextRequest {
     return new Request("http://localhost/api/host/login", {
       headers,
@@ -234,7 +234,7 @@ describe("clientIpFrom — trusted-proxy IP derivation (TICKET-78)", () => {
     expect(new Set([a, b, c])).toEqual(new Set(["203.0.113.10"]));
   });
 
-  it("falls back to the first x-forwarded-for hop when x-real-ip is absent (dev / non-Vercel)", () => {
+  it("on Vercel, falls back to the first x-forwarded-for hop when x-real-ip is absent", () => {
     const ip = clientIpFrom(reqWith({ "x-forwarded-for": "198.51.100.9, 10.0.0.1" }));
     expect(ip).toBe("198.51.100.9");
   });

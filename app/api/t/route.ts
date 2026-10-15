@@ -36,18 +36,17 @@ function badRequest(error: string) {
 
 /**
  * Caller IP for the rate-limit bucket (security M1, TICKET-86). Delegates to
- * the shared, hardened `clientIpFrom` (lib/host-auth.ts, TICKET-78) instead of
- * keeping a second, divergent x-forwarded-for-first derivation — that copy
- * trusted the spoofable client-suppliable first hop of x-forwarded-for ahead
- * of the edge-set x-real-ip, letting a caller rotate a forged header to spread
- * beacon traffic across unlimited IP buckets.
+ * the shared `clientIpFrom` (lib/client-ip.ts) instead of keeping a second,
+ * divergent x-forwarded-for-first derivation. That function trusts a header
+ * only where something overwrites it — Vercel's edge, or a proxy declared in
+ * TRUSTED_CLIENT_IP_HEADER — so a caller cannot rotate a forged header to
+ * spread beacon traffic across unlimited IP buckets.
  *
- * Sentinel seam: `clientIpFrom` returns "unknown" when no header is present at
- * all; `beaconRateLimitOk` documents "" (not "unknown") as "bucket unavailable
- * → this bucket does not apply". Mapping "unknown" back to "" here preserves
- * today's fail-open, IP-bucket-not-applied behaviour for header-less requests
- * (unit tests, local dev) while closing the spoof vector for every request
- * that has real headers.
+ * Sentinel seam: `clientIpFrom` returns "unknown" when no trusted address is
+ * available (no header, or an undeclared non-Vercel host); `beaconRateLimitOk`
+ * documents "" (not "unknown") as "bucket unavailable → this bucket does not
+ * apply". Mapping "unknown" back to "" keeps telemetry's fail-open,
+ * IP-bucket-not-applied behaviour for those requests.
  */
 function clientIp(req: NextRequest): string {
   const ip = clientIpFrom(req);

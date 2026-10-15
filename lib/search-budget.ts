@@ -89,6 +89,7 @@
 
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { Redis } from "@upstash/redis";
 
 /**
@@ -115,6 +116,92 @@ export const SEARCH_DAILY_BUDGET = SEARCH_DAILY_CAP - RESERVE_MARGIN;
 
 /** Remaining-budget level at or below which every spend logs a loud warning. */
 export const LOW_WATER_MARK = 15;
+
+// ─── Per-person daily sub-budgets (TICKET-126) ──────────────────────────────
+//
+// The 90 above bounds the PLATFORM's day. Nothing bounded one person's share of
+// it, so a single patron (or a single script) could still spend all 90 and end
+// search for every venue until midnight Pacific. Two sub-budgets sit inside it,
+// both counted on the same Pacific day, in the same atomic script:
+//
+//   per DEVICE (default 30). This cap exists only to stop ONE abuser (a
+//   script, or someone typing searches they never queue) from taking the whole
+//   day; it must never throttle a normal patron. The TL raised it from the
+//   first proposal of 10 on 2026-10-15: "Lets increase the numbers, because we
+//   are rebuilding the search mechanism to allow more searchs. Otherwise the
+//   app will be shitty". Measured cost after the karaoke index and the
+//   Enter/idle protocol is ~0.89 billed calls per queued song (replayed over
+//   real production traces, work/measurements/ticket-125), ~1.3 on a bad night
+//   of retries, so 30 covers ~20+ songs of heavy searching for one device while
+//   still capping it at a third of the day instead of all of it. The device key
+//   is client-minted (an identity cookie or the uuid param), so this is a
+//   FAIRNESS bound for honest patrons, not a security control.
+//
+//   per IP (default 90 = the platform budget). A venue night's patrons share
+//   ONE bar Wi-Fi address, so any per-IP cap below the platform day can starve
+//   an ordinary busy bar; with the search mechanism being rebuilt to allow more
+//   searches, the per-network share is set equal to the platform budget so it
+//   never binds before the platform cap does for a single bar. The IP is still
+//   edge-written and keyed by /64 (lib/client-ip.ts, TICKET-119), and the
+//   counter is still kept and enforced, so the cap can be tightened with
+//   SEARCH_IP_DAILY_CAP alone if one network is ever seen draining the day.
+//   The trade-off, stated: one network (or a many-IP attacker) can spend the
+//   whole platform day; the platform cap stays the hard ceiling, and the
+//   device cap still stops a single device doing it.
+//
+// A capped person keeps everything free: cache hits and karaoke-index answers
+// never reach a reservation, and paste-a-link costs nothing.
+//
+// Env-overridable (SEARCH_DEVICE_DAILY_CAP / SEARCH_IP_DAILY_CAP) so the
+// numbers can be tuned without a code change once real telemetry exists. An
+// override must be a positive integer and is clamped to the platform budget;
+// anything else is ignored with a warning, so a typo can never remove a cap.
+
+/** Default per-device daily sub-budget (see above). */
+export const DEFAULT_DEVICE_DAILY_CAP = 30;
+/** Default per-IP daily sub-budget (see above). */
+export const DEFAULT_IP_DAILY_CAP = SEARCH_DAILY_BUDGET;
+
+/**
+ * Parse a cap override: a positive integer, clamped to the platform budget.
+ * Absent → the default. Malformed → the default, with a warning.
+ */
+export function parseCapOverride(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw.trim());
+  if (!Number.isInteger(n) || n < 1) {
+    console.warn(`[search-budget] ignoring ${name}=${JSON.stringify(raw)} (not a positive integer); using ${fallback}`);
+    return fallback;
+  }
+  return Math.min(n, SEARCH_DAILY_BUDGET);
+}
+
+/** Effective per-device cap (read per call so an env change needs no reload logic). */
+export function deviceDailyCap(): number {
+  return parseCapOverride(process.env.SEARCH_DEVICE_DAILY_CAP, DEFAULT_DEVICE_DAILY_CAP, "SEARCH_DEVICE_DAILY_CAP");
+}
+
+/** Effective per-IP cap. */
+export function ipDailyCap(): number {
+  return parseCapOverride(process.env.SEARCH_IP_DAILY_CAP, DEFAULT_IP_DAILY_CAP, "SEARCH_IP_DAILY_CAP");
+}
+
+/** Who a billed search is charged to (both keys are required together). */
+export interface SearchPrincipal {
+  /** Device key (identity cookie, else uuid, else anon@ip) — see the route. */
+  device: string;
+  /** Client IP bucket from lib/client-ip.ts. */
+  ip: string;
+}
+
+/**
+ * Opaque, fixed-length counter-key component. Not anonymisation (an IPv4 space
+ * is small enough to enumerate); it keeps raw addresses and ids out of key
+ * names and bounds key length whatever a client sent. Counters expire in 36h.
+ */
+function principalDigest(kind: "ip" | "dev", value: string): string {
+  return createHash("sha256").update(`boraoke-search-${kind}-v1\0${value}`).digest("hex").slice(0, 32);
+}
 
 /** Namespace prefix — collision-free with `sc:` (search cache) and `rl:` (counters). */
 const REDIS_PREFIX = "sb:";
@@ -202,6 +289,49 @@ end
 local count = redis.call('INCR', KEYS[1])
 if count == 1 then
   redis.call('PEXPIRE', KEYS[1], ttl)
+end
+
+return budget - count
+`;
+
+/**
+ * ATOMIC reserve-one against THREE counters (TICKET-126): the platform day, the
+ * caller's IP and the caller's device. All three are checked first, then all
+ * three are incremented — or none is. A denial therefore never charges anyone,
+ * and a grant charges everyone it should, in one serialized step (same
+ * reasoning as RESERVE_SEARCH_SCRIPT above; the production Upstash database is
+ * `redis_mode:standalone`, `cluster_enabled:0`, so a multi-key script needs no
+ * hash tags — checked 2026-10-14).
+ *
+ * The platform cap is checked FIRST so a drained day reports as the day's
+ * limit, not as one person's.
+ *
+ * KEYS[1] = platform key  KEYS[2] = ip key  KEYS[3] = device key
+ * ARGV[1] = platform budget  ARGV[2] = ip cap  ARGV[3] = device cap  ARGV[4] = TTL ms
+ *
+ * Returns remaining platform budget (>= 0) on success, -1 platform exhausted,
+ * -2 IP sub-budget exhausted, -3 device sub-budget exhausted.
+ */
+export const RESERVE_PRINCIPAL_SCRIPT = `
+local budget = tonumber(ARGV[1])
+local ipCap = tonumber(ARGV[2])
+local devCap = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+
+local function used(key)
+  local raw = redis.call('GET', key)
+  if raw then return tonumber(raw) or 0 end
+  return 0
+end
+
+if used(KEYS[1]) >= budget then return -1 end
+if used(KEYS[2]) >= ipCap then return -2 end
+if used(KEYS[3]) >= devCap then return -3 end
+
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then redis.call('PEXPIRE', KEYS[1], ttl) end
+for i = 2, 3 do
+  if redis.call('INCR', KEYS[i]) == 1 then redis.call('PEXPIRE', KEYS[i], ttl) end
 end
 
 return budget - count
@@ -316,6 +446,41 @@ function memReserve(day: string, budget: number): number {
   return budget - (used + 1);
 }
 
+/**
+ * In-process per-person counters (TICKET-126), keyed `<day>|<ip|dev>|<digest>`.
+ * Same single-synchronous-block atomicity as `memReserve`. Bounded: only the
+ * two most recent days are kept, and at most MEM_PRINCIPAL_KEYS keys in total
+ * (oldest evicted) — this path serves local dev / CI / a single process only,
+ * where an evicted count merely re-grants a little headroom.
+ */
+const memPrincipal = new Map<string, number>();
+const MEM_PRINCIPAL_KEYS = 5000;
+
+function memReservePrincipal(
+  day: string,
+  budget: number,
+  who: SearchPrincipal,
+  ipCap: number,
+  devCap: number,
+): number {
+  const ipKey = `${day}|ip|${principalDigest("ip", who.ip)}`;
+  const devKey = `${day}|dev|${principalDigest("dev", who.device)}`;
+  if ((memCounts.get(day) ?? 0) >= budget) return -1;
+  if ((memPrincipal.get(ipKey) ?? 0) >= ipCap) return -2;
+  if ((memPrincipal.get(devKey) ?? 0) >= devCap) return -3;
+  const remaining = memReserve(day, budget);
+  for (const k of [ipKey, devKey]) {
+    const n = (memPrincipal.get(k) ?? 0) + 1;
+    memPrincipal.delete(k);
+    memPrincipal.set(k, n);
+  }
+  for (const k of memPrincipal.keys()) {
+    if (memPrincipal.size <= MEM_PRINCIPAL_KEYS && memCounts.has(k.slice(0, k.indexOf("|")))) break;
+    memPrincipal.delete(k);
+  }
+  return remaining;
+}
+
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -333,7 +498,7 @@ export interface BudgetReservation {
    * degrade to the same message, so the response body cannot be used to probe
    * infrastructure state.
    */
-  reason?: "cap" | "store";
+  reason?: "cap" | "store" | "ip" | "device";
 }
 
 /**
@@ -345,9 +510,12 @@ export interface BudgetReservation {
  */
 export async function reserveSearchCall(
   now: Date = new Date(),
+  who?: SearchPrincipal,
 ): Promise<BudgetReservation> {
   const day = pacificDayKey(now);
   const budget = SEARCH_DAILY_BUDGET;
+  const ipCap = ipDailyCap();
+  const devCap = deviceDailyCap();
 
   if (deployedWithoutStore()) {
     warnDeployedWithoutStore();
@@ -362,22 +530,31 @@ export async function reserveSearchCall(
 
   const redis = getRedis();
   if (!redis) {
-    const remaining = memReserve(day, budget);
-    if (remaining < 0) {
-      logDenied(day, "cap");
-      return { ok: false, remaining: 0, day, reason: "cap" };
-    }
+    const remaining = who
+      ? memReservePrincipal(day, budget, who, ipCap, devCap)
+      : memReserve(day, budget);
+    if (remaining < 0) return denied(day, remaining);
     logSpend(day, remaining);
     return { ok: true, remaining, day };
   }
 
   let remaining: number;
   try {
-    const res = await redis.eval(
-      RESERVE_SEARCH_SCRIPT,
-      [redisKeyFor(day)],
-      [budget, Math.round(KEY_TTL_MS)],
-    );
+    const res = who
+      ? await redis.eval(
+          RESERVE_PRINCIPAL_SCRIPT,
+          [
+            redisKeyFor(day),
+            `${REDIS_PREFIX}${day}:ip:${principalDigest("ip", who.ip)}`,
+            `${REDIS_PREFIX}${day}:dev:${principalDigest("dev", who.device)}`,
+          ],
+          [budget, ipCap, devCap, Math.round(KEY_TTL_MS)],
+        )
+      : await redis.eval(
+          RESERVE_SEARCH_SCRIPT,
+          [redisKeyFor(day)],
+          [budget, Math.round(KEY_TTL_MS)],
+        );
     // SECURITY (review finding F-1) — validate the TYPE before any coercion.
     //
     // The previous guard was `Number(res)` + `Number.isFinite`, which is a
@@ -407,12 +584,20 @@ export async function reserveSearchCall(
     return { ok: false, remaining: 0, day, reason: "store" };
   }
 
-  if (remaining < 0) {
-    logDenied(day, "cap");
-    return { ok: false, remaining: 0, day, reason: "cap" };
-  }
+  if (remaining < 0) return denied(day, remaining);
   logSpend(day, remaining);
   return { ok: true, remaining, day };
+}
+
+/**
+ * Map a script/memory denial code to a reservation. -1 is the platform cap;
+ * -2 / -3 are the caller's IP / device sub-budget. Any other negative is
+ * treated as the platform cap (deny, never grant).
+ */
+function denied(day: string, code: number): BudgetReservation {
+  const reason = code === -2 ? "ip" : code === -3 ? "device" : "cap";
+  logDenied(day, reason);
+  return { ok: false, remaining: 0, day, reason };
 }
 
 // ─── Observability ───────────────────────────────────────────────────────────
@@ -425,7 +610,7 @@ function logSpend(day: string, remaining: number): void {
   else console.info(line);
 }
 
-function logDenied(day: string, reason: "cap" | "store"): void {
+function logDenied(day: string, reason: "cap" | "store" | "ip" | "device"): void {
   console.warn(
     `[search-budget] DENIED search.list for PT day ${day} — reason=${reason} (budget ${SEARCH_DAILY_BUDGET} of hard cap ${SEARCH_DAILY_CAP}); paste-a-link is unaffected`,
   );
@@ -437,6 +622,7 @@ function logDenied(day: string, reason: "cap" | "store"): void {
  */
 export function _resetSearchBudget(): void {
   memCounts.clear();
+  memPrincipal.clear();
   warnedNoStore = false;
 }
 

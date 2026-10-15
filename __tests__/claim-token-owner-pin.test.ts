@@ -22,10 +22,13 @@ import { POST as logoutRoute } from "@/app/api/host/session/route";
 import { _clearLoginThrottle, claimCookieName, hostCookieName, issueSession } from "@/lib/host-auth";
 import {
   capClaimHashes,
+  createRoom,
   getRoom,
   hashClaimToken,
+  issueRoomClaimToken,
   MAX_CLAIM_TOKENS,
   roomBackend,
+  setRoomMode,
   verifyRoomClaimToken,
 } from "@/lib/rooms";
 
@@ -131,6 +134,17 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+/**
+ * The two concurrency probes run on REAL timers (that is what makes the
+ * read-modify-writes interleave), so their wall time scales with host load:
+ * ~0.2-0.7 s idle, measured up to 4.8 s at load ~170 with 16 jest workers,
+ * against jest's 5 s default. Past the default they failed as a TIMEOUT that
+ * reads exactly like an owner lockout in a summary line. The budget is
+ * explicit and generous so a slow host can only make them slow, never red.
+ * The assertions are the only thing that can fail them.
+ */
+const CONCURRENCY_PROBE_TIMEOUT_MS = 60_000;
+
 describe("the owner survives other people's logins (TICKET-120)", () => {
   it("30 CONCURRENT logins from distinct clients never evict the owner (8 interleavings)", async () => {
     const survived: boolean[] = [];
@@ -164,7 +178,7 @@ describe("the owner survives other people's logins (TICKET-120)", () => {
       expect(room?.ownerClaimTokenHash).toBe(hashClaimToken(ownerToken));
     }
     expect(survived).toEqual([true, true, true, true, true, true, true, true]);
-  });
+  }, CONCURRENCY_PROBE_TIMEOUT_MS);
 
   it("30 logins in six concurrent waves: the owner verifies after EVERY wave", async () => {
     const { roomId, hostCode, ownerToken } = await ownerCreatesRoom("Bar Waves");
@@ -175,6 +189,50 @@ describe("the owner survives other people's logins (TICKET-120)", () => {
       afterWave.push(await verifyRoomClaimToken(roomId, ownerToken));
     }
     expect(afterWave).toEqual([true, true, true, true, true, true]);
+  }, CONCURRENCY_PROBE_TIMEOUT_MS);
+
+  it("worst-case lost updates, no timers: every read lands before any write, writes released in a seeded random order (200 interleavings)", async () => {
+    // The timer probes above sample interleavings; this one forces the worst
+    // case for a whole-record read-modify-write deterministically:
+    // 30 concurrent writers (staff mints plus host mode changes) all read the
+    // record, then their writes land in a shuffled order. Independent of host
+    // load. Fails against the pre-fix `slice(-MAX_CLAIM_TOKENS)`.
+    const lockedOut: number[] = [];
+    for (let seed = 1; seed <= 200; seed++) {
+      const rand = rng(seed);
+      const created = await createRoom(`Bar Barrier ${seed}`);
+      const roomId = created!.room.id;
+      const ownerToken = (await issueRoomClaimToken(roomId, { owner: true }))!;
+      const preFilled = Math.floor(rand() * 8); // sometimes already at the cap
+      for (let i = 0; i < preFilled; i++) await issueRoomClaimToken(roomId);
+
+      const realUpdate = roomBackend.update.bind(roomBackend);
+      const held: Array<() => Promise<void>> = [];
+      jest.spyOn(roomBackend, "update").mockImplementation(
+        (room) => new Promise<void>((done) => held.push(() => realUpdate(room).then(done))),
+      );
+      const writers = Array.from({ length: 30 }, (_, i) =>
+        i % 7 === 3
+          ? setRoomMode(roomId, rand() < 0.5 ? "per-table-2" : "full-karaoke")
+          : issueRoomClaimToken(roomId),
+      );
+      while (held.length < writers.length) await new Promise((r) => setImmediate(r));
+      for (let i = held.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [held[i], held[j]] = [held[j], held[i]];
+      }
+      for (const write of held) await write();
+      await Promise.all(writers);
+      jest.restoreAllMocks();
+
+      const room = (await getRoom(roomId))!;
+      const ownerIn =
+        (await verifyRoomClaimToken(roomId, ownerToken)) &&
+        room.ownerClaimTokenHash === hashClaimToken(ownerToken) &&
+        room.claimTokenHashes!.length <= MAX_CLAIM_TOKENS;
+      if (!ownerIn) lockedOut.push(seed);
+    }
+    expect(lockedOut).toEqual([]);
   });
 
   it("the ticket's own scenario, sequentially: five staff logins, owner still in", async () => {
