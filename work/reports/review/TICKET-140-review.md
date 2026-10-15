@@ -133,3 +133,92 @@ The gap is the new `vm:` cache module. Unlike `lib/embed-cache.ts`, which has a 
 Accurate, apart from item 8's numbering. The gates checklist correctly shows everything still unchecked.
 
 triggered mutation pass: run (new parsing function on an identity path, the video-id parser). Dev: 17 mutants, all KILLED or SURVIVED-equivalent after an in-PR fix. Reviewer: 11 mutants above, three SURVIVED as real gaps, all in the new cache and display helpers rather than the parser.
+
+---
+
+# Re-review (D-022 opus), head `fb373ed` (code `4ac1870`)
+
+**Verdict: APPROVE.** Every required item, the optional items I raised and the three Cyber findings this round targeted are fixed at the cause, and the new tests fail when the fix is removed. Commits after `fb373ed` (`4039dff`, `f0fb8d9`) touch only the security report and the event log, so this verdict holds at the current head.
+
+Read in a throwaway detached worktree on `origin/ticket/140-paste-link` (`fb373ed`). The shared worktree was not mutated, apart from this report.
+
+## Prior items
+
+| Item | Status | Evidence |
+|---|---|---|
+| 1. `vm:` cache Redis path | Fixed | `__tests__/video-meta-cache.test.ts`. Dev mutants Ma/Mg killed. My R6 (stored duration dropped) and R8 (stored title not re-cleaned) were also KILLED. |
+| 2. Paste hint on 429 and `error` | Fixed | `e2e/search.spec.ts` has 3 new cases, each asserting the hint and that a paste still selects. e2e-reverse shows they fail on the pre-PR copy. Full e2e 141/141 (`r2/e2e-full.txt`). |
+| 3. Dead `warning` path | Fixed | `submitWarning`, `submit-warning`, the parse and the stale TICKET-61/FOLLOW-UP comment are all gone. A grep over app/components/lib/e2e/__tests__/messages finds nothing left. |
+| opt 4 `formatDuration` hours | Fixed | Mi killed (Dev pass). |
+| opt 5 `no-store` on `{}` | Fixed | My R5 (put `max-age=600` back) was KILLED. |
+| opt 6 dead/non-existent id | Covered for the title-injection side. A non-existent id with a client title now stores no title (test "a non-existent id ... cannot put client text on the TV"). Refusing the submit outright is still a possible follow-up. Not blocking. |
+| opt 7 no-key writes no `ec:` | Restored | Dev mutant killed. |
+| opt 8 PR body gap numbering | Fixed | The body now says "Gap 8". |
+| Cyber MED-1 | Fixed | The parser returns null over `MAX_PARSE_INPUT` (512) before any regex. `stripSharePunctuation` is a linear index walk. SongSearch has `maxLength={MAX_PARSE_INPUT}`. My R4 (cap removed) was KILLED by the timing test. |
+| Cyber LOW-1 | Fixed | The `title:` field is gone from the entry literal. The only client-title path is the gated seam. My R9 (server title skipped) was KILLED (4 tests). |
+| Cyber LOW-3 | Fixed | `lib/youtube-server.ts` is `import "server-only"`, and `lib/youtube.ts` keeps only the parser, `isValidVideoId` and the types. Client imports (SongSearch) take only `parseYouTubeVideoId`/`MAX_PARSE_INPUT`. The bundle grep found 0 key strings, with positive controls. |
+
+## Dev decision (a): removing "Título da música"
+
+Correct. Once LOW-1 landed the field could not affect anything in production: the server title wins when a lookup works, and nothing is stored when none does. A form field that silently does nothing is worse than no field. The field and its `songTitleLabel`/`songTitlePlaceholder` keys are removed in all 3 locales, and nothing references them any more. The specs that filled it (moderation, rooms, submit-song, feedback-widget) now identify rows by nickname. The `songTitle` that remains in `lib/song-label.ts`/TvScreen is an unrelated display helper.
+
+Nit, not blocking: `PatronRoom` still sends the picked search result's `title` in the POST body. Production ignores it and it exists only for the seam. It is harmless.
+
+This is a visible form change, so the TM should mention it to the TL (the PR body already states it plainly). App Tester r2 should confirm the form renders cleanly without the field.
+
+## Dev decision (b): `BORAOKE_TEST_CLIENT_TITLES` seam
+
+The gate is airtight for Vercel. `clientTitleFallbackAllowed()` = flag `=== "1"` AND `overrideAllowed()`, and `overrideAllowed()` = `NODE_ENV !== "production"` OR (`BORAOKE_E2E_STUBS === "1"` AND `!VERCEL`).
+
+- A deployed Vercel build always runs with `NODE_ENV=production`, which Next inlines at build time, so the first branch is dead there.
+- `VERCEL=1` is a Vercel system env var that is present at runtime, so the second branch is false too.
+- Even if both of those failed, the seam would still need two non-standard env vars set on the project. Neither is in `.env.example`, and only `playwright.config.ts` sets them.
+- jest does not set the flag, so the unit suites run the production rule.
+
+Mutation proof:
+- R1 (drop the `overrideAllowed()` conjunct): KILLED.
+- R2 (`overrideAllowed` ignores `VERCEL`): KILLED, 2 tests.
+- R3 (seam ignores the flag): KILLED, 2 tests.
+
+The test sets flag + stubs + `NODE_ENV=production` + `VERCEL=1` and asserts no title, then restores the env in `finally`.
+
+The only residual is a self-hosted (non-Vercel) production deployment that deliberately sets both flags. That is acceptable, and it is the same posture as the existing origin overrides.
+
+## Main-merge resolution (`2221dc5`)
+
+Correct.
+- `git diff a0f2b59 HEAD` over #90's files (`lib/search-budget.ts`, `.env.example`, `__tests__/api-search-personal-caps.test.ts`, karaoke-index, claim-token test, `.gitignore`, `package.json`) is empty, so #90's squash is taken verbatim.
+- `git diff origin/main` on `jest.env.ts` and `playwright.config.ts` is additions only: the oEmbed origin, the stub env and the seam flag. Nothing from #90 was dropped.
+- The code diff against `origin/main` lists only TICKET-140 files.
+- `origin/main` has since gained two event-log-only commits, and GitHub reports the PR MERGEABLE.
+
+## Reviewer mutation pass (targeted jest: api-queue, api-video-meta, video-meta-cache, youtube, api-moderation; 176 tests)
+
+Baseline: 5 suites, 176 passed (load about 125).
+
+R1–R6 and R8–R10 KILLED (9/9):
+- R1 seam gate: 1 test failed.
+- R2: 2 failed.
+- R3: 2 failed.
+- R4 parse cap: 1 failed.
+- R5 no-store: 1 failed.
+- R6 duration: 2 failed.
+- R8 re-clean: 2 failed.
+- R9 server title: 4 failed.
+- R10 loosening the bare-id mixed-case rule: 7 failed.
+
+R7 (Redis get fail-open) was not applied because its pattern was ambiguous. The Dev's own get/set fail-open mutants cover it.
+
+## PR body accuracy
+
+The body is accurate against the diff: the base, the round-2 list, the removed field, the seam, the evidence counts, the copy table and the Cyber notes.
+
+Nit: the PR **title** still says "(stacked on #90)", but the base is now `main` and #90 is merged. Retitle before merge.
+
+## Still needed before merge (not Reviewer items)
+
+- verify-green local-Docker GREEN on the branch rebased on current main.
+- App Tester r2 PASS (in progress, `apptest-r2/` is uncommitted in the shared worktree).
+- The TL confirmation of the gap-5 block that the round-1 review flagged.
+
+Cyber delta re-gate PASS is at `4039dff`.
