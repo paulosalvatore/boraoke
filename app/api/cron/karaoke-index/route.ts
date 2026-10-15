@@ -20,7 +20,7 @@ import { getIndexRedis, INDEX_CHANNELS, readStamps, writeShard } from "@/lib/kar
  */
 
 export const dynamic = "force-dynamic";
-/** Vercel Hobby ceiling; the refresh stops starting channels at 40 s. */
+/** Vercel Hobby ceiling; the refresh starts no channel after 30 s and no page after 50 s. */
 export const maxDuration = 60;
 
 function bearerMatches(header: string | null, secret: string): boolean {

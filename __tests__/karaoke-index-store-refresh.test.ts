@@ -9,6 +9,7 @@ import {
   encodeShard,
   freshShards,
   getKaraokeIndex,
+  INDEX_RELOAD_MS,
 } from "@/lib/karaoke-index/store";
 import { pickChannelsToRefresh, runRefresh } from "@/lib/karaoke-index/refresh";
 import { INDEX_MAX_AGE_MS, type ChannelShard } from "@/lib/karaoke-index/types";
@@ -42,34 +43,38 @@ describe("retention on the read path", () => {
     expect(out.map((s) => s.channelId)).toEqual(["a"]);
   });
 
-  it("never serves an expired shard, even from a warm instance", async () => {
-    const now = Date.now();
+  function writeFixture(shards: ChannelShard[]): string {
     const dir = mkdtempSync(join(tmpdir(), "kidx-"));
     const file = join(dir, "idx.json.gz");
-    writeFileSync(
-      file,
-      gzipSync(
-        Buffer.from(
-          JSON.stringify({
-            shards: [
-              shard("fresh", "Evidências Karaokê", now - 2 * DAY),
-              shard("stale", "Escurinho do Cinema Karaokê", now - INDEX_MAX_AGE_MS - 1),
-            ],
-          }),
-        ),
-      ),
-    );
-    process.env.STORE_DRIVER = "memory";
-    process.env.KARAOKE_INDEX_FILE = file;
+    writeFileSync(file, gzipSync(Buffer.from(JSON.stringify({ shards }))));
+    return file;
+  }
 
+  it("drops expired shards at load time", async () => {
+    const now = Date.now();
+    process.env.STORE_DRIVER = "memory";
+    process.env.KARAOKE_INDEX_FILE = writeFixture([
+      shard("fresh", "Evidências Karaokê", now - 2 * DAY),
+      shard("stale", "Escurinho do Cinema Karaokê", now - INDEX_MAX_AGE_MS - 1),
+    ]);
     const idx = await getKaraokeIndex(now);
     expect(idx?.size).toBe(1);
     expect(idx?.search("evidencias karaoke").confidence).toBe(1);
-    expect(idx?.search("escurinho karaoke").confidence).toBe(0); // the stale shard was dropped
+    expect(idx?.search("escurinho karaoke").confidence).toBe(0);
+  });
 
-    // Time passes: the remaining shard crosses the limit while cached in memory.
-    // The instance must rebuild immediately, not wait for the hourly reload.
-    const later = now - 2 * DAY + INDEX_MAX_AGE_MS + 1;
+  it("a warm instance rebuilds the MOMENT its oldest shard expires, not at the hourly reload", async () => {
+    const now = Date.now();
+    process.env.STORE_DRIVER = "memory";
+    // Fresh at load: 10 minutes inside the retention limit.
+    process.env.KARAOKE_INDEX_FILE = writeFixture([
+      shard("edge", "Evidências Karaokê", now - INDEX_MAX_AGE_MS + 10 * 60 * 1000),
+    ]);
+    expect((await getKaraokeIndex(now))?.size).toBe(1);
+    // 20 minutes later: past the limit, but well INSIDE the 1 h reload interval,
+    // so only the expiry check can trigger the rebuild that drops it.
+    const later = now + 20 * 60 * 1000;
+    expect(later - now).toBeLessThan(INDEX_RELOAD_MS);
     expect(await getKaraokeIndex(later)).toBeNull();
   });
 
@@ -92,29 +97,63 @@ describe("refresh job", () => {
   });
 
   const UC = (n: number) => `UC${String(n).padStart(22, "0")}`;
-  function fakeApi(paths: string[]): typeof fetch {
+  /**
+   * Fake Data API. Each channel's uploads playlist has `pages` pages; a page's
+   * playlistItems call can be made to fail with `failPage`. Tracks in-flight
+   * concurrency and an optional per-call delay.
+   */
+  function fakeApi(
+    paths: string[],
+    opts: { pages?: number; failPage?: number; delayMs?: number; inflight?: { now: number; max: number } } = {},
+  ): typeof fetch {
+    const pages = opts.pages ?? 1;
     return (async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       paths.push(url.pathname);
-      const json = url.pathname.endsWith("/playlistItems")
-        ? { items: [{ snippet: { title: "Song", channelTitle: "C" }, contentDetails: { videoId: `v${url.searchParams.get("playlistId")}` } }] }
-        : { items: (url.searchParams.get("id") ?? "").split(",").map((id) => ({ id, contentDetails: { duration: "PT3M" }, status: { embeddable: true } })) };
+      if (opts.inflight) {
+        opts.inflight.now++;
+        opts.inflight.max = Math.max(opts.inflight.max, opts.inflight.now);
+      }
+      if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
+      if (opts.inflight) opts.inflight.now--;
+      if (url.pathname.endsWith("/playlistItems")) {
+        const page = Number(url.searchParams.get("pageToken") ?? "1");
+        if (opts.failPage === page) return new Response("{}", { status: 500 });
+        const pl = url.searchParams.get("playlistId");
+        return new Response(
+          JSON.stringify({
+            nextPageToken: page < pages ? String(page + 1) : undefined,
+            items: [{ snippet: { title: `Song ${page}`, channelTitle: "C" }, contentDetails: { videoId: `v${pl}-${page}` } }],
+          }),
+          { status: 200 },
+        );
+      }
+      const json = {
+        items: (url.searchParams.get("id") ?? "")
+          .split(",")
+          .map((id) => ({ id, contentDetails: { duration: "PT3M" }, status: { embeddable: true } })),
+      };
       return new Response(JSON.stringify(json), { status: 200 });
     }) as typeof fetch;
   }
 
+  const collect = () => {
+    const written: ChannelShard[] = [];
+    return { written, write: async (s: ChannelShard) => void written.push(s) };
+  };
+
   it("writes complete shards, respects the unit budget, and never calls search", async () => {
     const paths: string[] = [];
-    const written: ChannelShard[] = [];
+    const { written, write } = collect();
     const report = await runRefresh({
       key: "k",
       channels: [UC(1), UC(2), UC(3)],
       stamps: new Map(),
-      write: async (s) => {
-        written.push(s);
-      },
+      write,
       fetchImpl: fakeApi(paths),
-      maxUnits: 4, // 2 units per one-page channel -> exactly two channels
+      maxUnits: 4, // 2 units reserved per one-page channel -> exactly two channels
+      concurrency: 1,
+      maxPages: 1,
     });
     expect(written.map((s) => s.channelId)).toEqual([UC(1), UC(2)]);
     expect(report.unitsUsed).toBe(4);
@@ -122,19 +161,87 @@ describe("refresh job", () => {
     expect(paths.some((p) => /search/i.test(p))).toBe(false);
   });
 
-  it("does not overwrite a shard with a channel cut short by the time budget", async () => {
-    const written: ChannelShard[] = [];
+  it("never writes a channel cut short by the TIME budget (it would replace a complete shard)", async () => {
+    const { written, write } = collect();
     const report = await runRefresh({
       key: "k",
       channels: [UC(1)],
       stamps: new Map(),
-      write: async (s) => {
-        written.push(s);
-      },
-      fetchImpl: fakeApi([]),
-      timeBudgetMs: -1, // already past the deadline
+      write,
+      // 3 pages, 20 ms per call: page 1 (2 calls) ends at ~40 ms, past the
+      // 30 ms hard deadline, so page 2 never starts -> cut mid-channel.
+      fetchImpl: fakeApi([], { pages: 3, delayMs: 20 }),
+      hardDeadlineMs: 30,
+      concurrency: 1,
+      maxPages: 3,
+    });
+    expect(report.unitsUsed).toBe(2); // page 1 really was harvested: the guard is reached
+    expect(written).toEqual([]);
+    expect(report.skipped).toEqual([{ channelId: UC(1), note: "time budget reached mid-channel" }]);
+  });
+
+  it("a channel whose full budget cannot be reserved does not start (no wasted units)", async () => {
+    const { written, write } = collect();
+    const report = await runRefresh({
+      key: "k",
+      channels: [UC(1)],
+      stamps: new Map(),
+      write,
+      fetchImpl: fakeApi([], { pages: 3 }),
+      maxUnits: 5, // a 3-page channel needs 6 reserved
+      maxPages: 3,
+    });
+    expect(report.unitsUsed).toBe(0);
+    expect(written).toEqual([]);
+  });
+
+  it("never writes a channel cut short by an HTTP error mid-channel", async () => {
+    const { written, write } = collect();
+    const report = await runRefresh({
+      key: "k",
+      channels: [UC(1)],
+      stamps: new Map(),
+      write,
+      fetchImpl: fakeApi([], { pages: 3, failPage: 2 }),
+      concurrency: 1,
+      maxPages: 3,
     });
     expect(written).toEqual([]);
-    expect(report.refreshed).toEqual([]);
+    expect(report.skipped[0].note).toBe("playlistItems HTTP 500");
+  });
+
+  it("starts no channel after the start cutoff", async () => {
+    const { written, write } = collect();
+    const report = await runRefresh({
+      key: "k",
+      channels: [UC(1)],
+      stamps: new Map(),
+      write,
+      fetchImpl: fakeApi([]),
+      startCutoffMs: -1,
+    });
+    expect(written).toEqual([]);
+    expect(report.unitsUsed).toBe(0);
+  });
+
+  it("harvests channels concurrently (bounded) and never overspends the shared budget", async () => {
+    const inflight = { now: 0, max: 0 };
+    const { written, write } = collect();
+    const channels = Array.from({ length: 8 }, (_, i) => UC(i + 1));
+    const report = await runRefresh({
+      key: "k",
+      channels,
+      stamps: new Map(),
+      write,
+      fetchImpl: fakeApi([], { pages: 2, delayMs: 5, inflight }),
+      concurrency: 3,
+      maxPages: 2,
+      maxUnits: 21, // 4 units per 2-page channel: exactly 5 channels fit, none is cut
+    });
+    expect(inflight.max).toBe(3);
+    expect(report.unitsUsed).toBe(20);
+    expect(written).toHaveLength(5);
+    expect(written.every((s) => s.rows.length === 2)).toBe(true);
+    expect(report.skipped).toEqual([]);
   });
 });
