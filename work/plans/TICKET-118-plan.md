@@ -70,3 +70,17 @@ Plus: back-compat pin (a legacy record with no `sessionEpoch` derives the byte-i
 - **R1** lost update clobbers the bump (no CAS). Mitigated by the single combined RMW + verify-and-retry; residual is "revocation did not take", surfaced to the client as a failure rather than a false success. Noted as a follow-up candidate (a Lua-EVAL atomic bump, mirroring `lib/store/upstash.ts`'s `MERGE_SCRIPT`) rather than built here — the room backend's Redis client is not injectable today, so an atomic path would also need a test seam.
 - **R2** adding a second header control to a crowded admin header on narrow viewports. Checked against the 390px layout.
 - **R3** existing e2e specs locate `getByRole("button", { name: "Confirmar" })`. Avoided by giving the revoke confirm a distinct label.
+
+## 8. Amendment 2026-10-15 — the epoch must never go backwards; logout scope per TICKET-112
+
+**Why.** §2 P3 assumed the worst a lost update could do was make the revoke "not take", and that a re-read would catch it. TICKET-127 showed otherwise: a writer that read the room before the revoke and writes after it has returned rolls the epoch back AFTER the confirmation. A probe reproduced it on this branch (epoch read 0 after a 200 revoke; the stolen session verified). So P3 is replaced.
+
+**P3' — the epoch is monotonic by construction, and a stale claim list fails closed.**
+- The epoch lives in its own key (`room:<id>:session-epoch`), changed only by an atomic `INCR` inside `RoomBackend.bumpSessionEpoch`. `get` reads record and counter in one `MGET` and reports `max(record copy, counter)`. No whole-record write can lower it. The record keeps a floor copy in case the counter key is lost.
+- `claimTokenHashes` is tagged with `claimTokenEpoch`, and a list only grants anything while its tag equals the current epoch. A stale write that restores the old list restores the old tag, so it grants nothing.
+- The revoke is bump-then-rebind. Success means the bump happened, so there is no 503/"contended" outcome.
+- Still zero writes on the auth path, and still one store round trip to read the epoch.
+
+**§3 superseded by the TL decision on TICKET-112 (2026-10-15):** a plain logout signs out ONLY the device it is tapped on (it revokes the presented claim token, nothing else). "Sign out other devices" is the explicit lever for everyone else.
+
+**Residuals** are in the dev report ("Residuals, stated honestly"). The one lockout path left needs two faults (a stale write after the rebind AND a lost response). Full closure is TICKET-127 (atomic room writes).

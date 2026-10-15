@@ -1,78 +1,145 @@
-# TICKET-118 — Dev report
+# TICKET-118 (+ TICKET-112) — Dev report
 
-**Status:** EXPLORING → planning. Worktree `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation`, branch `ticket/118-session-revocation`.
+**Status (2026-10-15):** implemented, self-verified, delivered as a draft PR. All four owed items done, with evidence below. No gate has run yet. Cyber re-gate required; App Tester required (UI changed); TL OK required before merge (patron/staff-facing).
 
-## Picking up from
+Worktree `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation`, branch `ticket/118-session-revocation`. Evidence: `work/evidence/TICKET-118/` (numbered files cited below).
 
-Fresh ticket, no prior Dev. Read: the ticket, `work/reports/cyber/TICKET-104-security-gate.md`, `work/reports/cyber/TICKET-104-security-regate.md` (finding O-A is this ticket), `prove-your-test-can-fail`.
+## Picking up from (2026-10-15)
 
-## The defect, restated from the code
+Picked up from the 2026-10-02 resume note (kept, condensed, at the end of this file) and the MANAGER-LOG sections "TICKET-118 — mid-flight" and "TICKET-118 amendment". Approach A (a rotatable per-room session epoch) stands; B and C were not reopened. Read tickets 112 (with the TL decision of 2026-10-15), 118, 120, 127 (on the #90 branch) and 152 (on the #94 branch).
 
-- `sessionValue(token)` (`lib/host-auth.ts:151`) = `HMAC(token, "cantai-host-session-v1")`. Pure function of the room secret. `issueSession` → `sessionValue(resolveRoomToken(roomId))`; `verifySessionValue` recomputes the same value and compares.
-- `resolveRoomToken(roomId)` (`:125`) returns the room's `hostCodeHash`, which is immutable (the raw code is shown once and never stored, so it cannot be rotated).
-- Therefore every session cookie for a room is the same 64 hex chars for the room's whole life, and nothing anywhere can invalidate one.
-- `POST /api/host/session` (logout) already does `revokeRoomClaimTokens(roomId)` — which clears **every** device's claim hash (`lib/rooms.ts:210`). So the claim credential is already revocable house-wide; the session is the only part with no lever.
+## What changed since the 10-02 checkpoint, and why
+
+### 1. Merged origin/main (no rebase, no force-push): `ab9189d`
+
+One conflict, `lib/rooms.ts`: #91 (TICKET-120) added `Room.ownerClaimTokenHash` next to this branch's `Room.sessionEpoch`. Both kept. #91's `capClaimHashes` owner-pin eviction is untouched. Auth suites on the merged tree: 5 suites, 139/139.
+
+### 2. The epoch could be rolled back by a stale write (TICKET-127). Fixed. `35a103c`
+
+The brief named this risk, and a probe confirmed it on the committed design. Every room mutation is a whole-record read-modify-write with a plain `SET`. A login that read the room before the revoke and wrote it after put the old `sessionEpoch` and the old claim list back. The revoke had already re-read, seen the bump, and returned 200. Verbatim, on the previous head (`work/evidence/TICKET-118/01-stale-writer-probe-vs-committed-design.txt`):
+
+```
+    ✕ a concurrent LOGIN that read before the revoke and wrote after it (14 ms)
+    ✕ a concurrent SETTINGS change (staff flips the mode) that read before the revoke (1 ms)
+    Expected: >= 1
+    Received:    0
+  > 618 |     expect(await getRoomSessionEpoch(v.room.id)).toBeGreaterThanOrEqual(1);
+```
+
+So the owner would be told "signed out" while every stolen session and claim token worked again. The fix makes the revoke robust to that write by construction. It does not rely on winning a race.
+
+- **The epoch's source of truth is its own key, `room:<id>:session-epoch`, bumped with `INCR`.** No whole-record write touches it. `RoomBackend.get` reads the record and the counter in **one** round trip (`MGET`) and reports `max(record copy, counter)` as `sessionEpoch`. A stale writer can lower the record's copy, but it cannot lower the counter, so the epoch a reader sees never goes backwards. Writers carry the effective value back into the record, which keeps a floor in case the counter key is ever lost (the bump then jumps past the floor via `INCRBY`). With retention on, the counter gets the record's remaining TTL.
+- **The claim-hash list is tagged with the epoch it was written for (`claimTokenEpoch`).** `verifyRoomClaimToken` grants nothing unless the tag equals the current epoch. A stale write that restores the old list also restores the old tag, so it **fails closed**: claim tokens stop working, and none comes back to life. The next login sees the mismatch and starts a fresh list. A room that has never been through a revoke has epoch 0 and no tag, so it behaves exactly as before (pinned by a record-shape test).
+- **The revoke = one atomic bump, then rebind the claim list** to the current epoch, keeping only the presented (acting) hash, with a bounded re-read loop. **There is no "contended"/503 outcome any more**: a 200 means the atomic bump happened, and only the bump ends sessions. The route's 503 branch and the UI's 503 wording are gone.
+- **Still zero writes on the auth path.** `requireHost`, `verifyClaim`, the rolling `GET /api/host/session` and the claim route only read. Reading the epoch still costs no extra round trip (the `GET` became an `MGET`).
+
+### 3. TICKET-112: a plain logout signs out ONLY this device. `35a103c`
+
+- What logout did on `main`: `revokeRoomClaimTokens` deleted every device's claim hash and the owner pin. So a staff logout silently cost the owner's phone its no-typing re-entry (the 112 addendum).
+- Now `POST /api/host/session` calls `revokeRoomClaimToken(roomId, presentedToken)`. It removes only the hash this device presents (and clears the owner pointer only if it pointed at that hash), then clears this device's cookies. The authentication guards (`isCrossSiteRequest` OR `!requireHost`, same undifferentiated 401) are unchanged. Logout does not bump the epoch.
+- UI (`AdminRoom.tsx`): the logout label is localised now (`Admin.signOut`: Sair / Sign out / Salir; it was a hard-coded "Sair"). Its confirm moved into a panel below the header, with one sentence: this device only, the others stay in, and getting back in here takes the host code. "Sign out other devices" (`Admin.signOutAll`) keeps its own panel, with the warning that the other devices will need the host code. Only one panel is open at a time. All copy exists in en/es/pt-BR, in plain words; it reuses each catalogue's own terms ("código do host", "código de host", "dispositivo").
+
+## Owed items, in order, with evidence
+
+### (1) Reverse-checks
+
+| # | Mutation | Result | Evidence |
+|---|---|---|---|
+| RC1 | derivation reverted: `sessionValue` ignores the epoch | **12 of 37 FAIL** | `02-reverse-check-1-derivation-reverted.txt` |
+| **RC2** | **no-op epoch bump, claim pruning kept** | **15 of 37 FAIL**, including the core assertion | `03-reverse-check-2-noop-epoch-bump.txt` |
+| RC3 | pre-TICKET-112 logout (clears every device) | 3 FAIL (the three 112 tests) | `04-reverse-check-3-logout-clears-all.txt` |
+| RC4 | whole-record `update` also writes the counter (i.e. the epoch is back in the record) | 4 FAIL (both deterministic 127 probes, the randomized probe, the stale-list test) | `05-mutation-rc4-epoch-writable-by-record-update.txt` |
+| RC5 | claim-list epoch tag ignored | the same 4 FAIL | `06-mutation-rc5-claim-tag-ignored.txt` |
+
+RC2 is the one the TM flagged. It proves the suite is not carried by the claim pruning that already worked before this ticket. Verbatim first failure:
+
+```
+  ● an ALREADY-MINTED session stops working after the owner signs out all devices › the OLD session value is dead — on a real host route, not just a helper
+    Expected: false
+    Received: true
+    > 153 |     expect(await verifySessionValue(v.room.id, stolen)).toBe(false);
+```
+
+Under RC2 the test "a stolen CLAIM token cannot mint a replacement session" still passes. That is correct, since it tests the claim half, which RC2 leaves intact.
+
+### (2) Triggered mutation pass on `normaliseSessionEpoch` (`work/evidence/TICKET-118/mutation-pass/N*.txt`)
+
+| Mutant | Change | Verdict |
+|---|---|---|
+| N1 | drop numeric-string coercion | KILLED |
+| N2 | drop the `trim() !== ""` guard | SURVIVED-equivalent: `Number("")` and `Number("  ")` are 0, which normalises to 0 either way. Identical on every input probed. |
+| N3 | `Number` → `parseInt` | KILLED |
+| N4 | drop the number branch | KILLED |
+| N5 | coerce non-strings with `Number` | KILLED |
+| N6 | `isInteger` → `isFinite` | KILLED |
+| N7 | drop the integer guard | KILLED |
+| N8 | drop the `n < 0` guard | KILLED |
+| N9 | `n < 0` → `n <= 0` | SURVIVED-equivalent: differs only on `-0` vs `0`, which is unobservable (`sessionValue` tests `epoch === 0`, and `-0 === 0`) |
+| N10 | `n < 0` → `n < 1` | SURVIVED-equivalent: same reason as N9 |
+| N11 | `return n` → `return 0` | KILLED |
+| N12 | negative → `-n` | KILLED |
+
+No SURVIVED-real-gap. The equivalence check was run as a script over 34 inputs (strings, whitespace, `-0`, hex, exponent, NaN, Infinity, booleans, objects, arrays).
+
+### (3) Hollowing-out walk (duty (c) — it fired, twice)
+
+Primitives that changed beneath existing assertions: `sessionValue`/`issueSession` (the epoch), `RoomBackend.get` (merges the counter), `verifyRoomClaimToken` (adds the epoch-tag check), `issueRoomClaimToken` (fresh list on tag mismatch), and logout's semantics.
+
+**`issueSession` call sites, 21 outside the new suites, walked file by file:**
+- `host-auth.test.ts` (6): issue/verify round trip; cross-room refusal (different secrets); tampered value; env-token rotation on `default`; locked production. None revokes, so the epoch is 0 throughout. Each negative assertion is still refused by the mechanism it names (secret mismatch or HMAC compare), not by an epoch mismatch. Not vacuous.
+- `api-mode`, `api-moderation`, `api-admin-analytics`, `host-api`, `screen-token` (1 each): mint a session as the authed precondition; their negative cases send no session. Epoch 0 throughout. Not vacuous.
+- `claim-token-owner-pin.test.ts` (1): the new `logoutAs` helper.
+- `host-claim.test.ts` (9): the roll tests (238, 513, 523) are positive and unaffected. **The logout refusal tests (wrong session, cross-site, foreign Origin, another room's session) WERE HOLLOWED by TICKET-112.** They assert "nothing was revoked" after a refused logout, but they sent no claim cookie. Under this-device-only logout, even a successful logout without a claim cookie revokes nothing, so those assertions had become true by construction. Proof: a logout that revokes **before** its refusal check passes the old tests **34/34** (`07-hollowing-H1-vs-old-tests.txt`). Fixed in `ffacc39`: those requests now carry the device's claim cookie, as a browser would. The same bug now fails **4** of them (`08-hollowing-H1-vs-fixed-tests.txt`).
+
+**Other changed primitives:** the existing negative claim assertions ("EMPTY hash list matches nothing", "a pointer with no matching hash grants nothing", wrong/empty/other-room token) hand-write records at epoch 0 with no tag. So the tag check passes and the guard under test is still what refuses. The TICKET-152 barrier probe and the TICKET-120 concurrency probes run unchanged and green (rooms there never revoke).
+
+### (4) e2e spec, full jest, build, ONE full e2e
+
+- **New e2e** (`e2e/creator-reentry.spec.ts`, describe "sign out other devices (TICKET-118) and this-device logout (TICKET-112)"), 2 tests:
+  - A session cookie copied into a second browser context can moderate first (positive control, asserted). Then the owner clicks Sign out other devices. The copy gets 401 on moderation and 401 with no `Set-Cookie` on the session probe. The owner's page stays on the dashboard, and still does after a reload.
+  - A staff context logs in with the code and logs out (the confirm text is asserted). The owner, with ONLY its claim cookie left, still opens admin without the code.
+  - Targeted run on the real code: **14/14** (canary + creator-reentry). Run against RC2 + RC3: **both new tests FAIL** (`Expected: 401 Received: 200`, and the dashboard not found), canary green (`11-e2e-new-spec-vs-RC2-RC3.txt`).
+- **Full jest** (`09-full-jest.txt`): **68 suites, 1195 passed, 13 skipped, 0 failed**. 2026-10-15T21:48:41Z → 21:49:04Z, load 95.93 → 100.98, `--maxWorkers=4`.
+- **`npm run build`** (`10-npm-run-build.txt`): compiled; `bundle-es-target: OK — all 51 chunk(s) parse at ES2019`; `css-target: OK` for the TV surface. Advisory only: the new `.revokePanel` adds one flex-`gap` finding on the phone/desktop admin page (not build-blocking). 21:49:14Z → 21:50:52Z, load 94.65 → 94.98.
+- **ONE full e2e run** (`12-full-e2e.txt`): `PORT=3118 --workers=1`, head `9a11335`, start **2026-10-15T21:55:46Z load 69.12 94.71 107.16**, end **22:02:29Z load 59.26 68.46 90.05**. No other boraoke e2e was live at start (checked; the TICKET-140 run on :3140 had finished). **Canary passed. 133 passed, 2 failed.**
+  - Both failures have the same shape, in `render-and-links.spec.ts`'s `beforeEach` warm-up: `page.goto("/default/tv")` timed out at 30 s **waiting for the `load` event**. The page snapshot at failure shows the TV fully rendered (now playing "Charlie", queue Alpha/Delta…), so the server answered. What never completed is `load`, which also waits for the embedded YouTube player. The default room's queue had been seeded by earlier specs, so the TV was embedding the external iframe.
+  - Not code this branch touches: no TV file changed, and the `default` room has no record, so it never reaches the epoch code. The test between the two failures ran the same warm-up and passed.
+  - A targeted re-run of `render-and-links.spec.ts` + canary on the same head and port: **19/19** (22:03:11Z → 22:04:18Z, load 51.68 → 92.93). **Caveat:** an isolated run starts with an empty default queue, so it does not recreate the condition. This is a distribution of one full run, stated as such. It is not "e2e green". The TM decides whether to spend a second full run. Candidate ticket: the warm-up navigations wait for `load` on a page that embeds a third-party iframe (`waitUntil: "domcontentloaded"` would remove the network dependency).
+
+**Local-Docker `verify-green-local.sh`** is the framework repo's gate (md-doctor + shell-tests) and does not apply to boraoke. boraoke's merge gates are jest + build + e2e, as above.
+
+## Residuals, stated honestly
+
+1. **Lockout residual (narrow).** A stale write that lands **after** the revoke's claim rebind leaves the claim list tagged with an old epoch, so every claim token is dead, the acting device's included. The acting device keeps the session cookie the revoke returned, and that cookie keeps rolling, so it stays signed in. Only if **that response was also lost** does the acting device need the host code. Two faults are needed. Fully closing it needs atomic room writes (TICKET-127).
+2. **Counter loss plus a stale write.** If the counter key were lost (eviction, or an expiry mismatch) and a stale write had also lowered the record's floor, the epoch could drop. Upstash eviction is off by default, and the counter's TTL is copied from the record's. Two faults again.
+3. **A plain logout can be undone for that one device's token** by a stale login (TICKET-127 scenario 3, now scoped to one hash instead of all). The device's own cookies are cleared, so only someone who had already copied that token benefits. "Sign out other devices" is the strong lever, and it fails closed.
+4. **What the lever does not do.** It ends copied sessions and claim tokens. It does not change the host code (option C, rejected). Someone who knows the code can log in again, before or after the revoke.
+5. **A new key per revoked room** (`room:<id>:session-epoch`). TICKET-151 (delete room) must delete it too; noted on the key's docblock.
+6. **Lost update of a concurrent legitimate login during the rebind:** that device's new claim token may be dropped. It keeps its session cookie and can retype the code. Same class as TICKET-127 scenario 1.
+
+## Implementation log
+
+| SHA | What |
+|---|---|
+| `0a4f54a` | (10-02) epoch in the derivation, revoke route, UI, copy |
+| `2b5e8a8` | (10-02) 32-test regression suite |
+| `ab9189d` | merge origin/main (#91 owner pin kept) |
+| `35a103c` | atomic epoch counter + epoch-tagged claim list + TICKET-112 logout + UI/copy + stale-writer probes + backend tests |
+| `ffacc39` | restored teeth to the logout refusal tests; reverse-check and mutation evidence |
+| `6f0951a` | e2e spec; full jest and build evidence |
+
+## Friction
+
+- `zsh` does not word-split an unquoted `$T`, so the mutation runner silently got one argument and jest matched nothing (exit 1, no tests). Use an array (`T=(…)`, `$T`) or `${=T}`. It cost one wasted round.
+- Multi-file jest runs print no per-test `✓/✕` lines. Mutation evidence needs the `●` failure titles, not `✕` lines.
+- The worktree had no `node_modules`; symlinked to the main checkout's (same `package-lock.json`). The symlink is untracked and not ignored by `.gitignore`'s directory pattern, so take care never to stage it.
 
 ---
 
-# RESUME NOTE — written at a forced stop (machine reboot, 2026-10-02)
+## Condensed 2026-10-02 resume note (superseded where it conflicts with the above)
 
-**Read this plus the ticket and you have everything. `work/plans/TICKET-118-plan.md` carries the long-form reasoning; this is the short version plus exactly what is left.**
-
-## Status
-
-Implementation **complete and committed**. The new regression suite is **written and green (32/32)**. What is NOT done is the gate evidence: the full `npm test`, `npm run test:e2e` distribution, `npm run build` (ES2019 + CSS-target checks), the e2e spec addition, the two reverse-checks, the mutation pass, and the PR. No server was ever started; no background job exists; ports 3180-3189 were never used.
-
-## The decision, and why — this is the expensive part
-
-**Chosen: option A, a rotatable per-room session epoch mixed into the derivation.** `Room.sessionEpoch?: number`, folded into `sessionValue`'s HMAC message.
-
-**Why not C (re-derive from a rotated host code):** the code is shown once at `/new`, only its hash is stored, and `hashHostCode`'s key is frozen — it is unrecoverable by design. Rotating it forces the venue to redistribute a new code to every staff device, and a venue that cannot produce the old code cannot be handed the new one either. Rotating it would *be* the shown-once-unrecoverable dead end TICKET-104 exists to remove.
-
-**Why not B (server-side session records):** it buys per-session revocation, which nothing in the ticket asks for, at the cost of the one thing that must not change. `requireHost` is today a pure read on every host API call. A session record has to be *written* at mint and on every rolling refresh — i.e. on every `GET /api/host/session`. That is a write on the authentication path, and a write on the authentication path is precisely what recreated a lockout three times on this surface. Wrong trade.
-
-**Why A is the right shape and not merely the smallest:** both derivation sites (`issueSession`, `verifySessionValue`) already call `resolveRoomToken`, which already does a `getRoom` for `hostCodeHash`. I refactored that into `resolveRoomSecret(roomId) -> {token, epoch}`, so reading the epoch costs **zero extra store reads and zero writes**. The revocation mechanism therefore adds *nothing at all* to the path a returning device takes.
-
-## How the lockout class is ruled out — structurally, not by care
-
-This is what the ticket demanded be stated explicitly. Three independent properties:
-
-1. **Zero writes on the authentication path.** `issueSession`, `verifySessionValue`, `requireHost`, `verifyClaim`, `rollClaimCookie` are all still pure reads. The round-1 eviction and the round-4 lost-update race both needed a write there to lose; there is none.
-2. **The acting device depends on neither the write landing nor the response arriving.** This is the load-bearing design choice, and it is why `revokeRoomHostSessions` takes `presentedClaimToken`: it **keeps the acting device's own claim-token hash** and prunes only the others, in the *same single* read-modify-write that bumps the epoch. So that device's `boraoke_claim_<room>` cookie is untouched and still live — nothing has to reach the browser for it to retain access. If the response is lost to a network drop after the write commits, its next admin mount auto-claims with that surviving token and gets a session at the new epoch. **There is no response-delivery lockout window.** The obvious alternative (clear all hashes, re-mint one for the caller) *would* have had one, and that is why I did not take it. There is a test for this: *"its claim token SURVIVES, so it needs nothing from the response to get back in"*.
-3. **A lost update degrades to "revocation did not take", never to "owner locked out".** There is no CAS for room records (`RoomBackend` is get/create/update/count; Upstash `update` is a plain `SET`), so a concurrent `issueRoomClaimToken`/`setRoomMode` can clobber the bump. Mitigations: (a) after the update, re-read and confirm the epoch advanced, retrying up to `EPOCH_BUMP_ATTEMPTS`; (b) the caller's replacement session is derived by calling `issueSession` **after** the write, which re-reads the room, so it is always computed from the epoch that is *actually stored* — there is no code path that hands the caller a cookie which will not verify; (c) exhausted contention returns **503**, never a false success, because telling a venue owner an unauthorised session was ended when it was not is the worst failure this screen can have.
-
-## Deliberate scope choice a successor must not "fix"
-
-**Logout (`POST /api/host/session`) is intentionally NOT changed.** It already revokes every device's claim token. I did not add an epoch bump to it: logout's ordinary meaning is "get me off this shared tablet", and making it also kill the owner's own phone's live session would regress the common path into the code dead end. There is a test pinning this (*"logout is UNCHANGED — it does not bump the epoch"*). The lever the ticket asks for is a *separate*, explicitly labelled, confirmed action, and it is.
-
-## The product-decision question, answered rather than escalated
-
-The brief flagged "does revoking sessions also force re-entry of the host code?" as a possible escalation. I judged it **not** a fork needing the Tech Lead, because the design removes it: **no** for the acting device (its claim token survives), **yes** for every other device — which is the literal meaning of the affordance, and is already exactly what today's logout does to every other device's claim credential. **No new product cost over shipped behaviour.** The residual — other legitimate staff devices need the shown-once code — is the pre-existing TICKET-104/120 surface, and it is stated plainly in the confirm copy rather than hidden. *If the TM disagrees with that judgement, this is the paragraph to argue with.*
-
-## What is implemented (commit `[TICKET-118] feat(host-auth): rotatable session epoch + sign out all devices`)
-
-- `lib/rooms.ts` — `Room.sessionEpoch?: number` (documented, kept out of `PublicRoom`); `normaliseSessionEpoch` (pure); `getRoomSessionEpoch`; `revokeRoomHostSessions(roomId, {presentedClaimToken})` returning a discriminated `{ok:true,epoch,keptClaimToken} | {ok:false,reason:"no-room"|"contended"}`.
-- `lib/host-auth.ts` — `sessionValue(token, epoch)`; **epoch 0 keeps the byte-identical legacy HMAC message** (`cantai-host-session-v1`), so shipping this logs nobody out and needs no migration; `resolveRoomSecret`; `resolveRoomToken` kept as a delegating export; the stale docblock that asserted sessions "cannot be revoked server-side" corrected (leaving it would have been the fifth confidently-wrong comment the re-gate complained about).
-- `app/api/host/revoke-sessions/route.ts` — NEW. Same two independent refusals as logout (`isCrossSiteRequest` ‖ `!requireHost`), same undifferentiated 401, no room-existence oracle, 404 for `default`, 503 on contention.
-- `AdminRoom.tsx` + `admin.module.css` — header trigger (`admin-revoke-button`), confirm panel **below** the header (`admin-revoke-confirm`) because the warning sentence cannot share a 390px row with four other controls, result toast (`admin-revoke-toast`). The acting device deliberately stays `auth === "authed"` on success.
-- `messages/{pt-BR,en,es}.json` — `Admin.signOutAll{,Warning,Confirm,Done,Error}` in all three (pt-BR authored first). `i18n-completeness` + `i18n-locales` green (21/21). The revoke confirm has its **own** label, deliberately, so no existing `getByRole("button", { name: "Confirmar" })` locator in `host-controls.spec.ts` / `render-and-links.spec.ts` becomes ambiguous.
-- `__tests__/host-session-revocation.test.ts` — NEW, **32/32 green**.
-
-## Exactly what to do next, in order
-
-1. **The two reverse-checks** (`prove-your-test-can-fail` duty (b), not yet done — the suite must be shown to FAIL against the pre-fix behaviour, with verbatim output):
-   - **Part 1:** revert *only* the derivation — `sessionValue` back to `createHmac("sha256", token).update("cantai-host-session-v1")`, ignoring the epoch — keeping everything else. The revocation assertions must FAIL.
-   - **Part 2 — do not skip this one, it is the important one.** Make the epoch bump a no-op (`target = current` in `revokeRoomHostSessions`) while keeping the claim pruning. The revocation assertions must *still* FAIL. This proves the suite is not being carried by the pre-existing claim-token revocation, which has worked since TICKET-104 and is **not** what this ticket fixes. The core assertions were written with a session value taken straight from `issueSession` and no claim token in play specifically so this holds — verify it rather than trusting it.
-2. **Mutation pass on `normaliseSessionEpoch`** — duty (d) is **TRIGGERED**: it is a new pure normalisation function on an auth/identity path. Mutations worth running: drop the numeric-string coercion branch (the `"3"` case is the security-relevant one — failing open to 0 would resurrect every session the bump revoked); `Number.isInteger` → `Number.isFinite` (1.5); drop the `n < 0` guard; `>` → `>=`. Report each as KILLED / SURVIVED-equivalent / SURVIVED-real-gap. A SURVIVED-real-gap is blocking.
-3. **Hollowing-out, duty (c) — declaration required either way, and it DID fire.** `issueSession`/`sessionValue` is a primitive beneath existing assertions, and I changed it. There are 18 `issueSession` call sites across `__tests__/` (`host-claim`, `host-auth`, `host-api`, `api-mode`, `api-moderation`, `api-admin-analytics`, `screen-token`). My read is that all of them mint and use a session with no revoke in between, so the epoch is 0 throughout and their assertions keep their original meaning — but **this must be walked file by file and written down**, not asserted. The `host-claim.test.ts` logout tests are the ones to look at hardest, and the "logout is UNCHANGED" test I added is the pin that makes them safe.
-4. **The e2e spec.** Add a describe to `e2e/creator-reentry.spec.ts` (it already has the create-room helper and the B-S1/B-S2 describes): owner context A creates a room and is admin; context B copies A's session cookie (that byte-identical copy *is* the defect) and gets moderation 200 as the **positive control**; A clicks `admin-revoke-button` → `admin-revoke-confirm-yes`; B's moderation → 401 and B's session probe → 401 **with no Set-Cookie**; A is still admin. A failing positive control means a void run, not a passing security test — that is the re-gate's own Friction lesson and it applies here.
-5. **Gates.** `npm test` (full), then `npm run test:e2e` **one suite at a time**, reported as a distribution with its condition stated (the suite is documented deterministic — 126/126 on 6 of 6 cold runs, ~4 min — so a failure means something and must not be dismissed as environmental). Check `e2e/_canary.spec.ts`: if it fails the run is **void**, discard it. Do not raise `workers: 1`. Then `npm run build` (which runs the ES2019 bundle check and `check-css-target.mjs`). Ports 3180-3189.
-6. **Deliver** via `pr-deliver` as a **draft** PR, then `housekeeping`.
-
-## Things learned that are not obvious from the code
-
-- `npx tsc --noEmit -p tsconfig.json` reports **hundreds of pre-existing errors in `__tests__/**`** (jest globals are not in that tsconfig) plus one pre-existing error in `e2e/advance-auth.spec.ts:12`. Filter with `grep -E "^(app|lib|components)/.*error TS"` to get a meaningful signal. `app/` and `lib/` are currently clean.
-- The admin logout label is the hardcoded literal `"Sair"`, not an i18n key — two earlier tickets deliberately skipped localising it because a sibling agent owned `messages/*.json` that cycle. I left it alone (e2e depends on it); it is a genuine small follow-up, not something to fold in here.
-- `Admin.confirm` / `Admin.cancel` are **shared** with the queue-row remove confirm. Do not repurpose them for revocation wording.
-- There is no fake-Redis seam for the room backend (`UpstashRoomBackend` builds its `Redis` inside `createBackend()` and is not injectable), so the concurrency probes run against the memory driver only. An atomic Lua-EVAL epoch bump — mirroring `MERGE_SCRIPT` in `lib/store/upstash.ts`, the only server-side atomic primitive in the repo — is the right follow-up for the contention residual in property 3, and it would need that test seam first. **Worth filing as a follow-up ticket; deliberately not built here.**
-- `playwright.config.ts` runs a **production build** into `.next-e2e`, and `HOST` is `localhost` (not `127.0.0.1`) because prod-build cookies are `Secure` and Playwright's `APIRequestContext` only sends those to a trustworthy hostname. Any new API-level e2e assertion must respect that.
+- **Chosen: A, a rotatable per-room session epoch.** C (rotate the host code) *is* the shown-once dead end TICKET-104 removes. B (server-side session records) would put a write on `requireHost`, the hottest auth path.
+- **Epoch 0 keeps the byte-identical legacy HMAC message**, so the deploy logs nobody out and needs no migration (pinned by test).
+- **The revoke keeps the acting device's own claim-token hash** and prunes the others in one write, so the acting device needs nothing from the response to get back in.
+- `tsc` reports hundreds of pre-existing errors in `__tests__/**`; filter with `grep -E "^(app|lib|components)/.*error TS"`. `app/` and `lib/` are clean.
+- `playwright.config.ts` uses `HOST=localhost` because production-build cookies are `Secure`.

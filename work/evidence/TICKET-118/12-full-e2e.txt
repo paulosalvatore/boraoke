@@ -1,0 +1,104 @@
+FULL E2E (the one full run): PORT=3118 --workers=1, production build (.next-e2e)
+START 2026-10-15T21:55:46Z head 9a11335 load: 69.12 94.71 107.16
+exit 1
+END 2026-10-15T22:02:29Z load: 59.26 68.46 90.05
+
+[1/135] [chromium] › e2e/_canary.spec.ts:22:7 › run-triage canary (not a product test) › the runner evaluates constants correctly
+[2/135] [chromium] › e2e/_canary.spec.ts:28:7 › run-triage canary (not a product test) › the runner's async primitives complete
+[73/135] [chromium] › e2e/render-and-links.spec.ts:457:5 › /[room]/admin: logout negative control — a failed clear leaves the host authed
+  2 failed
+  133 passed (6.7m)
+
+--- failure detail, verbatim:
+  1) [chromium] › e2e/render-and-links.spec.ts:303:5 › /[room] renders join form, then song input + queue + player-hint 
+
+    Test timeout of 30000ms exceeded while running "beforeEach" hook.
+
+      100 | }
+      101 |
+    > 102 | test.beforeEach(async ({ page }) => {
+          |      ^
+      103 |   await warmUp(page);
+      104 | });
+      105 |
+        at /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation/e2e/render-and-links.spec.ts:102:6
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+      - navigating to "http://localhost:3118/default/tv", waiting until "load"
+
+
+      42 |   await page.goto("/new");
+      43 |   await page.goto("/default");
+    > 44 |   await page.goto("/default/tv");
+         |              ^
+      45 |   await page.goto("/default/admin");
+      46 | }
+      47 |
+        at warmUp (/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation/e2e/render-and-links.spec.ts:44:14)
+        at /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation/e2e/render-and-links.spec.ts:103:3
+
+    Error Context: test-results/render-and-links--room-ren-fffb6-ong-input-queue-player-hint-chromium/error-context.md
+
+
+[66/135] [chromium] › e2e/render-and-links.spec.ts:323:5 › room-404: valid slug shows recreate path; unknown text present
+[67/135] [chromium] › e2e/render-and-links.spec.ts:333:5 › /[room]/tv renders the YT iframe host with a seeded queue
+  2) [chromium] › e2e/render-and-links.spec.ts:333:5 › /[room]/tv renders the YT iframe host with a seeded queue 
+
+    Test timeout of 30000ms exceeded while running "beforeEach" hook.
+
+      100 | }
+      101 |
+    > 102 | test.beforeEach(async ({ page }) => {
+          |      ^
+      103 |   await warmUp(page);
+      104 | });
+      105 |
+        at /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation/e2e/render-and-links.spec.ts:102:6
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+      - navigating to "http://localhost:3118/default/tv", waiting until "load"
+
+
+      42 |   await page.goto("/new");
+      43 |   await page.goto("/default");
+    > 44 |   await page.goto("/default/tv");
+         |              ^
+      45 |   await page.goto("/default/admin");
+      46 | }
+      47 |
+        at warmUp (/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation/e2e/render-and-links.spec.ts:44:14)
+        at /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation/e2e/render-and-links.spec.ts:103:3
+
+    Error Context: test-results/render-and-links--room-tv--94b36-me-host-with-a-seeded-queue-chromium/error-context.md
+
+
+[68/135] [chromium] › e2e/render-and-links.spec.ts:342:5 › /[room]/tv renders a sane idle state with an empty queue
+
+--- page snapshot at failure (TV rendered with a seeded default queue), copied from test-results/render-and-links--room-ren-fffb6-ong-input-queue-player-hint-chromium/error-context.md before the re-run cleared test-results/:
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic:
+      - generic [ref=e3]: Boraoke
+      - generic [ref=e4]: noite de karaokê
+    - generic [ref=e5]:
+      - generic:
+        - generic: Tocando agora
+        - heading "Charlie" [level=1]
+        - generic:
+          - text: 🎤 Charlie
+          - generic [ref=e7]: · Mesa 3
+        - status [ref=e8]:
+          - text: 🎤 Charlie, Mesa 3 — vá para o microfone!
+          - strong [ref=e9]: 1s
+    - generic:
+      - generic: A SEGUIR
+      (queue continues: 2 Alpha Mesa 1, 3 Delta, 4 ...)
+
+--- targeted re-run of the failing spec (canary + render-and-links.spec.ts), same head, same port:
+START 2026-10-15T22:03:11Z load: 51.68 64.94 87.63
+exit 0
+END 2026-10-15T22:04:18Z load: 92.93 73.24 88.99
+[17/19] [chromium] › e2e/render-and-links.spec.ts:457:5 › /[room]/admin: logout negative control — a failed clear leaves the host authed
+  19 passed (1.1m)
