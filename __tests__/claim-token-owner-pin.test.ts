@@ -19,7 +19,7 @@ import { NextRequest } from "next/server";
 import { POST as loginRoute } from "@/app/api/host/login/route";
 import { POST as roomsRoute } from "@/app/api/rooms/route";
 import { POST as logoutRoute } from "@/app/api/host/session/route";
-import { _clearLoginThrottle, claimCookieName, hostCookieName } from "@/lib/host-auth";
+import { _clearLoginThrottle, claimCookieName, hostCookieName, issueSession } from "@/lib/host-auth";
 import {
   capClaimHashes,
   getRoom,
@@ -74,6 +74,20 @@ async function login(roomId: string, hostCode: string, presented?: string) {
   );
   expect(res.status).toBe(200);
   return setCookie(res, claimCookieName(roomId));
+}
+
+/** A same-origin logout from the device holding `claimToken`, with that device's session. */
+async function logoutAs(roomId: string, claimToken: string): Promise<NextRequest> {
+  const sessionFor = await issueSession(roomId);
+  return new NextRequest(`http://127.0.0.1:3040/api/host/session?room=${encodeURIComponent(roomId)}`, {
+    method: "POST",
+    headers: {
+      host: "127.0.0.1:3040",
+      cookie: `${hostCookieName(roomId)}=${sessionFor}; ${claimCookieName(roomId)}=${claimToken}`,
+      "sec-fetch-site": "same-origin",
+      origin: "http://127.0.0.1:3040",
+    },
+  });
 }
 
 /** Seeded PRNG so a failing interleaving is reproducible. */
@@ -206,32 +220,42 @@ describe("the owner pointer is bookkeeping, never a credential", () => {
     expect(await verifyRoomClaimToken(roomId, ownerToken)).toBe(false);
   });
 
-  it("logout clears the hashes AND the pointer; the next login is not re-pinned as owner", async () => {
+  it("the OWNER's own logout clears its hash AND the pointer; the next login is not re-pinned", async () => {
     const { roomId, hostCode, ownerToken } = await ownerCreatesRoom("Bar Logout");
-    const session = await (async () => {
-      const res = await loginRoute(
-        new NextRequest(`http://127.0.0.1:3040/api/host/login?room=${encodeURIComponent(roomId)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-forwarded-for": nextIp() },
-          body: JSON.stringify({ token: hostCode }),
-        }),
-      );
-      return setCookie(res, hostCookieName(roomId))!;
-    })();
-    const out = await logoutRoute(
-      new NextRequest(`http://127.0.0.1:3040/api/host/session?room=${encodeURIComponent(roomId)}`, {
-        method: "POST",
-        headers: { host: "127.0.0.1:3040", cookie: `${hostCookieName(roomId)}=${session}`, "sec-fetch-site": "same-origin", origin: "http://127.0.0.1:3040" },
-      }),
-    );
+    const staffToken = (await login(roomId, hostCode))!;
+    const out = await logoutRoute(await logoutAs(roomId, ownerToken));
     expect(out.status).toBeLessThan(300);
     const after = (await getRoom(roomId))!;
-    expect(after.claimTokenHashes).toBeUndefined();
     expect(after.ownerClaimTokenHash).toBeUndefined();
     expect(await verifyRoomClaimToken(roomId, ownerToken)).toBe(false);
+    // TICKET-112: only the owner's device was signed out.
+    expect(await verifyRoomClaimToken(roomId, staffToken)).toBe(true);
 
     await login(roomId, hostCode);
     expect((await getRoom(roomId))!.ownerClaimTokenHash).toBeUndefined();
+  });
+});
+
+/**
+ * TICKET-112 addendum (PR #91 review): a STAFF logout at the end of a shift used
+ * to clear every device's claim token AND the owner pin, putting the owner back
+ * on a shown-once host code. The Tech Lead decided a plain logout signs out only
+ * the device it is tapped on. Fails against the pre-TICKET-112 logout, which
+ * deleted the whole list.
+ */
+describe("a STAFF logout signs out only the staff device (TICKET-112)", () => {
+  it("the owner's credential and the pin survive", async () => {
+    const { roomId, hostCode, ownerToken } = await ownerCreatesRoom("Bar Fim De Turno");
+    const staffToken = (await login(roomId, hostCode))!;
+    const otherStaff = (await login(roomId, hostCode))!;
+
+    const out = await logoutRoute(await logoutAs(roomId, staffToken));
+    expect(out.status).toBeLessThan(300);
+
+    expect(await verifyRoomClaimToken(roomId, staffToken)).toBe(false);
+    expect(await verifyRoomClaimToken(roomId, ownerToken)).toBe(true);
+    expect(await verifyRoomClaimToken(roomId, otherStaff)).toBe(true);
+    expect((await getRoom(roomId))!.ownerClaimTokenHash).toBe(hashClaimToken(ownerToken));
   });
 });
 

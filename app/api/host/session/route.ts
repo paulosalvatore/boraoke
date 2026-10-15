@@ -10,8 +10,9 @@ import {
   rollClaimCookie,
   verifyClaim,
   isCrossSiteRequest,
+  claimTokenFrom,
 } from "@/lib/host-auth";
-import { revokeRoomClaimTokens } from "@/lib/rooms";
+import { revokeRoomClaimToken } from "@/lib/rooms";
 
 /**
  * GET /api/host/session?room=<id> — cheap auth probe the admin page calls on
@@ -72,8 +73,15 @@ function noStore(res: NextResponse): NextResponse {
 }
 
 /**
- * POST /api/host/session?room=<id> — log out: end this room's host session and
- * REVOKE its admin-claim credential.
+ * POST /api/host/session?room=<id> — log out THIS DEVICE: end its host session
+ * and REVOKE its own admin-claim credential. Other devices stay signed in.
+ *
+ * ONLY THIS DEVICE (TICKET-112, Tech Lead decision 2026-10-15). This route used
+ * to clear every device's claim token and the owner pin, so a staff logout at
+ * the end of a shift silently cost the owner's phone its no-typing way back in.
+ * Ending everyone's access is now the explicit "sign out all devices" action
+ * (`POST /api/host/revoke-sessions`, TICKET-118), which also ends sessions; a
+ * plain logout does neither for anyone else.
  *
  * AUTHENTICATED, and that is a security requirement rather than tidiness
  * (TICKET-104 security gate, B-S2). Before TICKET-104 an unauthenticated logout
@@ -104,11 +112,13 @@ function noStore(res: NextResponse): NextResponse {
  * so a caller learns nothing about which venue slugs are real. Room ids are
  * public QR slugs anyway — the point is that this route adds no signal.
  *
- * REVOCATION IS SERVER-SIDE. Clearing `Room.claimTokenHashes` is what makes
- * logout mean something for a credential that may already have been copied off
- * the device — the previous design's opt-out lived in the victim's own cookie
- * jar, which locked the owner out while leaving a copied token working. Entering
- * the host code mints a fresh token (`POST /api/host/login`).
+ * REVOCATION IS SERVER-SIDE. Removing this device's hash from
+ * `Room.claimTokenHashes` is what makes logout mean something for a credential
+ * that may already have been copied off THIS device: the previous design's
+ * opt-out lived in the victim's own cookie jar, which locked the owner out while
+ * leaving a copied token working. Entering the host code mints a fresh token
+ * (`POST /api/host/login`). A copy of another device's credential, or of the
+ * room's session value, is what "sign out all devices" is for.
  */
 export async function POST(req: NextRequest) {
   const roomId = roomIdFromRequest(req);
@@ -127,9 +137,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Server-side revocation first: if this fails we have not told the client it
-  // is logged out, so a retry is safe.
-  await revokeRoomClaimTokens(roomId);
+  // Server-side revocation of THIS device's credential first: if this fails we
+  // have not told the client it is logged out, so a retry is safe.
+  await revokeRoomClaimToken(roomId, claimTokenFrom(req, roomId));
 
   const res = NextResponse.json({ ok: true });
   // Path must match the set-path (HOST_COOKIE_PATH) or the browser won't clear it.

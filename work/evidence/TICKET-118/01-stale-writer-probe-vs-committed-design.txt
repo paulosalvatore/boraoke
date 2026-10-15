@@ -1,0 +1,43 @@
+    ✕ a concurrent LOGIN that read before the revoke and wrote after it (15 ms)
+    ✕ a concurrent SETTINGS change (staff flips the mode) that read before the revoke (5 ms)
+
+  ● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent LOGIN that read before the revoke and wrote after it
+
+    expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 1
+    Received:    0
+
+      616 |
+      617 |     // The revocation stuck: the epoch did not roll back...
+    > 618 |     expect(await getRoomSessionEpoch(v.room.id)).toBeGreaterThanOrEqual(1);
+          |                                                  ^
+      619 |     // ...the stolen session is still dead, on a real host route...
+      620 |     expect(await verifySessionValue(v.room.id, stolenSession)).toBe(false);
+      621 |     expect((await moderationRoute(moderationReq(v.room.id, stolenSession))).status).toBe(401);
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:618:50)
+
+  ● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent SETTINGS change (staff flips the mode) that read before the revoke
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      637 |     );
+      638 |     expect(revoked.status).toBe(200);
+    > 639 |     expect(await verifySessionValue(v.room.id, stolenSession)).toBe(false);
+          |                                                                ^
+      640 |     expect(await verifyRoomClaimToken(v.room.id, stolenClaim)).toBe(false);
+      641 |     const fresh = setCookie(revoked, hostCookieName(v.room.id))!;
+      642 |     expect((await moderationRoute(moderationReq(v.room.id, fresh))).status).toBe(200);
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:639:64)
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 32 skipped, 34 total
+Snapshots:   0 total
+Time:        0.667 s, estimated 1 s
+Ran all test suites matching /__tests__\/host-session-revocation.test.ts/i with tests matching "TICKET-127".
+7f6a736

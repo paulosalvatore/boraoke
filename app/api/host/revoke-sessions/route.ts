@@ -15,7 +15,8 @@ import { revokeRoomHostSessions } from "@/lib/rooms";
 
 /**
  * POST /api/host/revoke-sessions?room=<id> — "sign out all other devices"
- * (TICKET-118). The venue's recovery lever: it ends EVERY outstanding host
+ * (TICKET-118). Plain logout (`POST /api/host/session`) signs out only the
+ * device it is tapped on (TICKET-112); this is the action that reaches the rest. The venue's recovery lever: it ends EVERY outstanding host
  * session for the room, and every admin-claim credential except the acting
  * device's, while leaving the acting device signed in.
  *
@@ -60,26 +61,27 @@ import { revokeRoomHostSessions } from "@/lib/rooms";
  *           network drop after the write commits, the next admin mount
  *           auto-claims with that surviving token and gets a fresh session.
  *       (b) the replacement session cookie below is derived by `issueSession`
- *           AFTER the write returns, so it is computed from the epoch that is
- *           ACTUALLY STORED. There is no path on which this route hands the
- *           caller a cookie that will not verify — including when a concurrent
- *           whole-record write clobbered the bump.
- *  4. NO WRITE WAS ADDED TO THE AUTHENTICATION PATH. The epoch is read out of the
- *     same `getRoom` that `resolveRoomSecret` already performed for
- *     `hostCodeHash`, so `requireHost` / `verifyClaim` / the rolling refresh are
- *     still pure reads. The only write in this feature is the one below, on a
- *     route no returning device ever calls.
- *  5. A CONTENDED WRITE IS REPORTED AS A FAILURE, not swallowed. If every attempt
- *     to advance the epoch was clobbered by a concurrent record write, the room's
- *     sessions are still live and the caller is told so (503, retryable) — a
- *     venue owner must never be told an unauthorised session was ended when it
- *     was not.
+ *           AFTER the revoke returns, from the epoch the store reports. The
+ *           epoch only ever goes up (an atomic counter, see
+ *           `revokeRoomHostSessions`), so that cookie keeps verifying until the
+ *           next revoke. A concurrent stale write cannot invalidate it.
+ *  4. NO WRITE WAS ADDED TO THE AUTHENTICATION PATH. The epoch is read in the
+ *     same store round trip that `resolveRoomSecret` already made for
+ *     `hostCodeHash` (one MGET of the record and its counter), so `requireHost` /
+ *     `verifyClaim` / the rolling refresh are still pure reads. The only writes
+ *     in this feature are on this route, which no returning device ever calls.
+ *  5. NO FALSE SUCCESS, AND NO ROLLBACK. A 200 means the atomic epoch bump
+ *     happened, and that alone is what ends the sessions. A concurrent login or
+ *     settings write that read the room before it cannot lower the epoch or
+ *     bring a pruned claim token back (TICKET-127 interleavings, probed in the
+ *     regression suite). The earlier design reported a 200 here and could then
+ *     have it silently undone by such a write.
  *
  * Responses: 200 `{ ok: true, epoch }` on success, with a refreshed session
  * cookie (and a rolled claim cookie, or a freshly minted one when the caller held
  * none); 400 on a malformed room id; 401 on either refusal, undifferentiated;
  * 404 when the room has no record (the legacy `default` room is governed by the
- * env `HOST_TOKEN` and has no per-room sessions to revoke); 503 on contention.
+ * env `HOST_TOKEN` and has no per-room sessions to revoke).
  */
 export async function POST(req: NextRequest) {
   const roomId = roomIdFromRequest(req);
@@ -102,18 +104,11 @@ export async function POST(req: NextRequest) {
 
   const result = await revokeRoomHostSessions(roomId, { presentedClaimToken });
   if (!result.ok) {
-    if (result.reason === "no-room") {
-      return NextResponse.json({ error: "No revocable sessions for this room" }, { status: 404 });
-    }
-    // Contract line 5 — still live, so say so rather than reporting success.
-    return NextResponse.json(
-      { error: "Could not sign out the other devices — please try again." },
-      { status: 503 },
-    );
+    return NextResponse.json({ error: "No revocable sessions for this room" }, { status: 404 });
   }
 
-  // Contract line 3b: derived AFTER the write, from the stored epoch, so the
-  // caller can never be handed a cookie that does not verify.
+  // Contract line 3b: derived AFTER the revoke, from the epoch the store reports,
+  // so the caller can never be handed a cookie that does not verify.
   const session = await issueSession(roomId);
   if (!session) {
     // Host controls locked for this room. The revocation DID land, so this is not
