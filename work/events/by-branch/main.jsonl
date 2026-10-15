@@ -101,3 +101,5 @@
 {"v": "1", "ts": "2026-10-15T00:44:04Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-125", "pr": 89, "event": "pr_opened", "payload": {"pr_number": 89, "title": "TICKET-125: live search only on Enter or after an idle pause", "draft": true}}
 {"v": "1", "ts": "2026-10-15T00:49:41Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-124", "pr": 88, "event": "work_committed", "payload": {"note": "fix batch pushed"}}
 {"v": "1", "ts": "2026-10-15T01:24:07Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-126", "pr": 90, "event": "pr_opened", "payload": {"pr_number": 90, "title": "TICKET-126: per-person daily search share, single-flight, trusted client IP", "draft": true}}
+{"v": "1", "ts": "2026-10-15T00:49:41Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-124", "pr": 88, "event": "work_committed", "payload": {"note": "fix batch pushed"}}
+{"v": "1", "ts": "2026-10-15T01:38:18Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-120", "pr": 91, "event": "pr_opened", "payload": {"pr_number": 91, "title": "TICKET-120: claim-token cap counts devices on login and never evicts the owner", "draft": true}}

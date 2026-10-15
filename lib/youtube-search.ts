@@ -417,26 +417,26 @@ const RATE_BUCKETS_MAX = 2000; // cap on total tracked buckets (uuid + ip keys)
 const hits = new Map<string, number[]>();
 
 /** Check-and-record one bucket. Returns false when the bucket is at/over `max`. */
-function bucketOk(key: string, max: number, now: number): boolean {
+function bucketOk(key: string, max: number, now: number, map = hits): boolean {
   const windowStart = now - RATE_WINDOW_MS;
-  const recent = (hits.get(key) ?? []).filter((t) => t > windowStart);
+  const recent = (map.get(key) ?? []).filter((t) => t > windowStart);
   // LRU touch: delete + re-set moves the key to the Map's insertion-order tail.
-  hits.delete(key);
+  map.delete(key);
   if (recent.length >= max) {
-    hits.set(key, recent); // keep the pruned window
+    map.set(key, recent); // keep the pruned window
     return false;
   }
   recent.push(now);
-  hits.set(key, recent);
+  map.set(key, recent);
   return true;
 }
 
 /** Evict oldest-touched buckets past the cap (heap-growth guard, MEDIUM #2). */
-function evictOverflow(): void {
-  while (hits.size > RATE_BUCKETS_MAX) {
-    const oldest = hits.keys().next().value;
+function evictOverflow(map = hits): void {
+  while (map.size > RATE_BUCKETS_MAX) {
+    const oldest = map.keys().next().value;
     if (oldest === undefined) break;
-    hits.delete(oldest);
+    map.delete(oldest);
   }
 }
 
@@ -460,27 +460,43 @@ export function rateLimitOk(uuid: string, ip = "", now = Date.now()): boolean {
  * debounced pause while a patron types, so the strict billed-search window
  * above (5 per 10 s per uuid) would throttle ordinary typing. They cost one
  * in-process index lookup each (~2 ms), so the ceiling only has to stop a
- * flood, not protect quota. Separate keys: they never consume the billed
- * window, and billed requests never consume theirs.
+ * flood, not protect quota.
+ *
+ * They live in their OWN map with its own LRU cap. Free traffic must never
+ * be able to evict a BILLED bucket: with one shared map, a host sending a few
+ * thousand free lookups under fresh uuids pushed its own `ip:` billed bucket
+ * out of the LRU and got a brand-new billed window (security gate, PR #89).
+ * And the IP bucket is checked FIRST: once it rejects, no uuid key is added,
+ * so rejected requests cannot churn even the index map.
  */
 const INDEX_RATE_MAX = 30; // per-uuid index-only lookups per window
 const INDEX_RATE_IP_MAX = 240; // per-IP (a whole bar shares one venue IP)
+const indexHits = new Map<string, number[]>();
 
 export function indexRateLimitOk(uuid: string, ip = "", now = Date.now()): boolean {
-  const uuidOk = bucketOk(`iu:${uuid}`, INDEX_RATE_MAX, now);
-  const ipOk = ip ? bucketOk(`iip:${ip}`, INDEX_RATE_IP_MAX, now) : true;
-  evictOverflow();
-  return uuidOk && ipOk;
+  if (ip && !bucketOk(`iip:${ip}`, INDEX_RATE_IP_MAX, now, indexHits)) {
+    evictOverflow(indexHits);
+    return false;
+  }
+  const uuidOk = bucketOk(`iu:${uuid}`, INDEX_RATE_MAX, now, indexHits);
+  evictOverflow(indexHits);
+  return uuidOk;
 }
 
 /** Test helper — clear rate-limit state. */
 export function _resetRateLimit(): void {
   hits.clear();
+  indexHits.clear();
 }
 
 /** Test helper — current number of tracked buckets. */
 export function _rateBucketCount(): number {
   return hits.size;
+}
+
+/** Test helper — number of tracked index-only buckets. */
+export function _indexBucketCount(): number {
+  return indexHits.size;
 }
 
 export const RATE_LIMIT = {

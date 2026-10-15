@@ -79,7 +79,8 @@ export interface TriggerOptions {
  *   cancel()           the input no longer wants a search (empty, a pasted
  *                      link, too short, or answered locally).
  *
- * "Once": the idle search never fires twice for the same text. A new idle
+ * "Once": the idle search never fires twice for the same text in the same
+ * mode (setScope). A new idle
  * period after an edit to different text may fire again.
  */
 export class LiveSearchTrigger {
@@ -95,14 +96,29 @@ export class LiveSearchTrigger {
   private idleElapsed = false;
   /** The free tiers missed for `pending`. */
   private missed = false;
-  /** The last text a live search was fired for. */
+  /** Scope (the search mode) + text of the last live search fired. */
   private lastFired = "";
+  /** The current search mode: the same text in another mode is a new search. */
+  private scope = "";
 
   constructor(opts: TriggerOptions) {
     this.fireFn = opts.fire;
     this.idleMs = opts.idleMs ?? IDLE_SEARCH_MS;
     this.schedule = opts.schedule ?? ((fn, ms) => setTimeout(fn, ms));
     this.cancelFn = opts.cancel ?? ((t) => clearTimeout(t));
+  }
+
+  /**
+   * The search mode changed. Fires nothing (a mode flip never searches,
+   * TICKET-83); it only means the same text in the new mode has not been
+   * searched live yet, so Enter / idle may fire for it.
+   */
+  setScope(scope: string): void {
+    this.scope = scope;
+  }
+
+  private keyOf(text: string): string {
+    return `${this.scope}\u0000${text}`;
   }
 
   edited(text: string): void {
@@ -134,15 +150,15 @@ export class LiveSearchTrigger {
     this.pending = text;
     this.idleElapsed = false;
     this.missed = false;
-    if (!text || text === this.lastFired) return false;
-    this.lastFired = text;
+    if (!text || this.keyOf(text) === this.lastFired) return false;
+    this.lastFired = this.keyOf(text);
     this.fireFn(text);
     return true;
   }
 
   /** Forget the once-guard (e.g. after a failed live search, so Enter can retry). */
   allowRetry(text: string): void {
-    if (this.lastFired === text) this.lastFired = "";
+    if (this.lastFired === this.keyOf(text)) this.lastFired = "";
   }
 
   cancel(): void {
@@ -155,8 +171,8 @@ export class LiveSearchTrigger {
   private maybeFire(): void {
     if (!this.idleElapsed || !this.missed) return;
     const text = this.pending;
-    if (!text || text === this.lastFired) return;
-    this.lastFired = text;
+    if (!text || this.keyOf(text) === this.lastFired) return;
+    this.lastFired = this.keyOf(text);
     this.fireFn(text);
   }
 

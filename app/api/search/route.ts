@@ -15,7 +15,7 @@ import { getKaraokeIndex } from "@/lib/karaoke-index/store";
 import { decideTier, INDEX_MORE_TOKEN } from "@/lib/karaoke-index/tier";
 import { containsKaraoke } from "@/lib/search-query";
 import { getTranslations } from "next-intl/server";
-import { liveAllowed, liveCooldown } from "@/lib/live-search-gate";
+import { isLegacyClient, liveAllowed, liveCooldown } from "@/lib/live-search-gate";
 import { clientIpFrom, UNKNOWN_CLIENT_IP } from "@/lib/client-ip";
 import { IDENTITY_COOKIE, isValidUuid } from "@/lib/identity";
 import { acquireSearchFlight, waitForSearchFlight } from "@/lib/search-single-flight";
@@ -253,6 +253,14 @@ export async function GET(req: NextRequest) {
   // one cooldown across every anonymous patron on the instance.
   const cooldown = liveCooldown(uuid === "anon" ? `anon@${ip}` : uuid);
   if (!cooldown.ok) {
+    // A legacy client (a page loaded before `v=2` shipped) doesn't know
+    // `deferred` and would render it as an empty list. Answer it on the 429
+    // path it already shows as the localized "too many searches, wait" copy;
+    // its next keystroke refetches.
+    if (isLegacyClient(params)) {
+      const te = await getTranslations("Errors");
+      return NextResponse.json({ error: te("searchRateLimited") }, { status: 429 });
+    }
     return NextResponse.json({
       results: [],
       deferred: "live-cooldown",

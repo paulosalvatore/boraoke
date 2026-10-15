@@ -20,7 +20,7 @@ jest.mock("@/lib/karaoke-index/store", () => ({
 import { GET } from "@/app/api/search/route";
 import { INDEX_MORE_TOKEN } from "@/lib/karaoke-index/tier";
 import { _resetCache, _resetRateLimit } from "@/lib/youtube-search";
-import { _resetSearchBudget } from "@/lib/search-budget";
+import { _resetSearchBudget, reserveSearchCall, SEARCH_DAILY_BUDGET } from "@/lib/search-budget";
 import { _resetLiveGate, LIVE_COOLDOWN_MS } from "@/lib/live-search-gate";
 
 const SHARD: ChannelShard = {
@@ -163,8 +163,13 @@ describe("index-only vs live-allowed requests", () => {
     const first = await (await GET(reqAs("bohe karaoke", PATRON))).json();
     expect(first.results[0].videoId).toBe("vLive000001");
     now += 400; // the old client's debounce cadence
-    const second = await (await GET(reqAs("bohemian karaoke", PATRON))).json();
-    expect(second.deferred).toBe("live-cooldown");
+    const second = await GET(reqAs("bohemian karaoke", PATRON));
+    // An old page does not know `deferred` (it would render an empty list), so
+    // it gets the 429 it already shows as "too many searches, wait".
+    expect(second.status).toBe(429);
+    const body = await second.json();
+    expect(typeof body.error).toBe("string");
+    expect(body.deferred).toBeUndefined();
     expect(searchCalls()).toBe(1);
     now += LIVE_COOLDOWN_MS;
     await GET(reqAs("bohemian rhapsody karaoke", PATRON));
@@ -226,6 +231,12 @@ describe("index-only vs live-allowed requests", () => {
     expect(searchCalls()).toBe(1);
     const deferred = bodies.filter((b) => b.deferred === "live-cooldown");
     expect(deferred).toHaveLength(3);
+    // A deferred request must cost NOTHING from the shared daily budget: the
+    // four keystrokes reserved exactly one slot (one probe reservation now
+    // takes the second). With the cooldown placed after the reservation, each
+    // deferred keystroke would burn a slot and this would read BUDGET - 5.
+    const probe = await reserveSearchCall();
+    expect(probe.remaining).toBe(SEARCH_DAILY_BUDGET - 2);
     for (const b of deferred) {
       expect(b.results).toEqual([]);
       expect(b.retryAfterMs).toBeGreaterThan(0);

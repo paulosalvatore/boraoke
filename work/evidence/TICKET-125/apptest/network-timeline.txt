@@ -1,0 +1,237 @@
+[pt-BR phone] indexHit (t=0 = last keystroke; results visible 0.80s)
+      0.29s  index   v=2  q="evidencias karaoke"  -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidênc
+  => PASS pt-BR phone indexHit: 0 live=1 after 10.5s, no hint — live=0 hint=false
+[pt-BR phone] idle (typing took 1.3s; t=0 = last keystroke)
+      0.28s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS pt-BR phone idle: 0 live while typing, exactly 1 live at ~4s, none again within 12s — typingLive=0 lives=1 firstAt=3.88s
+[pt-BR phone] edit-after-idle (t=0 = last keystroke of " xyz")
+      0.29s  index   v=2  q="soda stete xyz karaoke"  -> {"results":[],"liveRequired":true}
+      3.89s  LIVE=1  v=2  q="soda stete xyz karaoke"
+  => PASS pt-BR phone edit after idle: exactly 1 new live for new text — newLives=1
+[pt-BR phone] enter (t=0 = first Enter, pressed 0.91s after last keystroke; 2nd Enter at +0.4s)
+     -0.63s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.04s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS pt-BR phone Enter: 1 live immediately, none from idle, double-Enter = 1 — lives=1 at=0.04s
+[pt-BR phone] enterFast (t=0 = Enter immediately after last keystroke)
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS pt-BR phone Enter-fast: exactly 1 live, no later idle live — lives=1
+[pt-BR phone] loadMore (t=0 = Enter)
+     -0.02s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"
+      0.97s  PAGE    v=2  q="soda stete karaoke" pageToken=MOCKTOKEN
+  => PASS pt-BR phone loadMore: reveal costs 0 requests, 2nd tap fetches 1 page (v=2, no live=1) — pageReqs=1
+[pt-BR phone] listen (mode flip fired 0 reqs; t=0 = last keystroke)
+      0.28s  index   v=2  q="evidencias"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="evidencias"
+  => PASS pt-BR phone listen: mode flip 0 req, 1 idle live with un-augmented q — lives=1 q=evidencias
+[pt-BR phone] switchMid (flip after "soda st"; t=0 = last keystroke of "ete")
+     -1.45s  index   v=2  q="soda st karaoke"  -> {"results":[{"videoId":"_hzRr7AOOvI","title":"Soda Stereo - 
+      0.28s  index   v=2  q="soda stete"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete"
+  => PASS pt-BR phone switchMid: flip fires 0 req, no live while typing, exactly 1 idle live (listen q) — flipReqs=0 lives=1 q=soda stete
+[pt-BR phone] loadingDegraded (REAL server for live=1, no key; t=0 = Enter)
+     -3.18s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"  -> {"degraded":true,"reason":"no-api-key","results":[]}
+  => PASS pt-BR phone no-key Enter: 1 live, degraded copy, no idle retry — lives=1 ans={"degraded":true,"reason":"no-api-key","results":[]}
+[pt-BR phone] edges (short "abc"+Enter, then pasted link+Enter)
+
+  => PASS pt-BR phone edges: <4 chars Enter and pasted link Enter fire 0 live, no hint on link — short=0 lives=0 hint=false
+[en phone] indexHit (t=0 = last keystroke; results visible 0.79s)
+      0.28s  index   v=2  q="evidencias karaoke"  -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidênc
+  => PASS en phone indexHit: 0 live=1 after 10.5s, no hint — live=0 hint=false
+[en phone] idle (typing took 1.3s; t=0 = last keystroke)
+      0.28s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      3.89s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS en phone idle: 0 live while typing, exactly 1 live at ~4s, none again within 12s — typingLive=0 lives=1 firstAt=3.89s
+[en phone] edit-after-idle (t=0 = last keystroke of " xyz")
+      0.28s  index   v=2  q="soda stete xyz karaoke"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete xyz karaoke"
+  => PASS en phone edit after idle: exactly 1 new live for new text — newLives=1
+[en phone] enter (t=0 = first Enter, pressed 0.90s after last keystroke; 2nd Enter at +0.4s)
+     -0.62s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS en phone Enter: 1 live immediately, none from idle, double-Enter = 1 — lives=1 at=0.01s
+[en phone] enterFast (t=0 = Enter immediately after last keystroke)
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS en phone Enter-fast: exactly 1 live, no later idle live — lives=1
+[en phone] loadMore (t=0 = Enter)
+     -0.03s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"
+      1.00s  PAGE    v=2  q="soda stete karaoke" pageToken=MOCKTOKEN
+  => PASS en phone loadMore: reveal costs 0 requests, 2nd tap fetches 1 page (v=2, no live=1) — pageReqs=1
+[en phone] listen (mode flip fired 0 reqs; t=0 = last keystroke)
+      0.36s  index   v=2  q="evidencias"  -> {"results":[],"liveRequired":true}
+      3.89s  LIVE=1  v=2  q="evidencias"
+  => PASS en phone listen: mode flip 0 req, 1 idle live with un-augmented q — lives=1 q=evidencias
+[en phone] switchMid (flip after "soda st"; t=0 = last keystroke of "ete")
+     -1.45s  index   v=2  q="soda st karaoke"  -> {"results":[{"videoId":"_hzRr7AOOvI","title":"Soda Stereo - 
+      0.28s  index   v=2  q="soda stete"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete"
+  => PASS en phone switchMid: flip fires 0 req, no live while typing, exactly 1 idle live (listen q) — flipReqs=0 lives=1 q=soda stete
+[en phone] loadingDegraded (REAL server for live=1, no key; t=0 = Enter)
+     -3.17s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"  -> {"degraded":true,"reason":"no-api-key","results":[]}
+  => PASS en phone no-key Enter: 1 live, degraded copy, no idle retry — lives=1 ans={"degraded":true,"reason":"no-api-key","results":[]}
+[en phone] edges (short "abc"+Enter, then pasted link+Enter)
+
+  => PASS en phone edges: <4 chars Enter and pasted link Enter fire 0 live, no hint on link — short=0 lives=0 hint=false
+[es phone] indexHit (t=0 = last keystroke; results visible 0.79s)
+      0.28s  index   v=2  q="evidencias karaoke"  -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidênc
+  => PASS es phone indexHit: 0 live=1 after 10.5s, no hint — live=0 hint=false
+[es phone] idle (typing took 1.3s; t=0 = last keystroke)
+      0.28s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS es phone idle: 0 live while typing, exactly 1 live at ~4s, none again within 12s — typingLive=0 lives=1 firstAt=3.88s
+[es phone] edit-after-idle (t=0 = last keystroke of " xyz")
+      0.28s  index   v=2  q="soda stete xyz karaoke"  -> {"results":[],"liveRequired":true}
+      3.89s  LIVE=1  v=2  q="soda stete xyz karaoke"
+  => PASS es phone edit after idle: exactly 1 new live for new text — newLives=1
+[es phone] enter (t=0 = first Enter, pressed 0.90s after last keystroke; 2nd Enter at +0.4s)
+     -0.62s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS es phone Enter: 1 live immediately, none from idle, double-Enter = 1 — lives=1 at=0.01s
+[es phone] enterFast (t=0 = Enter immediately after last keystroke)
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS es phone Enter-fast: exactly 1 live, no later idle live — lives=1
+[es phone] loadMore (t=0 = Enter)
+     -0.02s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"
+      0.98s  PAGE    v=2  q="soda stete karaoke" pageToken=MOCKTOKEN
+  => PASS es phone loadMore: reveal costs 0 requests, 2nd tap fetches 1 page (v=2, no live=1) — pageReqs=1
+[es phone] listen (mode flip fired 0 reqs; t=0 = last keystroke)
+      0.28s  index   v=2  q="evidencias"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="evidencias"
+  => PASS es phone listen: mode flip 0 req, 1 idle live with un-augmented q — lives=1 q=evidencias
+[es phone] switchMid (flip after "soda st"; t=0 = last keystroke of "ete")
+     -1.44s  index   v=2  q="soda st karaoke"  -> {"results":[{"videoId":"_hzRr7AOOvI","title":"Soda Stereo - 
+      0.28s  index   v=2  q="soda stete"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete"
+  => PASS es phone switchMid: flip fires 0 req, no live while typing, exactly 1 idle live (listen q) — flipReqs=0 lives=1 q=soda stete
+[es phone] loadingDegraded (REAL server for live=1, no key; t=0 = Enter)
+     -3.18s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"  -> {"degraded":true,"reason":"no-api-key","results":[]}
+  => PASS es phone no-key Enter: 1 live, degraded copy, no idle retry — lives=1 ans={"degraded":true,"reason":"no-api-key","results":[]}
+[es phone] edges (short "abc"+Enter, then pasted link+Enter)
+
+  => PASS es phone edges: <4 chars Enter and pasted link Enter fire 0 live, no hint on link — short=0 lives=0 hint=false
+[pt-BR desktop] indexHit (t=0 = last keystroke; results visible 0.79s)
+      0.28s  index   v=2  q="evidencias karaoke"  -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidênc
+  => PASS pt-BR desktop indexHit: 0 live=1 after 10.5s, no hint — live=0 hint=false
+[pt-BR desktop] idle (typing took 1.3s; t=0 = last keystroke)
+      0.28s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      3.89s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS pt-BR desktop idle: 0 live while typing, exactly 1 live at ~4s, none again within 12s — typingLive=0 lives=1 firstAt=3.89s
+[pt-BR desktop] edit-after-idle (t=0 = last keystroke of " xyz")
+      0.28s  index   v=2  q="soda stete xyz karaoke"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete xyz karaoke"
+  => PASS pt-BR desktop edit after idle: exactly 1 new live for new text — newLives=1
+[pt-BR desktop] enter (t=0 = first Enter, pressed 0.90s after last keystroke; 2nd Enter at +0.4s)
+     -0.61s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS pt-BR desktop Enter: 1 live immediately, none from idle, double-Enter = 1 — lives=1 at=0.01s
+[pt-BR desktop] enterFast (t=0 = Enter immediately after last keystroke)
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS pt-BR desktop Enter-fast: exactly 1 live, no later idle live — lives=1
+[pt-BR desktop] loadMore (t=0 = Enter)
+     -0.02s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"
+      0.95s  PAGE    v=2  q="soda stete karaoke" pageToken=MOCKTOKEN
+  => PASS pt-BR desktop loadMore: reveal costs 0 requests, 2nd tap fetches 1 page (v=2, no live=1) — pageReqs=1
+[pt-BR desktop] listen (mode flip fired 0 reqs; t=0 = last keystroke)
+      0.28s  index   v=2  q="evidencias"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="evidencias"
+  => PASS pt-BR desktop listen: mode flip 0 req, 1 idle live with un-augmented q — lives=1 q=evidencias
+[pt-BR desktop] switchMid (flip after "soda st"; t=0 = last keystroke of "ete")
+     -1.48s  index   v=2  q="soda st karaoke"  -> {"results":[{"videoId":"_hzRr7AOOvI","title":"Soda Stereo - 
+      0.28s  index   v=2  q="soda stete"  -> {"results":[],"liveRequired":true}
+      3.89s  LIVE=1  v=2  q="soda stete"
+  => PASS pt-BR desktop switchMid: flip fires 0 req, no live while typing, exactly 1 idle live (listen q) — flipReqs=0 lives=1 q=soda stete
+[pt-BR desktop] loadingDegraded (REAL server for live=1, no key; t=0 = Enter)
+     -3.15s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"  -> {"degraded":true,"reason":"no-api-key","results":[]}
+  => PASS pt-BR desktop no-key Enter: 1 live, degraded copy, no idle retry — lives=1 ans={"degraded":true,"reason":"no-api-key","results":[]}
+[pt-BR desktop] edges (short "abc"+Enter, then pasted link+Enter)
+
+  => PASS pt-BR desktop edges: <4 chars Enter and pasted link Enter fire 0 live, no hint on link — short=0 lives=0 hint=false
+[en desktop] indexHit (t=0 = last keystroke; results visible 0.79s)
+      0.29s  index   v=2  q="evidencias karaoke"  -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidênc
+  => PASS en desktop indexHit: 0 live=1 after 10.5s, no hint — live=0 hint=false
+[en desktop] idle (typing took 1.3s; t=0 = last keystroke)
+      0.28s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS en desktop idle: 0 live while typing, exactly 1 live at ~4s, none again within 12s — typingLive=0 lives=1 firstAt=3.88s
+[en desktop] edit-after-idle (t=0 = last keystroke of " xyz")
+      0.28s  index   v=2  q="soda stete xyz karaoke"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete xyz karaoke"
+  => PASS en desktop edit after idle: exactly 1 new live for new text — newLives=1
+[en desktop] enter (t=0 = first Enter, pressed 0.90s after last keystroke; 2nd Enter at +0.4s)
+     -0.62s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS en desktop Enter: 1 live immediately, none from idle, double-Enter = 1 — lives=1 at=0.01s
+[en desktop] enterFast (t=0 = Enter immediately after last keystroke)
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS en desktop Enter-fast: exactly 1 live, no later idle live — lives=1
+[en desktop] loadMore (t=0 = Enter)
+     -0.02s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"
+      0.99s  PAGE    v=2  q="soda stete karaoke" pageToken=MOCKTOKEN
+  => PASS en desktop loadMore: reveal costs 0 requests, 2nd tap fetches 1 page (v=2, no live=1) — pageReqs=1
+[en desktop] listen (mode flip fired 0 reqs; t=0 = last keystroke)
+      0.28s  index   v=2  q="evidencias"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="evidencias"
+  => PASS en desktop listen: mode flip 0 req, 1 idle live with un-augmented q — lives=1 q=evidencias
+[en desktop] switchMid (flip after "soda st"; t=0 = last keystroke of "ete")
+     -1.45s  index   v=2  q="soda st karaoke"  -> {"results":[{"videoId":"_hzRr7AOOvI","title":"Soda Stereo - 
+      0.28s  index   v=2  q="soda stete"  -> {"results":[],"liveRequired":true}
+      3.89s  LIVE=1  v=2  q="soda stete"
+  => PASS en desktop switchMid: flip fires 0 req, no live while typing, exactly 1 idle live (listen q) — flipReqs=0 lives=1 q=soda stete
+[en desktop] loadingDegraded (REAL server for live=1, no key; t=0 = Enter)
+     -3.17s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"  -> {"degraded":true,"reason":"no-api-key","results":[]}
+  => PASS en desktop no-key Enter: 1 live, degraded copy, no idle retry — lives=1 ans={"degraded":true,"reason":"no-api-key","results":[]}
+[en desktop] edges (short "abc"+Enter, then pasted link+Enter)
+
+  => PASS en desktop edges: <4 chars Enter and pasted link Enter fire 0 live, no hint on link — short=0 lives=0 hint=false
+[es desktop] indexHit (t=0 = last keystroke; results visible 0.79s)
+      0.28s  index   v=2  q="evidencias karaoke"  -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidênc
+  => PASS es desktop indexHit: 0 live=1 after 10.5s, no hint — live=0 hint=false
+[es desktop] idle (typing took 1.3s; t=0 = last keystroke)
+      0.28s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS es desktop idle: 0 live while typing, exactly 1 live at ~4s, none again within 12s — typingLive=0 lives=1 firstAt=3.88s
+[es desktop] edit-after-idle (t=0 = last keystroke of " xyz")
+      0.28s  index   v=2  q="soda stete xyz karaoke"  -> {"results":[],"liveRequired":true}
+      3.89s  LIVE=1  v=2  q="soda stete xyz karaoke"
+  => PASS es desktop edit after idle: exactly 1 new live for new text — newLives=1
+[es desktop] enter (t=0 = first Enter, pressed 0.90s after last keystroke; 2nd Enter at +0.4s)
+     -0.62s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS es desktop Enter: 1 live immediately, none from idle, double-Enter = 1 — lives=1 at=0.00s
+[es desktop] enterFast (t=0 = Enter immediately after last keystroke)
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"
+  => PASS es desktop Enter-fast: exactly 1 live, no later idle live — lives=1
+[es desktop] loadMore (t=0 = Enter)
+     -0.02s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.00s  LIVE=1  v=2  q="soda stete karaoke"
+      0.96s  PAGE    v=2  q="soda stete karaoke" pageToken=MOCKTOKEN
+  => PASS es desktop loadMore: reveal costs 0 requests, 2nd tap fetches 1 page (v=2, no live=1) — pageReqs=1
+[es desktop] listen (mode flip fired 0 reqs; t=0 = last keystroke)
+      0.28s  index   v=2  q="evidencias"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="evidencias"
+  => PASS es desktop listen: mode flip 0 req, 1 idle live with un-augmented q — lives=1 q=evidencias
+[es desktop] switchMid (flip after "soda st"; t=0 = last keystroke of "ete")
+     -1.45s  index   v=2  q="soda st karaoke"  -> {"results":[{"videoId":"_hzRr7AOOvI","title":"Soda Stereo - 
+      0.28s  index   v=2  q="soda stete"  -> {"results":[],"liveRequired":true}
+      3.88s  LIVE=1  v=2  q="soda stete"
+  => PASS es desktop switchMid: flip fires 0 req, no live while typing, exactly 1 idle live (listen q) — flipReqs=0 lives=1 q=soda stete
+[es desktop] loadingDegraded (REAL server for live=1, no key; t=0 = Enter)
+     -3.16s  index   v=2  q="soda stete karaoke"  -> {"results":[],"liveRequired":true}
+      0.01s  LIVE=1  v=2  q="soda stete karaoke"  -> {"degraded":true,"reason":"no-api-key","results":[]}
+  => PASS es desktop no-key Enter: 1 live, degraded copy, no idle retry — lives=1 ans={"degraded":true,"reason":"no-api-key","results":[]}
+[es desktop] edges (short "abc"+Enter, then pasted link+Enter)
+
+  => PASS es desktop edges: <4 chars Enter and pasted link Enter fire 0 live, no hint on link — short=0 lives=0 hint=false
+
+SUMMARY: 60/60 passed
+# --- END OF RUN ---
