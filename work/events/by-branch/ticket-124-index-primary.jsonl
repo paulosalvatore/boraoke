@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-10-15T00:15:15Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-124", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/124-index-primary", "short_sha": "a680764", "message_slug": "feat(search): karaoke index as the primary search tier"}}
