@@ -1,0 +1,58 @@
+TICKET-143 title parser — measurement, 2026-10-15
+
+Command: npm run measure:t143   (default: work/measurements/ticket-143/labelled-sample.json)
+
+=== ACCEPTANCE SAMPLE (300 rows, local only: YouTube API data, gitignored) ===
+rows: 300
+kind precision (strict, all rows): 300/300 = 100.0%
+  predicted karaoke: 292/292 correct
+  predicted playback: 8/8 correct
+song+artist exact: 240/289 = 83.0%  (song 245/289, artist 244/289; 11 rows marked skipSongArtist)
+
+Acceptance: kind precision >= 95%  -> MET (100.0%). Weak on this sample: it is
+            karaoke-heavy (a constant `karaoke` classifier scores 292/300 =
+            97.3%); the informative kind number is the non-karaoke 78% below.
+            song+artist exact >= 85% -> moved to TICKET-145 (known-artists input),
+            TM decision 2026-10-15. Measured 83.0% here (a tuning-set figure)
+            and 77.1% on the holdout (an upper bound, see the review).
+
+Re-measured 2026-10-15 after the review fixes (by-bracket credit, "with the"
+band names, number-only segments, "X by Y" with a bracketed credit): unchanged,
+kind 300/300, song+artist 240/289.
+
+=== HOLDOUT (100 rows, NOT committed: the 300-row retention cap) ===
+Drawn with a separate seed (random.Random(1430), <= 3 rows/channel) from the
+same capture, excluding the 300. Labelled by hand AFTER the parser was frozen
+(sha1 d77cf66271e4857e00cce6b9950ace2a7d84192f; the only later parser change
+rewrote two regex character classes from literal characters to \u escapes,
+same matches, re-measured identical).
+rows: 100
+kind precision (strict, all rows): 100/100 = 100.0%
+  predicted karaoke: 97/97 correct
+  predicted playback: 3/3 correct
+song+artist exact: 74/96 = 77.1%  (song 76/96, artist 75/96; 4 rows marked skipSongArtist)
+
+=== SECONDARY: non-karaoke channels, kind only (100 rows, NOT committed) ===
+Rows from channels whose title does NOT match /karaok|playback/i (what a
+patron pick from live search looks like, for TICKET-137). Includes news,
+sports, kids' and vlog uploads labelled `unknown`.
+rows: 100
+kind precision (strict, all rows): 78/100 = 78.0%
+  predicted unknown: 29/47 correct
+  predicted karaoke: 27/28 correct
+  predicted live: 4/7 correct
+  predicted original: 11/11 correct
+  predicted lyric: 4/4 correct
+  predicted cover: 1/1 correct
+  predicted playback: 2/2 correct
+
+=== WHY SONG+ARTIST MISSES (300-row sample, 49 misses) ===
+Most misses are ORDER: "<a> - <b>" where the parser cannot tell which side is
+the artist. Channels disagree (Karaokê Club writes artist first, Karaokê Show
+Oficial song first) and many channels appear once. Per-channel templates fix
+it where a channel's OTHER uploads show its convention; the rest needs an
+artist lexicon (the TICKET-145 song spine) — the parser has no knowledge of
+who is an artist. Second class: no separator at all ("Zé Ramalho Chão de Giz
+Karaokê"), unsplittable without a lexicon. The rest are one-offs (medley
+leftovers, version words like "em Forrozinho", non-Latin duplicates).
+Run `npm run measure:t143 -- work/measurements/ticket-143/labelled-sample.json --misses` for the list.
