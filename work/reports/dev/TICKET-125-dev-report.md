@@ -1,7 +1,7 @@
 # TICKET-125 — Dev report
 
 ## Status
-Implemented and measured. The TM-requested compat change (protocol marker `v=2`, legacy fallback) is pushed. **Waiting on #88's fix batch to rebase, then re-measure and run e2e.** e2e has not been re-run since the compat change.
+Implemented, measured and self-verified on top of #88's fix batch (`bed2857`, merged in), including the `v=2` legacy-compat change. Draft PR #89. No gate requested yet.
 
 Earlier status: implemented, measured and self-verified. Draft PR open, base `ticket/124-index-primary` (stacked on PR #88; retarget to main after #88 merges). Not merged. No gate requested yet.
 
@@ -130,6 +130,32 @@ $(cat $S/mut2.txt)
 (The L3 line above is from before the cooldown tests were split into v2 and legacy. Re-run after the split: `L3 legacy exempt from the billed cooldown: Tests: 1 failed, 27 passed, 28 total`, failing on `legacy requests stay under the per-uuid billed cooldown (no per-keystroke billing by omitting v=2)`.)
 
 jest after the change: **61 suites, 1,071 passed, 5 skipped, 0 failed** (load ~12-13 on 10 cores).
+
+### 2026-10-14 base update: #88 fix batch merged in (`bed2857`)
+- **Merged, not rebased** (merge commit `d09ebd0`, parents `e445855` + `bed2857`). A rebase of the pushed, stacked branch would need a force-push. The house commit mechanism never force-pushes, and the TM allowed a merge as the no-force alternative. The PR diff against `ticket/124-index-primary` is unchanged in meaning.
+- Conflicts:
+  - README: kept #88's rewritten tier, storage and retention text, plus this ticket's Enter/idle paragraph.
+  - `api-search-index-tier.test.ts`: kept #88's "without even loading the index" assertion, with this ticket's `live=1`.
+- #88 stopped committing the harvested fixture (it is gitignored, local only). `measure:t125` now refuses to run without it, like `measure:t124`. I ran it against the same local fixture #88 measured with: harvested 2026-10-14T23:52:24Z, sha1 `4a7cd5b6…`, identical to the copy in the t124 worktree. The harness also uses #88's new title-only hit predicate (`--legacy-predicate` restores title+channel).
+- `npm run measure:t125 -- --controls` after the merge, verbatim:
+```
+SHIPPED: IDLE_SEARCH_MS=4000
+billed search.list per queued song:  BEFORE (PR #88) 1.22  ->  AFTER 0.89   (26 -> 18.91 mean calls over the same traces; p5-p95 18-21)
+                                     Enter-only floor 0.84   (no mid-title pause ever reaches N)
+hit@10 (settled):  BEFORE 25/28 (89%)  ->  AFTER mean 25.00/28, worst run 25/28 (89%)
+newly missed (Enter-only vs PR #88): (none)
+C1 S=1 (every pause bills)   billed 26 (PR #88: 26)  hit@10 25 (PR #88: 25)  -> identical to PR #88, as required
+C2 empty index, S=1          billed 48 (pre-index main: 48)  hit@10 22 (22)  -> identical to TICKET-108 main, as required
+C3 nothing ever goes live    billed 0  hit@10 on screen 15/28  -> quality DROPS — the Enter/idle settle is what keeps quality
+C4 S 0.05 -> 0.5              billed 18.44 -> 22.28  -> rises with S, as required
+```
+- The 125 replay reproduces #88's new numbers exactly: 26 billed, 1.22/song, 25/28 (#88 RESULTS line: `BEFORE 2.25  →  AFTER 1.22   (48 → 26 calls …)`, `hit@10: … AFTER 25/28 (89%)`).
+- jest after the merge: **63 suites, 1,087 passed, 5 skipped, 0 failed** (load ~11-12 on 10 cores).
+- **e2e, one full run after the merge (HEAD `b10f961`): 131/131 passed in 3.9 min.** Conditions:
+  - `workers: 1`, `PORT=3125`, warm `.next-e2e` build cache (the webServer rebuilds each run).
+  - Before starting I waited until no other playwright/next process was running; a `next dev -p 3134` from another tab had been live and had exited.
+  - Load was 9.9 at the start and 9.7 at the end on 10 cores.
+  - `e2e/_canary` passed, as did `e2e/tv.spec.ts:740`.
 
 ## Open items for the TM
 - Deploy skew: resolved by the `v=2` protocol marker (see above).
