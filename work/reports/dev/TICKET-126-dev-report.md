@@ -363,7 +363,7 @@ Tests:       13 skipped, 276 passed, 289 total
 - The 8-seed probe is now `it.each([1..8])`, one test per seed, so a timeout strands at most one probe's requests.
 - Optional nit taken: the in-process waiter clears its 6 s deadline timer once the leader settles.
 
-Before (head `4761cd4`'s parent tree, i.e. `5d95dd2`), `npx jest __tests__/search-single-flight.test.ts --testTimeout=1000`, load 103.93:
+Before (the merge head `8e27971`, tests as reviewed), `npx jest __tests__/search-single-flight.test.ts --testTimeout=1000`, load 103.93:
 ```
     ✓ 20 requests on 4 instances produce ONE billed call (350 ms)
     ✕ holds across 8 different interleavings (seeds), not one lucky schedule (1028 ms)
