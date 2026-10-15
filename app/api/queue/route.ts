@@ -6,8 +6,8 @@ import { checkSubmit, orderQueue, relayQueue } from "@/lib/rotation";
 import { submitRateLimitOk } from "@/lib/queue-rate-limit";
 import { getTranslations } from "next-intl/server";
 import { clientIpFrom } from "@/lib/host-auth";
-import { checkEmbeddable, isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
-import { getCachedEmbeddable, setCachedEmbeddable } from "@/lib/embed-cache";
+import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
+import { lookupForSubmit } from "@/lib/video-meta";
 import { track } from "@/lib/telemetry";
 import { pendingStore } from "@/lib/pending-store";
 import {
@@ -102,24 +102,14 @@ export async function POST(req: NextRequest) {
       ? rawVideoId
       : parseYouTubeVideoId(typeof youtubeUrl === "string" ? youtubeUrl : "");
 
-  // TICKET-61 — PASTE vs SEARCH, the one place the distinction is made.
+  // TICKET-61 / TICKET-140 — PASTE vs SEARCH is now a TELEMETRY LABEL only.
   //
-  // A submission is a PASTE when either:
-  //   (a) it carried no pre-parsed `videoId` at all (a raw `youtubeUrl` body —
-  //       inherently a pasted link: nothing but a paste produces a URL), or
-  //   (b) the client explicitly declared `source: "paste"`.
-  // Anything else — a pre-parsed `videoId` with `source` absent or "search" —
-  // is treated as SEARCH and skips the embeddability pre-check entirely, because
-  // `lib/youtube-search.ts` already constrains results with
-  // `videoEmbeddable=true` + `videoSyndicated=true`; re-checking burns quota to
-  // re-learn what the search filter guaranteed.
-  //
-  // `source` is a client hint, and that is safe by construction: it can only
-  // cause ONE extra quota unit or ONE missing (non-blocking) warning — it can
-  // never affect acceptance, storage, or authorization. An unknown value is
-  // treated as "search" (the quota-conservative default), which also keeps
-  // already-cached older clients — which send `videoId` with no `source` —
-  // behaving exactly as they do today.
+  // It used to decide whether the embeddability check ran, so a client that
+  // sent `source: "search"` with a pasted video skipped it (TICKET-140 gap 6).
+  // The check now runs for every submit (cached, see below), so nothing about
+  // acceptance, storage or the title depends on what the client claims. A
+  // URL-only body is inherently a paste; otherwise the client's hint labels the
+  // `song_queued` event, and an unknown value counts as "search".
   const submittedAsUrl = !(typeof rawVideoId === "string" && rawVideoId);
   const isPaste = submittedAsUrl || source === "paste";
 
@@ -215,51 +205,37 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // TICKET-61: embeddability pre-check for the PASTE path only (1 quota unit
-  // on a cache miss — see TICKET-95 below). Deliberately placed HERE — after
-  // body validation, after the dual-bucket rate limit, and after
-  // `checkSubmit` — so a malformed, throttled or refused submit can never
-  // spend a quota unit, and the outbound call is only ever made on behalf of
-  // a request that is already going to be accepted.
+  // TICKET-61 / TICKET-95 / TICKET-140: the server-side video lookup, for
+  // EVERY submit. Deliberately placed HERE — after body validation, after the
+  // dual-bucket rate limit, and after `checkSubmit` — so a malformed, throttled
+  // or refused submit can never make an outbound call.
   //
-  // TICKET-95 (MEDIUM-1 of the TICKET-67 cyber follow-ups): a cross-instance
-  // cache (`lib/embed-cache.ts`) is consulted BEFORE any outbound call — a hit
-  // burns zero quota AND skips the ~1.5s worst-case hold time entirely, so a
-  // venue re-queuing the same handful of songs all night pays for the check
-  // once. Only a REAL `checkEmbeddable` answer is written back to the cache;
-  // a cache lookup/write is skipped entirely when no key is configured (the
-  // "unknown" that produces is a config fact, not a real API answer — nothing
-  // useful to cache, and it would otherwise pollute the cache with a verdict
-  // that has no bearing on whether a key gets configured later within the
-  // TTL window).
+  // `lookupForSubmit` (lib/video-meta.ts) answers from the cross-instance
+  // caches first (`ec:` verdict, `vm:` title), so a venue re-queuing the same
+  // songs all night pays once. On a miss it makes at most ONE `videos.list`
+  // call (status + snippet + contentDetails, 1 unit from the separate ~10k/day
+  // pool, never `search.list`) and, only if that gave no title, ONE keyless
+  // oEmbed call. Both have bounded timeouts and never throw.
   //
-  // NON-BLOCKING BY CONSTRUCTION: `checkEmbeddable` never throws and collapses
-  // every failure (no key, HTTP error, quota exhaustion, timeout, bad payload)
-  // to "unknown". Only the explicit "not-embeddable" verdict produces a warning,
-  // so a broken/absent YouTube API degrades to exactly today's behavior. The
-  // cache itself is equally fail-open (see lib/embed-cache.ts) — any Redis
-  // trouble degrades to a live `checkEmbeddable` call, never a blocked submit.
-  // The whole block is try/caught (cyber gate LOW-1): `checkEmbeddable` cannot
-  // throw, but `getTranslations` is a dependency call on what is now the SUCCESS
-  // path — and it runs BEFORE `store.addEntry`, so an i18n failure here would
-  // turn an about-to-be-accepted submit into a 500 and silently drop the song.
-  // "This never blocks" has to cover the advisory's own machinery too.
-  let warning: string | undefined;
-  if (isPaste) {
-    try {
-      const key = process.env.YOUTUBE_API_KEY;
-      let status = key ? await getCachedEmbeddable(resolvedVideoId) : null;
-      if (status === null) {
-        status = await checkEmbeddable(resolvedVideoId, key);
-        if (key) await setCachedEmbeddable(resolvedVideoId, status);
-      }
-      if (status === "not-embeddable") {
-        const tw = await getTranslations("Errors");
-        warning = tw("submitNotEmbeddable");
-      }
-    } catch {
-      warning = undefined; // advisory only — never degrade the submit
-    }
+  // TICKET-140 gap 5: a DEFINITE "not-embeddable" answer now refuses the song
+  // (it would only die on the TV). Every other outcome — embeddable, no key,
+  // quota, HTTP error, timeout — lets it through, exactly as before.
+  const lookup = await lookupForSubmit(resolvedVideoId);
+  if (lookup.status === "not-embeddable") {
+    void track("submit_rejected", { roomId, uuid: entry.patronUuid, props: { reason: "not-embeddable" } }); // fire-and-forget, fail-open
+    const te = await getTranslations("Errors");
+    return NextResponse.json(
+      { error: te("submitNotEmbeddable"), reason: "not-embeddable" },
+      { status: 422 },
+    );
+  }
+  // TICKET-140 gap 6: the title is the server's whenever it has one. The
+  // client-sent title (validated above for length) is only the fallback when
+  // every lookup failed, so the display is never worse than before.
+  if (lookup.meta?.title) {
+    entry.title = lookup.meta.title;
+    if (lookup.meta.channelTitle) entry.channelTitle = lookup.meta.channelTitle;
+    if (lookup.meta.duration) entry.duration = lookup.meta.duration;
   }
 
   // TICKET-44: venue-optional moderation. When the room has moderation ON, the
@@ -300,10 +276,8 @@ export async function POST(req: NextRequest) {
     // we do NOT echo the full QueueEntry (drops patronUuid et al. — PR#25 sec
     // LOW-1: no needless PII/enumeration surface). `pending`/`pendingId` stay:
     // they are non-PII and the moderation test asserts them.
-    // TICKET-61: `warning` is additive and OPTIONAL — a localized string only,
-    // never entry/video metadata, so the trimmed TICKET-54 shape is preserved.
     return NextResponse.json(
-      { pending: true, pendingId: pendingEntry.pendingId, ...(warning ? { warning } : {}) },
+      { pending: true, pendingId: pendingEntry.pendingId },
       { status: 202 },
     );
   }
@@ -330,7 +304,8 @@ export async function POST(req: NextRequest) {
   void track("song_queued", { roomId, uuid: entry.patronUuid, props: { kind: isPaste ? "paste" : "search", mode: resolvedMode } }); // TICKET-12: fire-and-forget, fail-open
   // Minimal ack — the patron client discards this body and refetches the queue
   // (GET /api/queue), so we do NOT echo the full QueueEntry / patronUuid back
-  // (PR#25 sec LOW-2: trim needless PII/enumeration surface). TICKET-61 adds at
-  // most one OPTIONAL localized `warning` string — no entry/video metadata.
-  return NextResponse.json({ ok: true, ...(warning ? { warning } : {}) }, { status: 201 });
+  // (PR#25 sec LOW-2: trim needless PII/enumeration surface). TICKET-140
+  // dropped TICKET-61's advisory `warning`: a definite not-embeddable answer
+  // is now a refusal (422) instead.
+  return NextResponse.json({ ok: true }, { status: 201 });
 }

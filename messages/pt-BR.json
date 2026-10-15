@@ -209,7 +209,7 @@
     "label": "Buscar música ou colar link do YouTube *",
     "aria": "Buscar música ou colar link do YouTube",
     "placeholder": "Ex.: evidências — ou cole um link do YouTube",
-    "rateLimited": "Muitas buscas — aguarde um instante.",
+    "rateLimited": "Muitas buscas — aguarde um instante ou cole um link do YouTube.",
     "youtubeLink": "Link do YouTube",
     "pastedLink": "Link colado",
     "degraded": "Busca indisponível — cola o link do YouTube",
@@ -254,7 +254,7 @@
     "errorOffline": "Sem conexão? Tenta de novo em instantes."
   },
   "Errors": {
-    "searchRateLimited": "Muitas buscas — aguarde um instante e tente de novo.",
+    "searchRateLimited": "Muitas buscas — aguarde um instante e tente de novo, ou cole um link do YouTube.",
     "roomsRateLimited": "Muitas salas criadas — tente de novo em uma hora.",
     "roomsFull": "Estamos lotados por enquanto — tente de novo mais tarde.",
     "submitRateLimited": "Calma, cantor! Muitos pedidos em pouco tempo — espere um minutinho e tente de novo.",
@@ -266,7 +266,7 @@
     "submitTableCap": "Sua mesa já tem {cap} músicas na fila — espere uma tocar.",
     "submitPersonCap": "Você já tem {cap} músicas na fila — espere uma tocar para adicionar outra.",
     "pendingFull": "Tem muita música esperando aprovação agora — tente de novo daqui a pouco.",
-    "submitNotEmbeddable": "esse vídeo não permite reprodução em telões — pode não tocar"
+    "submitNotEmbeddable": "Esse vídeo não toca no telão do bar — o dono do vídeo não permite. Tenta outra versão da música."
   },
   "Meta": {
     "title": "Boraoke — a fila do karaokê na TV, no celular de todos",

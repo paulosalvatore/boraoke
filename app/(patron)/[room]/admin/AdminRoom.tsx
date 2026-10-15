@@ -1,4 +1,5 @@
 "use client";
+import { songLabel } from "@/lib/song-label";
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
@@ -560,7 +561,7 @@ export default function AdminRoom({
                         ) : null}
                       </div>
                       <div className={styles.song}>
-                        {p.entry.title ?? `youtu.be/${p.entry.videoId}`}
+                        {songLabel(p.entry, { duration: true })}
                       </div>
                     </div>
                     <div className={styles.pendingActions}>
@@ -623,7 +624,7 @@ export default function AdminRoom({
                         ) : null}
                       </div>
                       <div className={styles.song}>
-                        {entry.title ?? `youtu.be/${entry.videoId}`}
+                        {songLabel(entry)}
                       </div>
                     </div>
                     <div className={styles.rowActions}>

@@ -1,4 +1,5 @@
 "use client";
+import { songLabel } from "@/lib/song-label";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
@@ -210,7 +211,7 @@ export default function PatronRoom({
     // just loses one advisory warning. Nothing about acceptance changes.
     // FOLLOW-UP: have SongSearch carry an explicit `source` on SongSelection —
     // that file is owned by a parallel ticket right now.
-    setSelectionSource(sel && sel.title === undefined ? "paste" : "search");
+    setSelectionSource(sel?.source ?? (sel && sel.title === undefined ? "paste" : "search"));
     if (sel?.title) {
       setTitle((prev) => (prev.trim() ? prev : sel.title!));
     }
@@ -494,7 +495,7 @@ export default function PatronRoom({
                   }}
                 >
                   <p style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {p.entry.title ?? `youtu.be/${p.entry.videoId}`}
+                    {songLabel(p.entry)}
                   </p>
                   <p style={{ fontSize: "0.8rem", color: rejected ? "var(--accent-text)" : "var(--text-muted)", marginTop: "4px" }}>
                     {rejected ? t("pendingRejected") : t("pendingWaiting")}
@@ -604,7 +605,7 @@ export default function PatronRoom({
                     data-testid="queue-row-title"
                     style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                   >
-                    {entry.title ?? `youtu.be/${entry.videoId}`}
+                    {songLabel(entry)}
                   </p>
                   <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
                     {entry.nickname}

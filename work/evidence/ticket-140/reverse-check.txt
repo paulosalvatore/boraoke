@@ -1,0 +1,45 @@
+# Reverse-check: new tests vs the pre-fix code (base ede63ef)
+
+## 1. lib/youtube.ts with the OLD parseYouTubeVideoId body
+    ✕ Imagination is searched, not taken as an id (1 ms)
+    ✕ Bittersweet is searched, not taken as an id (1 ms)
+    ✕ Unbreakable is searched, not taken as an id
+    ✕ imagination is searched, not taken as an id
+    ✕ UNBREAKABLE is searched, not taken as an id
+    ✕ rock-n-roll is searched, not taken as an id
+    ✕ hip-hop-pop is searched, not taken as an id (1 ms)
+    ✕ accepts music.youtube.com watch (1 ms)
+    ✕ accepts youtube-nocookie embed
+    ✕ accepts youtube-nocookie embed, no www
+    ✕ accepts upper-case scheme + host
+    ✕ accepts mixed-case scheme (1 ms)
+    ✕ accepts youtu.be trailing slash (1 ms)
+    ✕ accepts youtu.be trailing slash + si (1 ms)
+    ✕ accepts share text, pt-BR (1 ms)
+    ✕ accepts share text, link first (1 ms)
+    ✕ accepts share text, parenthesised
+    ✕ accepts share text, trailing comma (1 ms)
+    ✕ accepts share text, newline (1 ms)
+    ✕ refuses embed id with trailing junk
+    ✕ refuses embed id with an extra path segment
+    ✕ refuses shorts id with an extra path segment
+Tests:       22 failed, 66 passed, 88 total
+
+## 2. app/api/queue/route.ts at base ede63ef
+      ✕ paste → 422 with friendly copy, nothing queued (8 ms)
+      ✕ a moderated room refuses it too — nothing reaches the pending list (3 ms)
+      ✕ source:'search' with a not-embeddable video is still refused
+      ✕ no source (legacy client) with a not-embeddable video is still refused
+      ✕ an unknown source with a not-embeddable video is still refused
+      ✕ a URL-only body is checked too (1 ms)
+      ✕ spends exactly ONE videos.list call per submit, for status+snippet+contentDetails
+      ✕ videos.list snippet replaces a client-sent title; channel and duration are stored (2 ms)
+      ✕ no key: the title comes from oEmbed — one oEmbed call, zero Data API calls (2 ms)
+      ✕ videos.list fails: oEmbed is the fallback title source
+      ✕ two patrons, same video: one videos.list call total, and the title still lands (2 ms)
+      ✕ a cached not-embeddable verdict refuses the repeat with zero calls (1 ms)
+Tests:       12 failed, 26 passed, 38 total
+
+## 3. With the change
+Test Suites: 3 passed, 3 total
+Tests:       134 passed, 134 total
