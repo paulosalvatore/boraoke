@@ -1,0 +1,97 @@
+==============================================================================================================
+TICKET-124 — karaoke index as primary tier: billed calls AND quality, replayed over real production traces
+==============================================================================================================
+index fixture: 71 channels, 38275 videos, harvested 2026-10-14T23:52:24.533Z  (build 300 ms)
+oracle: 80 production cache keys; traces: 32 keystroke families
+client policy (shipped): MIN_CHARS=4, MIN_LOCAL_MATCHES=3
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+BEFORE — main today (TICKET-108 shipped, no index). Re-measured, not copied.
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+billed 48 of 80 pre-108 calls  =  2.25 billed search.list calls per queued song
+quality                                  n=28  hit@1 16 ( 57%)  hit@5 21 ( 75%)  hit@10 22 ( 79%)
+excluded (never searched in production, no page to grade): 4 — boquinha da g karaoke | olha a onfs karaoke | boquinha da garrafa karaoke | na boca da garrafa karaoke
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+AFTER — cache → index → live.  Threshold curve (confidence = mean per-token match quality of the best row).
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+minChars=3 threshold=0.5  billed 18 (index served 29)  = 0.84/song   n=28  hit@1 22 ( 79%)  hit@5 26 ( 93%)  hit@10 26 ( 93%)  ▲ +4
+minChars=3 threshold=0.6  billed 25 (index served 22)  = 1.17/song   n=28  hit@1 22 ( 79%)  hit@5 26 ( 93%)  hit@10 26 ( 93%)  ▲ +4
+minChars=3 threshold=0.7  billed 25 (index served 22)  = 1.17/song   n=28  hit@1 22 ( 79%)  hit@5 26 ( 93%)  hit@10 26 ( 93%)  ▲ +4
+minChars=3 threshold=0.8  billed 26 (index served 21)  = 1.22/song   n=28  hit@1 21 ( 75%)  hit@5 25 ( 89%)  hit@10 25 ( 89%)  ▲ +3
+minChars=3 threshold=0.9  billed 31 (index served 18)  = 1.45/song   n=28  hit@1 20 ( 71%)  hit@5 23 ( 82%)  hit@10 23 ( 82%)  ▲ +1
+minChars=3 threshold=1.0  billed 34 (index served 14)  = 1.59/song   n=28  hit@1 18 ( 64%)  hit@5 22 ( 79%)  hit@10 22 ( 79%)  = holds
+minChars=4 threshold=0.5  billed 18 (index served 29)  = 0.84/song   n=28  hit@1 22 ( 79%)  hit@5 26 ( 93%)  hit@10 26 ( 93%)  ▲ +4
+minChars=4 threshold=0.6  billed 25 (index served 22)  = 1.17/song   n=28  hit@1 22 ( 79%)  hit@5 26 ( 93%)  hit@10 26 ( 93%)  ▲ +4
+minChars=4 threshold=0.7  billed 25 (index served 22)  = 1.17/song   n=28  hit@1 22 ( 79%)  hit@5 26 ( 93%)  hit@10 26 ( 93%)  ▲ +4
+minChars=4 threshold=0.8  billed 26 (index served 21)  = 1.22/song   n=28  hit@1 21 ( 75%)  hit@5 25 ( 89%)  hit@10 25 ( 89%)  ▲ +3
+minChars=4 threshold=0.9  billed 31 (index served 18)  = 1.45/song   n=28  hit@1 20 ( 71%)  hit@5 23 ( 82%)  hit@10 23 ( 82%)  ▲ +1
+minChars=4 threshold=1.0  billed 34 (index served 14)  = 1.59/song   n=28  hit@1 18 ( 64%)  hit@5 22 ( 79%)  hit@10 22 ( 79%)  = holds
+minChars=5 threshold=0.5  billed 30 (index served 19)  = 1.41/song   n=28  hit@1 21 ( 75%)  hit@5 24 ( 86%)  hit@10 24 ( 86%)  ▲ +2
+minChars=5 threshold=0.6  billed 34 (index served 15)  = 1.59/song   n=28  hit@1 21 ( 75%)  hit@5 24 ( 86%)  hit@10 24 ( 86%)  ▲ +2
+minChars=5 threshold=0.7  billed 34 (index served 15)  = 1.59/song   n=28  hit@1 21 ( 75%)  hit@5 24 ( 86%)  hit@10 24 ( 86%)  ▲ +2
+minChars=5 threshold=0.8  billed 35 (index served 14)  = 1.64/song   n=28  hit@1 20 ( 71%)  hit@5 23 ( 82%)  hit@10 23 ( 82%)  ▲ +1
+minChars=5 threshold=0.9  billed 38 (index served 11)  = 1.78/song   n=28  hit@1 20 ( 71%)  hit@5 23 ( 82%)  hit@10 23 ( 82%)  ▲ +1
+minChars=5 threshold=1.0  billed 41 (index served  7)  = 1.92/song   n=28  hit@1 18 ( 64%)  hit@5 22 ( 79%)  hit@10 22 ( 79%)  = holds
+minChars=6 threshold=0.5  billed 35 (index served 14)  = 1.64/song   n=28  hit@1 21 ( 75%)  hit@5 24 ( 86%)  hit@10 24 ( 86%)  ▲ +2
+minChars=6 threshold=0.6  billed 36 (index served 13)  = 1.69/song   n=28  hit@1 21 ( 75%)  hit@5 24 ( 86%)  hit@10 24 ( 86%)  ▲ +2
+minChars=6 threshold=0.7  billed 36 (index served 13)  = 1.69/song   n=28  hit@1 21 ( 75%)  hit@5 24 ( 86%)  hit@10 24 ( 86%)  ▲ +2
+minChars=6 threshold=0.8  billed 37 (index served 12)  = 1.73/song   n=28  hit@1 20 ( 71%)  hit@5 23 ( 82%)  hit@10 23 ( 82%)  ▲ +1
+minChars=6 threshold=0.9  billed 39 (index served 10)  = 1.83/song   n=28  hit@1 20 ( 71%)  hit@5 23 ( 82%)  hit@10 23 ( 82%)  ▲ +1
+minChars=6 threshold=1.0  billed 42 (index served  6)  = 1.97/song   n=28  hit@1 18 ( 64%)  hit@5 22 ( 79%)  hit@10 22 ( 79%)  = holds
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+LONG-TAIL SIMULATION — the wanted song is removed from the index; a confident index answer is a false answer.
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+minChars=4 threshold=0.5  false confident answers  4/18   hit@10 10/18 (live alone: 12/18)   escu karaoke | borbu karaoke | borb karaoke | cerol na karaoke
+minChars=4 threshold=0.6  false confident answers  3/18   hit@10 11/18 (live alone: 12/18)   escu karaoke | borbu karaoke | borb karaoke
+minChars=4 threshold=0.7  false confident answers  3/18   hit@10 11/18 (live alone: 12/18)   escu karaoke | borbu karaoke | borb karaoke
+minChars=4 threshold=0.8  false confident answers  3/18   hit@10 11/18 (live alone: 12/18)   escu karaoke | borbu karaoke | borb karaoke
+minChars=4 threshold=0.9  false confident answers  0/18   hit@10 12/18 (live alone: 12/18)   
+minChars=4 threshold=1.0  false confident answers  0/18   hit@10 12/18 (live alone: 12/18)   
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+INDEX ANSWER SIZE — rows returned per index answer (threshold 0.8, minChars 4); the client reveals 8 per tap
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+limit=10  billed 26  = 1.22/song   n=28  hit@1 21 ( 75%)  hit@5 25 ( 89%)  hit@10 25 ( 89%)   taps to reach live after a wrong index answer: 2
+limit=16  billed 26  = 1.22/song   n=28  hit@1 21 ( 75%)  hit@5 25 ( 89%)  hit@10 25 ( 89%)   taps to reach live after a wrong index answer: 2
+limit=24  billed 26  = 1.22/song   n=28  hit@1 21 ( 75%)  hit@5 25 ( 89%)  hit@10 25 ( 89%)   taps to reach live after a wrong index answer: 3
+limit=50  billed 26  = 1.22/song   n=28  hit@1 21 ( 75%)  hit@5 25 ( 89%)  hit@10 25 ( 89%)   taps to reach live after a wrong index answer: 7
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+CHANNEL-COLLISION PROBE — every index row served must carry the word in its TITLE
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  "brasil karaoke": index 16 rows, 0 without "brasil" in the title
+  "show karaoke": index 16 rows, 0 without "show" in the title
+  "zoom karaoke": index 16 rows, 0 without "zoom" in the title
+  "club karaoke": index 16 rows, 0 without "club" in the title
+  "neon karaoke": index 9 rows, 0 without "neon" in the title
+  "palco karaoke": index 9 rows, 0 without "palco" in the title
+  "piano karaoke": index 16 rows, 0 without "piano" in the title
+  "party karaoke": index 16 rows, 0 without "party" in the title
+  "star karaoke": index 16 rows, 0 without "star" in the title
+  "digital karaoke": index 7 rows, 0 without "digital" in the title
+  → 0 channel-only rows served
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+SHIPPED VALUES: GOOD_MATCH_THRESHOLD=0.8  MIN_INDEX_QUERY_CHARS=4
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+billed search.list per queued song:  BEFORE 2.25  →  AFTER 1.22   (48 → 26 calls over the same traces, 21 fetches answered by the index)
+hit@10:  BEFORE 22/28 (79%)  →  AFTER 25/28 (89%)
+BEFORE                                   n=28  hit@1 16 ( 57%)  hit@5 21 ( 75%)  hit@10 22 ( 79%)
+AFTER                                    n=28  hit@1 21 ( 75%)  hit@5 25 ( 89%)  hit@10 25 ( 89%)
+why AFTER still billed: {"not-sing-mode":14,"weak-match":12}
+before misses: escu karaoke | escurinho do cin karaoke | borb karaoke | banderille karaoke | soda stete karaoke | banderilleros karaoke
+after  misses: banderille karaoke | soda stete karaoke | banderilleros karaoke
+newly missed by AFTER: (none)   newly hit by AFTER: escu karaoke | escurinho do cin karaoke | borb karaoke
+
+index ALONE, no fallback (cf. spike 66%) n=28  hit@1 22 ( 79%)  hit@5 23 ( 82%)  hit@10 23 ( 82%)
+latency: 1.80 ms/query mean over 560 searches (in-process, warm)
+
+==============================================================================================================
+PROVE-THE-MEASUREMENT-CAN-FAIL CONTROLS — each breaks something on purpose; the number MUST move
+==============================================================================================================
+C1 empty index           billed 48 (BEFORE 48)  hit@10 22 (BEFORE 22)  → identical to BEFORE, as required
+C2 threshold removed     replay: billed 18  hit@10 26   long-tail: false confident answers 4/18 (shipped: 3)  → false answers RISE — the threshold is load-bearing where it is meant to act
+C3 scrambled index       billed 26  hit@10 12 (graded on the videos' REAL titles)  → quality DROPS — the grade sees the index's actual answers
+C4 empty rows            hit@10 0  → 0, as required

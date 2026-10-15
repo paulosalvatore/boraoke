@@ -1,3 +1,9 @@
+---
+ticket: TICKET-118
+product: boraoke
+status: in_progress
+---
+
 # TICKET-118 — Logout revokes the claim credential but NOT a host session already minted from it, and there is no rotation lever
 
 **Filed:** 2026-09-28, from the TICKET-104 security re-gate (finding O-A, HIGH). **Pre-existing on `main`** — PR #81 neither introduces nor worsens it.

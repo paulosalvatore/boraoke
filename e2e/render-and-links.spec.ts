@@ -238,6 +238,57 @@ test("landing venue labels expose clean accessible names (no separator, no doubl
   expect(seps.every((v) => v === "true"), "every decorative separator must be aria-hidden").toBe(true);
 });
 
+/**
+ * TICKET-101 — the landing dropped flex `gap` (Chrome 84) for child margins so a
+ * Chrome-68 TV gets its spacing. That conversion is easy to get subtly wrong,
+ * and every slip below shipped once and was caught only by measuring against
+ * production: a later declaration on the same element replacing an earlier
+ * margin, a leading `* + *` margin indenting a wrapped item, and a sibling
+ * selector that can never match a bare text node. These pin the VISIBLE
+ * spacing (between rendered things), not container boxes, which the margin
+ * technique legitimately changes.
+ */
+test("landing spacing survives the flex-gap conversion (TICKET-101)", async ({ page }) => {
+  const near = (actual: number, expected: number, what: string) =>
+    expect(Math.abs(actual - expected), `${what}: got ${actual.toFixed(2)}px, want ${expected}px`).toBeLessThanOrEqual(1);
+
+  for (const width of [1440, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await expect(page.locator("#landing-hero-title")).toBeVisible();
+
+    const m = await page.evaluate(() => {
+      const box = (el: Element | null) => (el ? el.getBoundingClientRect() : null);
+      const lis = [...document.querySelectorAll('[class*="venueList"] > li')];
+      const lastVenue = box(lis[lis.length - 1]);
+      const h1 = box(document.getElementById("landing-hero-title"));
+      const row = document.querySelector('[class*="rail"] li');
+      const title = box(row?.children[0] ?? null);
+      const who = box(row?.children[1] ?? null);
+      const fab = document.querySelector('button[class*="FeedbackWidget_fab__"]');
+      const icon = box(fab?.querySelector("span") ?? null);
+      const textNode = fab ? [...fab.childNodes].find((n) => n.nodeType === 3 && n.textContent!.trim()) : undefined;
+      let label: DOMRect | null = null;
+      if (textNode) {
+        const r = document.createRange();
+        r.selectNodeContents(textNode);
+        label = r.getBoundingClientRect();
+      }
+      return { lastVenue, h1, title, who, icon, label };
+    });
+
+    // `.venues` margin-bottom: 1.25rem below the last venue name.
+    near(m.h1!.top - m.lastVenue!.bottom, 20, `${width}px venues → h1 spacing`);
+    // FeedbackWidget fab: 8px between the icon and its bare-text label.
+    near(m.label!.left - m.icon!.right, 8, `${width}px fab icon → label spacing`);
+    if (width === 320) {
+      // Demo rail: a wrapped `.who` starts flush with the title, not indented.
+      expect(m.who!.top, "rail row should wrap at 320px").toBeGreaterThan(m.title!.top);
+      near(m.who!.left, m.title!.left, "320px wrapped rail .who left edge");
+    }
+  }
+});
+
 test("/new renders the create form", async ({ page }) => {
   await page.goto("/new");
   await expect(page.getByLabel(/nome do bar/i)).toBeVisible();

@@ -20,6 +20,15 @@ import {
 } from "@/lib/search-budget";
 import type { NextRequest } from "next/server";
 
+// TICKET-125: these requests model the BILLED path, so they carry `live=1`.
+// The per-uuid live cooldown is covered by __tests__/live-search-gate.test.ts;
+// it is neutralised here so these suites keep testing what they were written for.
+jest.mock("@/lib/live-search-gate", () => ({
+  ...jest.requireActual("@/lib/live-search-gate"),
+  liveCooldown: () => ({ ok: true }),
+}));
+
+
 /**
  * A stand-in Upstash client that fails EVERY command — used only by the
  * fail-closed test below. The rest of this file runs on the memory driver, so
@@ -62,7 +71,7 @@ function testUuid(n: number): string {
 
 /** Unique query per call so the result cache never masks a real outbound call. */
 function makeReq(q: string, n: number): NextRequest {
-  const url = `http://127.0.0.1:3194/api/search?q=${encodeURIComponent(q)}&uuid=${testUuid(n)}`;
+  const url = `http://127.0.0.1:3194/api/search?q=${encodeURIComponent(q)}&uuid=${testUuid(n)}&live=1`;
   // A distinct IP per caller: the per-IP window (30/10s) would otherwise trip
   // first and we would be testing the wrong limiter.
   return new Request(url, {
@@ -188,7 +197,7 @@ describe("the existing per-uuid / per-IP limiter is NOT weakened", () => {
     const uuid = testUuid(42);
     const req = (q: string) =>
       new Request(
-        `http://127.0.0.1:3194/api/search?q=${encodeURIComponent(q)}&uuid=${uuid}`,
+        `http://127.0.0.1:3194/api/search?q=${encodeURIComponent(q)}&uuid=${uuid}&live=1`,
         { headers: { "x-forwarded-for": "198.51.100.9" } },
       ) as unknown as NextRequest;
 
@@ -207,7 +216,7 @@ describe("the existing per-uuid / per-IP limiter is NOT weakened", () => {
     const uuid = testUuid(43);
     const req = (q: string) =>
       new Request(
-        `http://127.0.0.1:3194/api/search?q=${encodeURIComponent(q)}&uuid=${uuid}`,
+        `http://127.0.0.1:3194/api/search?q=${encodeURIComponent(q)}&uuid=${uuid}&live=1`,
         { headers: { "x-forwarded-for": "198.51.100.10" } },
       ) as unknown as NextRequest;
     for (let i = 0; i < 20; i++) await GET(req(`rl ${i}`));

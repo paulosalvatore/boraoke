@@ -1,3 +1,9 @@
+---
+ticket: TICKET-119
+product: boraoke
+status: in_review
+---
+
 # TICKET-119 — The claim/login throttle key is client-controlled, so the host-code brute-force control is resettable
 
 **Filed:** 2026-09-28, from the TICKET-104 security re-gate (finding O-B, MEDIUM). **Pre-existing on `main`** — reachable through the login route alone, so PR #81 neither introduces nor worsens it.

@@ -35,6 +35,15 @@ import { getCachedSearchPage, setCachedSearchPage } from "@/lib/search-cache";
 import type { NextRequest } from "next/server";
 import { _resetSearchBudget } from "@/lib/search-budget";
 
+// TICKET-125: these requests model the BILLED path, so they carry `live=1`.
+// The per-uuid live cooldown is covered by __tests__/live-search-gate.test.ts;
+// it is neutralised here so these suites keep testing what they were written for.
+jest.mock("@/lib/live-search-gate", () => ({
+  ...jest.requireActual("@/lib/live-search-gate"),
+  liveCooldown: () => ({ ok: true }),
+}));
+
+
 const KEY_BACKUP = process.env.YOUTUBE_API_KEY;
 
 function testUuid(n: number): string {
@@ -47,7 +56,7 @@ function makeReq(
   pageToken?: string,
   page?: number,
 ): NextRequest {
-  let url = `http://127.0.0.1:3040/api/search?q=${encodeURIComponent(q)}&uuid=${uuid}`;
+  let url = `http://127.0.0.1:3040/api/search?q=${encodeURIComponent(q)}&uuid=${uuid}&live=1`;
   if (pageToken !== undefined) url += `&pageToken=${encodeURIComponent(pageToken)}`;
   if (page !== undefined) url += `&page=${page}`;
   return new Request(url) as unknown as NextRequest;

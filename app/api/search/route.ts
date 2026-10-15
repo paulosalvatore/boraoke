@@ -3,6 +3,7 @@ import {
   searchYouTubePage,
   cacheKey,
   rateLimitOk,
+  indexRateLimitOk,
   SEARCH_DEFAULTS,
   MAX_SEARCH_PAGES,
   YouTubeQuotaError,
@@ -10,10 +11,14 @@ import {
 import { getCachedSearchPage, setCachedSearchPage } from "@/lib/search-cache";
 import { reserveSearchCall } from "@/lib/search-budget";
 import { track } from "@/lib/telemetry";
+import { getKaraokeIndex } from "@/lib/karaoke-index/store";
+import { decideTier, INDEX_MORE_TOKEN } from "@/lib/karaoke-index/tier";
+import { containsKaraoke } from "@/lib/search-query";
 import { getTranslations } from "next-intl/server";
+import { isLegacyClient, liveAllowed, liveCooldown } from "@/lib/live-search-gate";
 
 /**
- * GET /api/search?q=<query>&uuid=<patronUuid>[&pageToken=<token>&page=<n>]
+ * GET /api/search?q=<query>&uuid=<patronUuid>[&v=2[&live=1]][&pageToken=<token>&page=<n>]
  *
  * Server-side YouTube Data API v3 search. The API key is read from the
  * YOUTUBE_API_KEY env var HERE (server only) and never sent to the client.
@@ -21,6 +26,9 @@ import { getTranslations } from "next-intl/server";
  * Response contract (all non-throwing so the client fails soft to paste-link):
  *   200 { results: SearchResult[], nextPageToken?: string }  — success
  *   200 { degraded: true, reason, results: [] }        — no key / quota / daily-limit / upstream error
+ *   200 { results: [], liveRequired: true }            — v2 index-only request the free tiers can't answer
+ *   200 { results: [], deferred: "live-cooldown", retryAfterMs } — v2 billed attempt inside the per-uuid cooldown
+ *   (a legacy, non-v2 client inside the cooldown gets the 429 below instead)
  *   400 { error }                                      — bad query/uuid/pageToken, or page past the depth cap
  *   429 { error }                                      — per-uuid OR per-IP rate limit exceeded
  *
@@ -32,6 +40,16 @@ import { getTranslations } from "next-intl/server";
  * Google page — another whole daily search on a miss — and is folded into the
  * cache key, so paging back to an already-seen page costs zero. Page depth is
  * hard-capped at MAX_SEARCH_PAGES; nothing is ever prefetched.
+ *
+ * LIVE PERMISSION: the current client sends `v=2` on every request. A v2 first
+ * page is INDEX-ONLY unless it also carries `live=1` — sent on Enter, after an
+ * idle pause, or on "search again". A request without `v=2` is a legacy client
+ * (a page loaded before this shipped) and keeps the old cache -> index -> live
+ * fallback, still behind the per-uuid cooldown, rate limits and daily budget. Index-only requests are answered from the free tiers (cache, karaoke
+ * index) or get `liveRequired`; they never reach the key, the daily budget or
+ * Google. A `pageToken` request ("load more") is a deliberate tap and is
+ * live-allowed. A per-uuid cooldown in front of the budget stops a modified
+ * client from billing per keystroke. See lib/live-search-gate.ts.
  */
 
 const MIN_QUERY = 3;
@@ -120,7 +138,11 @@ export async function GET(req: NextRequest) {
 
   // Dual rate limit (quota hygiene): per-uuid AND per-IP — rotating uuids from
   // one host is capped by the IP bucket. Reject politely; paste-link keeps working.
-  if (!rateLimitOk(uuid, clientIp(req))) {
+  // Index-only requests (free) and live-allowed ones (may bill) are rate-limited
+  // in separate buckets: as-you-type lookups must not starve the patron's Enter.
+  const mayBill = liveAllowed(params, pageToken);
+  const ip = clientIp(req);
+  if (!(mayBill ? rateLimitOk(uuid, ip) : indexRateLimitOk(uuid, ip))) {
     // i18n (TICKET-30): user-facing copy follows the request locale.
     const te = await getTranslations("Errors");
     return NextResponse.json(
@@ -129,26 +151,65 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Degraded mode: no key provisioned → this is the local-dev / CI / outage path.
-  const key = process.env.YOUTUBE_API_KEY;
-  if (!key) {
-    return NextResponse.json({ degraded: true, reason: "no-api-key", results: [] });
-  }
+  // Index escape hatch: "load more" past an index answer arrives as page 2
+  // carrying INDEX_MORE_TOKEN. It is answered as the LIVE FIRST page of the same
+  // query (cache-first, then one billed call — the price of any deep page today).
+  const indexEscape = pageToken === INDEX_MORE_TOKEN;
+  const livePageToken = indexEscape ? "" : pageToken;
 
   // Cross-instance read cache for identical queries (TICKET-55): memory L1 +
   // Upstash Redis when configured; fail-open (any Redis error = cache miss).
   // Served BEFORE any Data API call — a hit burns zero quota.
   // TICKET-83: the key is pageToken-scoped, so every page (not just the first)
   // is served free on revisit.
-  const ck = cacheKey(q, SEARCH_DEFAULTS.regionCode, pageToken);
+  // Karaoke index: the cache is still the FIRST tier — a query already answered live is served
+  // from cache before the index is consulted.
+  const ck = cacheKey(q, SEARCH_DEFAULTS.regionCode, livePageToken);
   const cached = await getCachedSearchPage(ck);
   if (cached) {
-    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: cached.results.length } }); // TICKET-12: fire-and-forget, fail-open
+    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: cached.results.length, source: "cache" } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({
       results: cached.results,
       nextPageToken: cached.nextPageToken,
       cached: true,
     });
+  }
+
+  // ── The karaoke index, second tier ──────────────────────────────────
+  // Harvested via playlistItems (10k-unit pool), searched in process memory,
+  // ZERO search.list. It answers only a sing-mode first page with a confident
+  // match (see lib/karaoke-index/tier.ts for the threshold and its tuning);
+  // anything else falls through to the unchanged live path below. Index
+  // answers are not written to the search cache: the index is already local,
+  // and caching would keep serving rows past a shard's retention expiry.
+  // Fail-open: a missing/expired/unreadable index is simply "no answer".
+  // Sing mode and first page are checked BEFORE the index is loaded, so a
+  // listen-mode request on a cold instance never pays the index load.
+  if (!pageToken && containsKaraoke(q)) {
+    const decision = decideTier({ q, pageToken, index: await getKaraokeIndex() });
+    if (decision.tier === "index") {
+      void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: decision.results.length, source: "index" } }); // fire-and-forget, fail-open
+      return NextResponse.json({
+        results: decision.results,
+        // Lets "load more" escape to live search once the index rows run out.
+        nextPageToken: INDEX_MORE_TOKEN,
+        source: "index",
+      });
+    }
+  }
+
+  // Index-only request and neither free tier answered: tell the client a live
+  // search is available on Enter / idle. Nothing billed, no key needed.
+  if (!mayBill) {
+    return NextResponse.json({ results: [], liveRequired: true });
+  }
+
+  // Degraded mode: no key provisioned → this is the local-dev / CI / outage path.
+  // (Placed below the cache + index tiers, which spend nothing
+  // and need no key: a configured index keeps answering when live search can't.)
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) {
+    return NextResponse.json({ degraded: true, reason: "no-api-key", results: [] });
   }
 
   // ── TICKET-87: platform-wide DAILY spend ceiling ──────────────────────────
@@ -175,6 +236,26 @@ export async function GET(req: NextRequest) {
   // cannot be used to probe whether our Redis is down, and it never leaks how
   // much budget remains (that would tell an attacker exactly how far a drain has
   // progressed) — remaining budget is server-log-only.
+  // Per-uuid cooldown BEFORE the budget reservation, so a deferred request
+  // spends nothing. Pre-boot "anon" callers are keyed by IP so they don't share
+  // one cooldown across every anonymous patron on the instance.
+  const cooldown = liveCooldown(uuid === "anon" ? `anon@${ip}` : uuid);
+  if (!cooldown.ok) {
+    // A legacy client (a page loaded before `v=2` shipped) doesn't know
+    // `deferred` and would render it as an empty list. Answer it on the 429
+    // path it already shows as the localized "too many searches, wait" copy;
+    // its next keystroke refetches.
+    if (isLegacyClient(params)) {
+      const te = await getTranslations("Errors");
+      return NextResponse.json({ error: te("searchRateLimited") }, { status: 429 });
+    }
+    return NextResponse.json({
+      results: [],
+      deferred: "live-cooldown",
+      retryAfterMs: cooldown.retryAfterMs,
+    });
+  }
+
   const reservation = await reserveSearchCall();
   if (!reservation.ok) {
     return NextResponse.json({
@@ -185,11 +266,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const page = await searchYouTubePage(q, key, { pageToken: pageToken || undefined });
+    const page = await searchYouTubePage(q, key, { pageToken: livePageToken || undefined });
     // Only SUCCESSFUL responses reach this line — errors threw above and are
     // never cached. Non-empty → 12h TTL; empty → 10min TTL (see search-cache).
     await setCachedSearchPage(ck, page);
-    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: page.results.length } }); // TICKET-12: fire-and-forget, fail-open
+    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: page.results.length, source: "live" } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({ results: page.results, nextPageToken: page.nextPageToken });
   } catch (err) {
     if (err instanceof YouTubeQuotaError) {

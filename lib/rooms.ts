@@ -106,6 +106,22 @@ export interface Room {
    */
   claimTokenHashes?: string[];
   /**
+   * Which entry of `claimTokenHashes` is the ROOM CREATOR's device (TICKET-120).
+   *
+   * A POINTER, not a second credential: `verifyRoomClaimToken` never reads it,
+   * so it grants nothing on its own and a dangling value (its hash pruned or
+   * revoked) pins nothing. Its only effect is on eviction — when the list is
+   * full, `issueRoomClaimToken` evicts the oldest NON-owner hash, so other
+   * people's logins can never push the creator's phone off the room.
+   *
+   * Set once, at room creation. Cleared by logout along with every hash. It is
+   * deliberately NOT re-pinned on a later login: deciding "this login is the
+   * owner" would need `creatorUuid`, which the TICKET-104 gate showed is
+   * client-readable, so anyone holding the code and that label could take the
+   * pin and evict the real owner — the lockout this field exists to prevent.
+   */
+  ownerClaimTokenHash?: string;
+  /**
    * The room's HOST-SESSION EPOCH — the one rotatable component of the session
    * derivation, and the only thing that can end a host session (TICKET-118).
    *
@@ -158,7 +174,7 @@ export function hashHostCode(code: string): string {
 }
 
 /**
- * How many admin-claim tokens one room may hold at once (TICKET-104).
+ * How many admin-claim tokens one room may hold at once (TICKET-104, TICKET-120).
  *
  * More than one because a venue legitimately has more than one device: the room
  * is created on a phone and later the code is entered on the bar tablet, and
@@ -166,15 +182,25 @@ export function hashHostCode(code: string): string {
  * credential; once more than this many DEVICES hold one, the oldest falls off.
  * Logout clears them all.
  *
- * "Devices", not "issues", and that distinction is what keeps this cap safe to
- * hold small. It is enforced by NOT minting on a roll at all: a device extending
- * its window re-sends the token it already holds with a fresh Max-Age
- * (`rollClaimCookie`), so the list only ever grows when a genuinely new device
- * earns a credential. An earlier round-4 attempt instead minted-and-replaced on
- * every roll; that is recorded in the dev report as a defect, because two
- * concurrent rolls both deleted the presented hash and a lost update left the
- * device holding a dead cookie (measured: `aLives=false bLives=true`). There are
- * regression tests for both the eviction property and the concurrency one.
+ * "Devices", not "issues", and both paths that touch the list now keep that
+ * promise (TICKET-120 — before it, the docblock here was true on the roll path
+ * and false on the login path, which is how it survived review):
+ *   - A ROLL never mints: a device extending its window re-sends the token it
+ *     already holds with a fresh Max-Age (`rollClaimCookie`). An earlier round-4
+ *     attempt minted-and-replaced on every roll; two concurrent rolls both
+ *     deleted the presented hash and a lost update left the device holding a
+ *     dead cookie (measured: `aLives=false bLives=true`).
+ *   - A LOGIN mints only for a device that does not already present a live
+ *     token for the room; one that does gets its token re-sent, exactly like a
+ *     roll (`POST /api/host/login`). Five logins from one tablet use one slot.
+ *
+ * And when genuinely new devices do fill the list, the oldest NON-OWNER hash is
+ * the one evicted: the creator's device (`ownerClaimTokenHash`) is never pushed
+ * out by other people's logins. Evicted devices are always ones that typed the
+ * host code, so they can type it again. Logout clears them all.
+ *
+ * Raising this constant would not fix the eviction; a busy venue passes any
+ * number. The property is the eviction ORDER, not the size.
  */
 export const MAX_CLAIM_TOKENS = 5;
 
@@ -197,15 +223,36 @@ export function hashClaimToken(token: string): string {
  * nothing has to read this out loud, so there is no reason for it to be
  * guessable at all.
  */
-export async function issueRoomClaimToken(roomId: string): Promise<string | null> {
+export async function issueRoomClaimToken(
+  roomId: string,
+  opts: { owner?: boolean } = {},
+): Promise<string | null> {
   const room = await getRoom(roomId);
   if (!room) return null;
   const token = nodeRandomBytes(32).toString("base64url");
-  const next = [...(room.claimTokenHashes ?? []), hashClaimToken(token)].slice(
-    -MAX_CLAIM_TOKENS,
-  );
-  await roomBackend.update({ ...room, claimTokenHashes: next });
+  const hash = hashClaimToken(token);
+  const owner = opts.owner ? hash : room.ownerClaimTokenHash;
+  const next = capClaimHashes([...(room.claimTokenHashes ?? []), hash], owner);
+  await roomBackend.update({
+    ...room,
+    claimTokenHashes: next,
+    ...(owner !== undefined ? { ownerClaimTokenHash: owner } : {}),
+  });
   return token;
+}
+
+/**
+ * Trim a claim-hash list (oldest first) to MAX_CLAIM_TOKENS, never evicting
+ * `owner`: the owner's hash is kept wherever it sits, and the remaining slots
+ * go to the NEWEST other hashes. Order is preserved. Exported for tests.
+ */
+export function capClaimHashes(hashes: string[], owner?: string): string[] {
+  if (hashes.length <= MAX_CLAIM_TOKENS) return hashes;
+  const pinned = owner !== undefined && hashes.includes(owner) ? owner : undefined;
+  const others = hashes.filter((h) => h !== pinned);
+  const keep = new Set(others.slice(-(MAX_CLAIM_TOKENS - (pinned ? 1 : 0))));
+  if (pinned) keep.add(pinned);
+  return hashes.filter((h) => keep.has(h));
 }
 
 /**
@@ -242,6 +289,7 @@ export async function revokeRoomClaimTokens(roomId: string): Promise<void> {
   if (!room.claimTokenHashes?.length) return;
   const next = { ...room };
   delete next.claimTokenHashes;
+  delete next.ownerClaimTokenHash;
   await roomBackend.update(next);
 }
 

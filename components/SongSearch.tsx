@@ -1,14 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { parseYouTubeVideoId } from "@/lib/youtube";
 import { augmentQuery } from "@/lib/search-query";
 import { planSearch } from "@/lib/search-prefix";
 import type { Mode } from "@/lib/store";
 import { MAX_SEARCH_PAGES, type SearchResult } from "@/lib/youtube-search";
+import { LiveSearchTrigger, isSearchKey } from "@/lib/search-trigger";
+import { SEARCH_PROTOCOL_VERSION } from "@/lib/live-search-gate";
 
 const DEBOUNCE_MS = 400;
+/** Upper bound on how long we honour the server's live-cooldown `retryAfterMs`. */
+const MAX_LIVE_RETRY_MS = 5000;
 /**
  * TICKET-108: raised 3 → 4. A 3-character query was measured to be worth
  * nothing: production's real page for "esc" does not contain "Escurinho do
@@ -60,7 +64,10 @@ interface SongSearchProps {
 
 /**
  * Dual-behavior song picker (TICKET-8 / design §2 patron-02-pick-song):
- *   - Free text (≥3 chars) → debounced call to /api/search → tappable result rows.
+ *   - Free text (≥4 chars) → debounced INDEX-ONLY call to /api/search (free:
+ *     cache + karaoke index) → tappable result rows. A BILLED live search runs
+ *     only on Enter / the phone's search key, after an idle pause (once per
+ *     text), or on a deliberate tap ("load more", "search again").
  *   - A pasted YouTube URL/ID → resolved locally via parseYouTubeVideoId, NO API call.
  * Degraded (no key / quota / error) shows the fallback copy; paste-link still works.
  *
@@ -131,6 +138,11 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
    * input above stays fully functional (it costs no search call).
    */
   const [dailyLimited, setDailyLimited] = useState(false);
+  /**
+   * The text the free tiers could NOT answer: rendering shows a subtle "press
+   * Enter to search YouTube" hint for it, and the idle search may fire for it.
+   */
+  const [awaitingLive, setAwaitingLive] = useState("");
 
   /**
    * Leave the degraded state entirely (TICKET-87). Both flags must clear
@@ -148,6 +160,11 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
   const [focusedMode, setFocusedMode] = useState<Mode | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** One retry after a live-cooldown deferral (see lib/live-search-gate.ts). */
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The live input, readable from timers without re-binding them. */
+  const inputRef = useRef("");
+  inputRef.current = input;
   const seqRef = useRef(0); // guards against out-of-order responses
 
   /**
@@ -159,6 +176,9 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
   const modeRef = useRef<Mode>(mode);
   useEffect(() => {
     modeRef.current = mode;
+    // The once-per-text guard is per mode: the same text in another mode has
+    // not been searched yet. This fires nothing (TICKET-83).
+    triggerRef.current?.setScope(mode);
   }, [mode]);
 
   /**
@@ -209,17 +229,27 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     onSelect(null);
   }, [onSelect]);
 
+  /**
+   * `live: false` is the free as-you-type lookup (cache + karaoke index only;
+   * the server never bills it). `live: true` lets the server fall through to a
+   * billed `search.list` call when the free tiers can't answer.
+   */
   const runSearch = useCallback(
-    async (q: string) => {
+    async (q: string, { live, retried = false }: { live: boolean; retried?: boolean }) => {
       const seq = ++seqRef.current;
       const searchMode = modeRef.current;
+      if (retryRef.current) clearTimeout(retryRef.current);
       setLoading(true);
       clearDegraded();
       setRateLimitMsg("");
+      if (live) setAwaitingLive("");
       try {
         // Mode-aware augmentation (TICKET-40): sing → append "karaoke", others → raw.
         const augmented = augmentQuery(q, searchMode);
-        const params = new URLSearchParams({ q: augmented, uuid: patronUuid || "anon" });
+        // v=2: this client understands `liveRequired`, so the server may keep
+        // as-you-type lookups free (lib/live-search-gate.ts).
+        const params = new URLSearchParams({ q: augmented, uuid: patronUuid || "anon", v: SEARCH_PROTOCOL_VERSION });
+        if (live) params.set("live", "1");
         const res = await fetch(`/api/search?${params.toString()}`);
         if (seq !== seqRef.current) return; // a newer query superseded this one
 
@@ -230,6 +260,8 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
 
         if (res.status === 429) {
           const data = await res.json().catch(() => ({}));
+          if (live) triggerRef.current?.allowRetry(q);
+          else triggerRef.current?.cancel();
           setResults([]);
           setResultsMode(null);
           setResultsQuery("");
@@ -238,7 +270,33 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           return;
         }
         const data = await res.json().catch(() => ({}));
+        // The free tiers had no answer: show the hint and let Enter / the idle
+        // timer decide whether to spend a live call. The held pool is kept — a
+        // backspace may make it answer again.
+        if (data.liveRequired) {
+          setResults([]);
+          setResultsMode(null);
+          setResultsQuery("");
+          setAwaitingLive(q);
+          triggerRef.current?.indexMissed(q);
+          return;
+        }
+        // The server's per-uuid live cooldown deferred this billed attempt.
+        // Retry once after the wait if the patron hasn't moved on.
+        if (data.deferred) {
+          triggerRef.current?.allowRetry(q);
+          setAwaitingLive(q);
+          if (!retried) {
+            const wait = Math.min(Math.max(Number(data.retryAfterMs) || 0, 100), MAX_LIVE_RETRY_MS);
+            retryRef.current = setTimeout(() => {
+              if (inputRef.current.trim() === q) void runSearchRef.current(q, { live: true, retried: true });
+            }, wait);
+          }
+          return;
+        }
         if (data.degraded) {
+          if (live) triggerRef.current?.allowRetry(q);
+          else triggerRef.current?.cancel();
           setResults([]);
           setResultsMode(null);
           setResultsQuery("");
@@ -250,6 +308,8 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         const page = Array.isArray(data.results) ? (data.results as SearchResult[]) : [];
         // This call is now the held pool: every further character the patron
         // types is narrowed against these rows instead of billing again.
+        if (!live) triggerRef.current?.indexAnswered(q);
+        setAwaitingLive("");
         setHeld(q, page);
         setResults(page);
         setNextPageToken(typeof data.nextPageToken === "string" ? data.nextPageToken : "");
@@ -259,6 +319,8 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         setFilterQuery(q);
       } catch {
         if (seq !== seqRef.current) return;
+        if (live) triggerRef.current?.allowRetry(q);
+        else triggerRef.current?.cancel();
         // Network error → fail soft to the paste-link fallback. This is a real
         // outage, not the daily budget, so it keeps the generic copy.
         setResults([]);
@@ -277,6 +339,26 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [patronUuid, setHeld, clearHeld],
   );
+  const runSearchRef = useRef(runSearch);
+  runSearchRef.current = runSearch;
+
+  /**
+   * The billed-search trigger (Enter / idle / once-per-text), created once.
+   * It reaches `runSearch` through a ref so its timers never hold a stale one.
+   */
+  const triggerRef = useRef<LiveSearchTrigger | null>(null);
+  if (triggerRef.current === null) {
+    triggerRef.current = new LiveSearchTrigger({
+      fire: (text) => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        void runSearchRef.current(text, { live: true });
+      },
+    });
+  }
+  useEffect(() => () => {
+    triggerRef.current?.cancel();
+    if (retryRef.current) clearTimeout(retryRef.current);
+  }, []);
 
   /**
    * "Load more" (TICKET-83). Two tiers, cheapest first:
@@ -309,6 +391,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       const params = new URLSearchParams({
         q: augmented,
         uuid: patronUuid || "anon",
+        v: SEARCH_PROTOCOL_VERSION,
         pageToken: nextPageToken,
         page: String(pagesFetched + 1),
       });
@@ -363,11 +446,15 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
   // React to input changes: resolve pasted links locally, else debounce a search.
   useEffect(() => {
     const trimmed = input.trim();
+    const trigger = triggerRef.current as LiveSearchTrigger;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (retryRef.current) clearTimeout(retryRef.current);
+    setAwaitingLive("");
 
     // Empty → reset everything.
     if (!trimmed) {
+      trigger.cancel();
       setResults([]);
       setResultsMode(null);
       setResultsQuery("");
@@ -385,6 +472,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     // Pasted URL / raw ID → resolve directly, no API call (AC2).
     const pastedId = parseYouTubeVideoId(trimmed);
     if (pastedId) {
+      trigger.cancel();
       seqRef.current++; // cancel any in-flight search
       setLoading(false);
       clearDegraded();
@@ -417,6 +505,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
 
     // Too short to search — keep paste-link possible but no results yet.
     if (trimmed.length < MIN_CHARS) {
+      trigger.cancel();
       setResults([]);
       setResultsMode(null);
       setResultsQuery("");
@@ -465,6 +554,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       // narrowed rows with its own page while the patron's input says otherwise —
       // stale results with no effect left to re-narrow them.
       seqRef.current++;
+      trigger.cancel();
       setResults(plan.rows);
       setVisible(PAGE_SIZE);
       filterQueryRef.current = trimmed;
@@ -475,9 +565,12 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       return;
     }
 
-    // PAID PATH: we do not hold an answer for this query. Debounce as before, so
-    // a burst of keystrokes still collapses into one call.
-    debounceRef.current = setTimeout(() => runSearch(trimmed), DEBOUNCE_MS);
+    // NOT HELD: ask the server's FREE tiers (cache + karaoke index), debounced
+    // so a burst of keystrokes collapses into one lookup. This request is
+    // index-only and can never bill. If the free tiers miss, the trigger lets a
+    // billed live search run on Enter, or once after IDLE_SEARCH_MS of no typing.
+    trigger.edited(trimmed);
+    debounceRef.current = setTimeout(() => runSearch(trimmed, { live: false }), DEBOUNCE_MS);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -487,6 +580,20 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     // change this effect's deps, or a completed search would re-trigger it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, runSearch]);
+
+  /** Enter / the phone keyboard's search key: spend a live search NOW. */
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (!isSearchKey({ key: e.key, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode })) return;
+    const trimmed = input.trim();
+    // A pasted link is already resolved and selected: let Enter submit the
+    // queue form exactly as before (no preventDefault).
+    if (parseYouTubeVideoId(trimmed)) return;
+    // Plain text: Enter searches; it must not submit the queue form (which
+    // would only show the "paste a link" error).
+    e.preventDefault();
+    if (trimmed.length < MIN_CHARS) return;
+    triggerRef.current?.enter(trimmed);
+  }
 
   function handlePick(r: SearchResult) {
     setSelectedId(r.videoId);
@@ -604,8 +711,24 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         placeholder={t("placeholder")}
         value={input}
         onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        // Phone keyboards show a "search" key, which arrives as Enter.
+        enterKeyHint="search"
+        inputMode="search"
         autoComplete="off"
       />
+
+      {/* The free tiers had no answer: a live YouTube search waits for Enter
+          (or fires by itself after a short pause). Kept subtle on purpose. */}
+      {!loading && !degraded && !rateLimitMsg && awaitingLive !== "" && awaitingLive === input.trim() && (
+        <p
+          data-testid="search-enter-hint"
+          role="status"
+          style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}
+        >
+          {t("enterToSearch")}
+        </p>
+      )}
 
       {/* Loading skeleton rows */}
       {loading && (
@@ -678,7 +801,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           <button
             type="button"
             data-testid="search-again"
-            onClick={() => runSearch(input.trim())}
+            onClick={() => runSearch(input.trim(), { live: true })}
             style={{
               minHeight: 36,
               padding: "0.25rem 0.75rem",

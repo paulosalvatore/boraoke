@@ -1,0 +1,46 @@
+==============================================================================================================
+TICKET-125 — Enter / idle live search: billed calls AND quality, replayed over real production traces
+==============================================================================================================
+predicate: title only (TICKET-124 fix batch)
+index fixture: 71 channels, 38275 videos, harvested 2026-10-14T23:52:24.533Z; oracle: 80 production cache keys; traces: 32 families
+client: MIN_CHARS=4, MIN_LOCAL_MATCHES=3, shipped decideTier; Monte Carlo 4000 runs per point, seed 125
+trace elements >= MIN_CHARS: 42 mid-title pauses + 29 settle points; billed when EVERY pause may bill (TICKET-124 client): 26
+pause model (ASSUMPTION): pause length log-normal, median 1 s, sigma 1, conditioned on >= 0.4 s (every trace element already passed the debounce)
+  S(3 s) = 0.166   S(4 s) = 0.101   S(5 s) = 0.066   (share of mid-title pauses that reach N)
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+SWEEP over S = share of mid-title pauses that last >= N (read any other pause assumption off this table)
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+S = 1.00                           billed 26.00 (p5 26, p95 26)  = 1.22/song   hit@10 mean 25.00/28  min 25/28  <- every pause bills = PR #88 client
+S = 0.50                           billed 22.28 (p5 20, p95 25)  = 1.04/song   hit@10 mean 25.00/28  min 25/28
+S = 0.30                           billed 20.65 (p5 19, p95 23)  = 0.97/song   hit@10 mean 25.00/28  min 25/28
+S = 0.20                           billed 19.78 (p5 18, p95 22)  = 0.93/song   hit@10 mean 25.00/28  min 25/28
+S = 0.15                           billed 19.32 (p5 18, p95 21)  = 0.91/song   hit@10 mean 25.00/28  min 25/28
+S = 0.10                           billed 18.89 (p5 18, p95 21)  = 0.89/song   hit@10 mean 25.00/28  min 25/28
+S = 0.05                           billed 18.44 (p5 18, p95 20)  = 0.86/song   hit@10 mean 25.00/28  min 25/28
+S = 0.00                           billed 18.00 (p5 18, p95 18)  = 0.84/song   hit@10 mean 25.00/28  min 25/28  <- Enter-only lower bound
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+IDLE CANDIDATES under the stated pause model
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+N = 3 s  (S = 0.166)               billed 19.46 (p5 18, p95 21)  = 0.91/song   hit@10 mean 25.00/28  min 25/28
+N = 4 s  (S = 0.101)               billed 18.91 (p5 18, p95 21)  = 0.89/song   hit@10 mean 25.00/28  min 25/28  <- SHIPPED
+N = 5 s  (S = 0.066)               billed 18.58 (p5 18, p95 20)  = 0.87/song   hit@10 mean 25.00/28  min 25/28
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+SHIPPED: IDLE_SEARCH_MS=4000
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+billed search.list per queued song:  BEFORE (PR #88) 1.22  ->  AFTER 0.89   (26 -> 18.91 mean calls over the same traces; p5-p95 18-21)
+                                     Enter-only floor 0.84   (no mid-title pause ever reaches N)
+hit@10 (settled):  BEFORE 25/28 (89%)  ->  AFTER mean 25.00/28, worst run 25/28 (89%)
+Enter-only run misses: banderille karaoke | soda stete karaoke | banderilleros karaoke
+PR #88 run misses:     banderille karaoke | soda stete karaoke | banderilleros karaoke
+newly missed (Enter-only vs PR #88): (none)
+
+==============================================================================================================
+PROVE-THE-MEASUREMENT-CAN-FAIL CONTROLS — each breaks something on purpose; the number MUST move
+==============================================================================================================
+C1 S=1 (every pause bills)   billed 26 (PR #88: 26)  hit@10 25 (PR #88: 25)  -> identical to PR #88, as required
+C2 empty index, S=1          billed 48 (pre-index main: 48)  hit@10 22 (22)  -> identical to TICKET-108 main, as required
+C3 nothing ever goes live    billed 0  hit@10 on screen 15/28  -> quality DROPS — the Enter/idle settle is what keeps quality
+C4 S 0.05 -> 0.5              billed 18.44 -> 22.28  -> rises with S, as required

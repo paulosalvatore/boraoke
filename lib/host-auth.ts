@@ -324,9 +324,11 @@ export function claimTokenFrom(req: NextRequest, roomId: string): string | undef
 
 /**
  * Mint a claim token for a room and attach it to a response as the httpOnly
- * claim cookie. Used at room creation (the creator's device gets it immediately)
- * and on a successful host-code login (which is how a device that logged out, or
- * a room predating this design, gets one).
+ * claim cookie. Used at room creation (the creator's device gets it immediately,
+ * with `owner: true` so other devices' logins can never evict it — TICKET-120)
+ * and on a successful host-code login by a device that does not already hold a
+ * live one (which is how a device that logged out, or a room predating this
+ * design, gets one).
  *
  * Returns false when nothing was issued (room missing), so the caller can carry
  * on without failing the operation it was really doing — an un-issued claim
@@ -335,8 +337,9 @@ export function claimTokenFrom(req: NextRequest, roomId: string): string | undef
 export async function attachClaimCookie(
   res: { cookies: { set(name: string, value: string, opts: ReturnType<typeof claimCookieOptions>): unknown } },
   roomId: string,
+  opts: { owner?: boolean } = {},
 ): Promise<boolean> {
-  const token = await issueRoomClaimToken(roomId);
+  const token = await issueRoomClaimToken(roomId, opts);
   if (!token) return false;
   res.cookies.set(claimCookieName(roomId), token, claimCookieOptions());
   return true;

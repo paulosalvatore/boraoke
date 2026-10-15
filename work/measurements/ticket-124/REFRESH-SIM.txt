@@ -1,0 +1,9 @@
+latency 543 ms/call, concurrency 6, start cutoff 34s, hard deadline 50s, unit cap 600
+one run: 18 complete channels written, 0 cut short (not written), 504 units, 45.8 s elapsed
+=> full cycle of 71 channels: 4 daily runs (first fill the same); retention limit 30 days
+latency 800 ms/call, concurrency 6, start cutoff 34s, hard deadline 50s, unit cap 600
+one run: 12 complete channels written, 0 cut short (not written), 336 units, 45.0 s elapsed
+=> full cycle of 71 channels: 6 daily runs (first fill the same); retention limit 30 days
+latency 300 ms/call, concurrency 6, start cutoff 34s, hard deadline 50s, unit cap 600
+one run: 21 complete channels written, 0 cut short (not written), 588 units, 33.9 s elapsed
+=> full cycle of 71 channels: 4 daily runs (first fill the same); retention limit 30 days

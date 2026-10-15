@@ -14,7 +14,8 @@
  *
  * ── THE ORACLE, AND WHY IT COSTS ZERO QUOTA ────────────────────────────────────
  *
- * `production-search-results.json` is the production search cache itself, read
+ * `production-search-results.json` (gitignored, local only since 2026-10-15: it is
+ * YouTube API data) is the production search cache itself, read
  * read-only over the Upstash REST API on 2026-09-27 (via the KV read-only token,
  * pulled outside the repo and shredded; no secret is in this tree, and no write
  * of any kind was issued to production). It holds **80 real production queries →
@@ -63,7 +64,7 @@
  * Run:  npm run measure:t108            (add --controls for the falsifiability run)
  */
 
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 import type { SearchResult } from "../../../lib/youtube-search";
@@ -85,8 +86,19 @@ import {
 type Row = SearchResult;
 
 const HERE = __dirname;
+const ORACLE_PATH = join(HERE, "production-search-results.json");
+if (!existsSync(ORACLE_PATH)) {
+  console.error(
+    `FATAL: ${ORACLE_PATH} is missing.\n` +
+      "It is YouTube API data, so it is gitignored and local only (removed from the repo 2026-10-15).\n" +
+      "Regenerate it by dumping the production search cache (sc:* keys) read-only with the KV read-only\n" +
+      "token, as described in work/reports/dev/TICKET-108-dev-report.md. A fresh dump holds today's pages,\n" +
+      "not the 2026-09-27 ones, so the measured numbers will move. Refusing to report numbers without it.",
+  );
+  process.exit(2);
+}
 const FIXTURE: Record<string, { videoId: string; title: string; channelTitle: string }[]> = JSON.parse(
-  readFileSync(join(HERE, "production-search-results.json"), "utf8"),
+  readFileSync(ORACLE_PATH, "utf8"),
 );
 /** cache-key (augmented query) → the real YouTube page production served for it. */
 const ORACLE: Record<string, Row[]> = Object.fromEntries(
