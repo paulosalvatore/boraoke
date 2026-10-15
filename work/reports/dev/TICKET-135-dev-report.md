@@ -9,6 +9,7 @@ Implemented and pushed (code head `c476597`). Targeted jest and one full jest gr
 - Plan: `work/plans/TICKET-135-plan.md` (written with the implementation under the TM's pre-approved scope).
 - Worktree: `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t135-cache-key`, branch `ticket/135-cache-key`, cut from `origin/main` @ `d0b3301` (includes #90 `a0f2b59`).
 - App/e2e port: **3135**.
+- PR: #97 https://github.com/paulosalvatore/boraoke/pull/97 (draft, base `main`).
 - Patron-facing: no.
 
 ## Exploration (read directly; the files were named in the tickets)
@@ -161,7 +162,7 @@ Tests that pass on the old code **by design** (guards and characterisation, each
 
 ## Follow-ups / notes for the TM
 - `normalizeQuery` (index matcher) still drops non-Latin letters. Harmless for matching, but TICKET-137 should use `foldTokens` if it ever keys stored rows by query.
-- The `worktree_created` event emitted into the worktree's `work/events/by-branch/main.jsonl` rather than the main checkout's; I reverted it in the worktree to keep the branch diff clean. The ticket store row was moved to `in_progress` by `ticket-mark-workstart.sh` for both tickets.
+- `scripts/emit-event.sh` called with `--repo <worktree>` appended to `work/events/by-branch/main.jsonl` in the worktree instead of the branch's own log. I moved the `worktree_created` and `pr_opened` events into `work/events/by-branch/ticket-135-cache-key.jsonl` (`7275592`, `19e48cf`). The two `pr_opened` lines were re-written by hand after a failed redirect lost the emitted copies, so their `ts` is the re-write time. The ticket store rows were moved to `in_progress` by `ticket-mark-workstart.sh` and got the `pr-opened` fact.
 
 ## Friction
-- None repeated twice.
+- `emit-event.sh --repo <worktree>` writes to `by-branch/main.jsonl`, not the worktree branch's log (seen twice: worktree_created, pr_opened). Possible framework inbox note for the framework TM.
