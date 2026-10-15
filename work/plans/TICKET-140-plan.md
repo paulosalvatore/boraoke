@@ -1,5 +1,7 @@
 # TICKET-140 — plan: close the paste-a-link gaps
 
+**APPROVED-BY:** auto-approved (no plan-gate escalation; TM dispatched implementation with the item list) — validated downstream by gates + TL merge of PR #95
+
 **Status:** implemented on `ticket/140-paste-link` (stacked on `ticket/126-search-limits`, PR #90). The TM dispatched implementation directly with the item list below, so this plan records the decisions rather than gating them.
 
 ## Decisions
