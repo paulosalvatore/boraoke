@@ -1,0 +1,85 @@
+2026-10-15T22:18:06Z head=27298b4
+  console.log
+    revoke status 200 epoch now 1
+
+
+  console.log
+    attacker claim status 200 minted session? true
+
+
+  console.log
+    attacker post-revoke session verifies: true moderation: 200
+
+
+  console.log
+    attacker counter-revoke: 200 owner's revoke-issued session still valid: false owner claim still valid: false
+
+
+  console.log
+    concurrent staff login 200
+
+  console.log
+    revoke 200 minted fresh claim in response? true
+
+
+  console.log
+    lost-response device: old session valid false old claim valid false claim route 401
+
+
+  console.log
+    staff revoke 200 owner session valid false owner pinned claim valid false ownerPin now (none)
+
+
+  console.log
+    owner revoke attempts refused 401: 20 / 20; attacker still valid: true
+
+
+  console.log
+    other device claim still valid after crafted logouts: true owner token still valid: true
+
+
+FAIL __tests__/zz-cyber-118-probe.test.ts (8.749 s)
+  CYBER PROBE S1 — claim route TOCTOU: a revoked claim token mints a NEW-epoch session
+    ✕ attacker claim request straddling the bump survives the revoke (1379 ms)
+  CYBER PROBE S2 — fresh login between bump and rebind kills the acting device's own claim token
+    ✕ acting device is response-dependent after an ordinary concurrent login (no stale write) (961 ms)
+  CYBER PROBE S3 — any host session (staff or stolen) can sign the OWNER out, pin included
+    ✓ staff revoke kills owner session + owner-pinned claim (294 ms)
+    ✓ no throttle: a session holder can loop revokes and keep a code-holding owner out (398 ms)
+  CYBER PROBE S4 — plain logout with a crafted/foreign claim cookie
+    ✓ logout can only drop a hash whose preimage the caller holds (27 ms)
+  ● CYBER PROBE S1 — claim route TOCTOU: a revoked claim token mints a NEW-epoch session › attacker claim request straddling the bump survives the revoke
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      158 |         "owner's revoke-issued session still valid:", await verifySessionValue(v.room.id, ownerSessAfter),
+      159 |         "owner claim still valid:", await verifyRoomClaimToken(v.room.id, v.token));
+    > 160 |       expect(verifies).toBe(false); // the security property — expected to FAIL if S1 is real
+          |                        ^
+      161 |     } finally {
+      162 |       spy.mockRestore();
+      163 |     }
+
+
+  ● CYBER PROBE S2 — fresh login between bump and rebind kills the acting device's own claim token › acting device is response-dependent after an ordinary concurrent login (no stale write)
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      184 |     const reclaim = (await claimRoute(claimReq(v.room.id, v.token))).status;
+      185 |     console.log("lost-response device: old session valid", oldSess, "old claim valid", oldClaim, "claim route", reclaim);
+    > 186 |     expect(oldClaim).toBe(true); // P2 says the acting device's claim survives — expected to FAIL
+          |                      ^
+      187 |   });
+      188 | });
+      189 |
+
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 3 passed, 5 total
+Snapshots:   0 total
+Time:        10.327 s
+Ran all test suites matching /__tests__\/zz-cyber-118-probe.test.ts/i.
