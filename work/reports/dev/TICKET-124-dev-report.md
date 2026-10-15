@@ -1,7 +1,7 @@
 # TICKET-124 — Dev report
 
 ## Status
-Implemented, measured, and self-verified. Draft PR open and awaiting the TM. Quality floor holds: hit@10 went from 79% to 89%. Not merged.
+Fix batch for Reviewer REQUEST-CHANGES (B1–B3) and Security PASS-WITH-NOTES (S1, S2) has been pushed to draft PR #88, with the nits and the fixture decision done too. hit@10 is still 89% (floor 79%) and calls per song are still 1.22. Not merged. Gates still need re-running: App Tester first, per D-007.
 
 ## Context
 - Worktree: `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t124-index-primary`
@@ -84,6 +84,62 @@ Triggered mutation pass: not triggered. There is no new parsing/normalisation fu
 - Set `CRON_SECRET` in production.
 - Do the first population after deploy.
 - Decide what to do with the committed fixture's retention: it will be older than 30 days on 2026-11-13.
+
+### 2026-10-14 fix batch (Reviewer issuecomment-6181463773, Security issuecomment-6181443158)
+
+**B1. Index titles only** (`34ab73f`)
+- Postings are now built from `queryTokens(title)`. The channel title is kept for display only.
+- New unit test: "channel names never satisfy a query word (the 'brasil karaoke' collision)". It fails when channel words are indexed again (MB1).
+- The replay now grades on the TITLE only, for both arms; `--legacy-predicate` restores title+channel. It also has a CHANNEL-COLLISION PROBE covering 10 channel words.
+- With channel matching re-enabled, the probe reports `"brasil karaoke": index 16 rows, 16 without "brasil" in the title`.
+- I confirm the Reviewer's numbers with title-only postings: 1.22/song, hit@10 25/28, long-tail 3/18.
+- Honest note: the 28-query grade alone still does not move under channel matching (it stays 1.22 / 25/28). The probe is what catches it.
+
+**B2. Two hollow tests fixed; each fails when its guard is deleted**
+- (a) "a warm instance rebuilds the MOMENT its oldest shard expires, not at the hourly reload". The shard is 10 min inside the limit and the clock steps 20 min, well under the 1 h reload. MA (expiry check → `false`) fails it.
+- (b) "never writes a channel cut short by the TIME budget". It uses a 3-page channel at 20 ms per call with a 30 ms hard deadline; page 1 is really harvested (2 units) before the cut. MD (`r.shard && r.complete` → `r.shard`) fails it, and also fails "never writes a channel cut short by an HTTP error mid-channel".
+
+**B3. Refresh throughput** (`9a61d42`)
+- Workers run 6 channels at once. No channel starts after 34 s and no page starts after 50 s, inside the 60 s Hobby limit.
+- Each channel's full unit budget is reserved up front and the unused part is refunded, so the unit cap can never cut a channel short. The run cap is 600 units.
+- `refresh-sim.ts` runs the real code and clock against a fake API at the measured latency (`REFRESH-SIM.txt`). Each line below is a single run:
+  - 0.543 s/call: 18 channels/run, 504 units, 45.8 s, so 71 channels take 4 daily runs.
+  - 0.8 s/call: 12 channels/run, 6 runs.
+  - 0.3 s/call: 21 channels/run, 4 runs.
+- The Vercel cron stays daily; Hobby allows one run/day per job. That gives a full cycle and first fill of about 4–6 days, against the 30-day limit.
+- Latency measured from inside a Vercel function: UNVERIFIED.
+
+**S1. Hostile queries**
+- More than 8 distinct discriminating words gives no index answer (`query-too-long`). At most 2 fuzzy vocabulary scans per query.
+- Tests: the crafted 18-word query is refused with 0 scans in under 25 ms (MS1a kills it), and 8 near-miss words cost exactly 2 scans (MS1b kills it; the test was strengthened after the first version survived MS1b).
+- Measured on the real fixture: normal query 0.5 ms, 18 typo words 0.0 ms, worst case of 8 near-miss words 18 ms. Security measured about 220 ms before the fix.
+
+**S2. Cron auth tests** (`2c49bcb`)
+- Unset/empty secret gives 503. Eight wrong or near-miss bearers give 401, with the secret never in the body. The correct bearer gives 200 with exactly one refresh. A missing key gives 503. Refresh is never called on any rejection.
+- MS2a (bearer check removed) and MS2b (fail-closed removed) are both killed.
+- The test secret is generated at runtime. The first version used a literal, and the commit secret-scan correctly refused it.
+
+**Nits** (`5d32ad0`, plus `34ab73f` for the answer cap and `9a61d42` for the partial-write guard)
+- Sing-mode is checked before the index loads. MN1 is killed by "…without even loading the index".
+- A failed Redis load now retries after 60 s (MN2 killed).
+- Hourly reloads read `ki:stamps` first and skip the ~1.46 MB MGET when nothing changed (MN3 killed). A warm instance therefore downloads the index about once a day plus once per cold start.
+- Index answers are capped at 16 rows. The sweep at 10/16/24/50 gives identical billed calls and hit@1/5/10, so the cap only changes how many taps it takes to reach live: 2 versus 7 (MN4 killed).
+- A partial shard after an HTTP error mid-channel is never written.
+- `ki:stamps` has no TTL; that is documented, along with why.
+- Upstash free-tier bandwidth limit: UNVERIFIED. The arithmetic: a full load is about 1.46 MB, so 1 GB covers about 680 full loads.
+
+**Fixture (TM decision)** (`b899360`)
+- `index-fixture.json.gz` is removed from the branch tip and gitignored. It is kept local only and regenerated with `npm run index:harvest -- --channels lib/karaoke-index/channels.json --out … --max-units 1600 --max-pages 14`.
+- The replay exits 2 with that command when the fixture is absent; I verified this.
+- `seeds.json` (titles + videoIds) is removed. `--seeds-from-oracle` re-derives the identical 316 seeds from the committed oracle (verified as the same order and ids).
+- `HARVEST-LOG.txt` now has channel ids instead of titles. `channels.json` (ids only) is kept.
+- No force-push. The fixture stays in branch history; squash-merge keeps it off main.
+
+**Verification**
+- jest: 61 suites, **1,049 passed**, 5 skipped, 0 failed. Run at load 12.5 → 13.2 on 10 cores, with no other suite running. The t125 lane had been building just before; I waited until it was idle.
+- e2e: **127/127 passed (4.0 min)**, `workers: 1`, `PORT=3124`. WARM: `.next-e2e` was from the previous run and `next build` rebuilt it. Load was 8.9 at the start and 19.7 at the end; another lane's processes started during the run. `_canary` passed, and so did `tv.spec.ts:740`.
+- `tsc --noEmit`: zero errors in app/lib/scripts/measurements.
+- `npm run measure:t124 -- --controls`: see `RESULTS.txt`. It reports 2.25 → 1.22 and 79% → 89%. C1 is identical, C2 rises 3 → 4, C3 drops to 12, C4 is 0, and the collision probe shows 0 channel-only rows.
 
 ## Friction
 - The spike's harvested data was kept only in a scratchpad and is gone, which cost a full re-harvest. Measurement inputs need to be committed with the code that produced the numbers; this ticket commits its seeds and fixture for that reason.
