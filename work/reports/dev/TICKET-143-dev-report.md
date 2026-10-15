@@ -175,3 +175,17 @@ Picked up from `work/reports/review/TICKET-143-review.md` (re-review section, co
 **Not run / owed.**
 - Full jest suite: not run. Load at 17:45 was `load averages: 153.28 173.37 182.87`, above the ~40 threshold.
 - `verify-green-local.sh`: not run (same host load). Owed before merge.
+
+## Round 3 (review at db7f98c: tests only, no parser change)
+
+Three boundary tests added to `__tests__/karaoke-index-title-parser.test.ts`. Expected values are what the unchanged parser returns (the new tests pass against it, 53/53) and match the Reviewer's text.
+
+| Mutant | Test that kills it | Verbatim failure |
+|---|---|---|
+| N4b word cap `> 4` to `> 5` | `Hello by Adele (Live At Madison Square Garden)` | `Tests: 1 failed, 52 passed, 53 total`; received `["Hello by Adele", null]`, expected `["Hello", "Adele"]` |
+| N4c word cap `> 4` to `>= 4` | `Stand by Me (Florence And The Machine) Karaoke` | `Tests: 1 failed, 52 passed, 53 total`; received `["Stand", "Me"]`, expected `["Stand by Me", "Florence And The Machine"]` |
+| N7d `!lw \|\|` clause dropped | `Hello by Adele (Acoustic - Piano)` | `Tests: 1 failed, 52 passed, 53 total`; received `["Hello by Adele", "Acoustic - Piano"]`, expected `["Hello", "Adele"]` |
+
+Parser restored after each mutant (`git diff -- lib/` empty). Corrected totals: 13 mutants on the re-review code, 12 killed, 1 survived-equivalent (C2), 0 real gaps (the earlier "0 real gaps" line was wrong: the Reviewer found N4b, N4c, N7d surviving; they are killed now).
+
+Full `npx jest` at load averages 181.52 147.17 147.11 (no jest/playwright test run live in this repo; only a desapega jest elsewhere): `Test Suites: 1 failed, 65 passed, 66 total`, `Tests: 1 failed, 10 skipped, 1151 passed, 1162 total`. The one failure was `__tests__/claim-token-owner-pin.test.ts` (30 CONCURRENT logins, a timing-sensitive test outside the parser files). Re-run of that suite alone: `Tests: 11 passed, 11 total`. `verify-green-local.sh` still owed to the TM.

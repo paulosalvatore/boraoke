@@ -199,6 +199,18 @@ describe("parseTitle: song and artist", () => {
     expect(p("Hello by Adele (Recorded At The Royal Albert Hall)")).toEqual(["Hello", "Adele"]);
   });
 
+  it("'X by Y' splits on a bracket of exactly 5 words (upper word-count boundary)", () => {
+    expect(p("Hello by Adele (Live At Madison Square Garden)")).toEqual(["Hello", "Adele"]);
+  });
+
+  it("'X by Y' is not split when a 4-word band name is the credit (lower word-count boundary)", () => {
+    expect(p("Stand by Me (Florence And The Machine) Karaoke")).toEqual(["Stand by Me", "Florence And The Machine"]);
+  });
+
+  it("'X by Y' still splits when the bracket is descriptors joined by a punctuation-only word", () => {
+    expect(p("Hello by Adele (Acoustic - Piano)")).toEqual(["Hello", "Adele"]);
+  });
+
   it("with two brackets, only the last one decides whether 'X by Y' is split", () => {
     // first long (not a name), last a name: the name is the credit
     expect(p("Stand by Me (Recorded At The Royal Albert Hall) (Ben E. King)")).toEqual(["Stand by Me", "Ben E. King"]);
