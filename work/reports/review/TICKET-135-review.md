@@ -15,7 +15,7 @@ One code item (1) and the missing gates (2). The design is right and the tests a
    - raise the browserslist floor to `firefox >= 78`, which is a product decision (the script header says so) and should be stated in the PR.
    A one-line unit test that stubs `RegExp` to throw on `\p` and still gets `containsKaraoke("evidencias karaoke") === true` would pin the guard.
    - **TV (Chrome 68): fine.** Chrome 64+ supports property escapes, so the TV surface is not affected, and `String.prototype.normalize` is Chrome 34+.
-2. **Gates before any final APPROVE.** No Cyber Security report, no recorded App Tester waiver (the diff touches no UI file: `lib/`, `app/api/`, tests, `work/`, `package.json` script, so a waiver is plausible), full e2e and `next build` (incl. `check:es-target`) owed. boraoke has no `verify-green-local.sh`, so the TM must name what stands in for "CI green" here. The re-review needs these.
+2. **Gates before any final APPROVE.** Cyber Security PASS-WITH-NOTES landed during this review (`1b8f1c3`, `work/reports/security/TICKET-135-security.md`, docs-only, no code change since `829099e`); its MEDIUM (first-miss page pinning, now 7 d) is for the TM to ticket. Still missing: a recorded App Tester waiver (the diff touches no UI file: `lib/`, `app/api/`, tests, `work/`, `package.json` script, so a waiver is plausible), full e2e and `next build` (incl. `check:es-target`) owed. boraoke has no `verify-green-local.sh`, so the TM must name what stands in for "CI green" here. The re-review needs these.
 
 ## Conditions (TM decision, not a code change)
 
@@ -56,4 +56,4 @@ Accurate, with two points: the footprint is stated as 5-8 MB (ticket said 5-6; t
 ## Re-review checklist
 
 - Item 1 fixed (guard + test, or browserslist raised with the product call stated), comment corrected.
-- Security PASS, App Tester waiver recorded, e2e + `next build` + `check:es-target` green, TM's CI-green stand-in named.
+- App Tester waiver recorded, e2e + `next build` + `check:es-target` green, TM's CI-green stand-in named.
