@@ -1,7 +1,7 @@
 # TICKET-126 — Dev report (PR A: TICKET-119 + per-person caps + single-flight)
 
 ## Status
-Cyber Security gate PASS (D-011, `work/reports/security/TICKET-126-security.md`); the in-PR fixes it asked for (M-1, L-1, L-3) are applied and M-2 / L-2 are filed as TICKET-131 / TICKET-132. The #89 re-gate's MEDIUM 7 (billed limiter churn across two IPs) is fixed here too, and its LOW 3 (legacy path sunset) is filed as TICKET-133. Merged `ticket/125-enter-idle-search` @ `638d427`. Verified with targeted jest only (lane constraint: no e2e, no build, no server); the full suite runs after #89 merges. PR B (TICKET-120) not started.
+Opus review (D-022) REQUEST-CHANGES at `cd3c9ef`: both blocking items and nits 3, 4, 5, 7, 8 fixed (see "Opus review fixes" at the end), awaiting the re-review. Earlier: Cyber Security gate PASS (D-011, `work/reports/security/TICKET-126-security.md`); the in-PR fixes it asked for (M-1, L-1, L-3) are applied and M-2 / L-2 are filed as TICKET-131 / TICKET-132. The #89 re-gate's MEDIUM 7 (billed limiter churn across two IPs) is fixed here too, and its LOW 3 (legacy path sunset) is filed as TICKET-133. Merged `ticket/125-enter-idle-search` @ `638d427`. Verified with targeted jest only (lane constraint: no e2e, no build, no server); the full suite runs after #89 merges. PR B (TICKET-120) not started.
 
 ## Context
 - Picking up from: fresh start. Phase 1 plan approved by the Product TM 2026-10-14 with amendments (recorded at the top of `work/plans/TICKET-126-plan.md`).
@@ -46,12 +46,12 @@ Read-only, via `vercel env pull` to a mode-600 scratch file that was deleted rig
 ## Implementation log
 
 ### Build (commit `d2633d4`)
-- **`lib/client-ip.ts` (new): the one IP derivation.** A declared `TRUSTED_CLIENT_IP_HEADER` wins. Otherwise on Vercel (`VERCEL=1`) the order is `x-vercel-forwarded-for` → `x-real-ip` → `x-forwarded-for` (first hop). Otherwise the shared `"unknown"` bucket (fail-closed). IPv6 is keyed by /64, IPv4-mapped IPv6 folds to IPv4, garbage is one length-capped bucket. `lib/host-auth.ts` re-exports it, so login, claim, rooms, queue, telemetry and search all use it. The search route's private XFF-first `clientIp()` is gone.
+- **`lib/client-ip.ts` (new): the one IP derivation.** A declared `TRUSTED_CLIENT_IP_HEADER` wins. Otherwise on Vercel (`VERCEL=1`) the order is `x-real-ip` → `x-vercel-forwarded-for` → `x-forwarded-for` (first hop) (corrected in place after the opus review; this order landed with the Cyber M-1 fix below). Otherwise the shared `"unknown"` bucket (fail-closed). IPv6 is keyed by /64, IPv4-mapped IPv6 folds to IPv4, garbage is one length-capped bucket. `lib/host-auth.ts` re-exports it, so login, claim, rooms, queue, telemetry and search all use it. The search route's private XFF-first `clientIp()` is gone.
 - **"server-derived" claims corrected** in `lib/host-auth.ts` (the `claimKey` docblock and the `clientIpFrom` docblock), `app/api/t/route.ts` and the search route. The round-3 report line lives in TICKET-104's report on its own (merged) branch history; the corrected statement is now in the code where the next reader looks.
 - **`lib/search-budget.ts`: per-person sub-budgets.** `DEFAULT_DEVICE_DAILY_CAP = 10`, `DEFAULT_IP_DAILY_CAP = 45`, overridable by `SEARCH_DEVICE_DAILY_CAP` / `SEARCH_IP_DAILY_CAP` (positive integer, clamped to 90; anything else ignored with a warning). `reserveSearchCall(now, principal)` runs the new `RESERVE_PRINCIPAL_SCRIPT`: check platform, IP and device, then INCR all three or none, returning `-1/-2/-3` for which cap denied (platform checked first). Counter keys hold a sha256 digest, not the raw IP or uuid. A malformed reply or store error stays fail-closed. Calls without a principal keep the old platform-only script.
 - **`lib/search-single-flight.ts` (new).** `SET sf:<cacheKey> <token> NX PX 10000`. The leader reserves, calls Google, fills the cache and releases with a compare-and-delete script. A failed upstream writes a 3 s `:err` marker first. Waiters poll the cache (150 ms, 6 s deadline). Outcomes: page (free), failed (degrade), vacant (one chance to lead), timeout (`deferred: "single-flight"` instead of billing). Acquire fails open to "solo" on a store error; the reservation behind it stays fail-closed. Without Upstash an in-process promise map does the same per process.
 - **Route (`app/api/search/route.ts`).** Order: validate → velocity limit → cache → index → liveRequired → key → cooldown → single-flight → leader re-checks the cache → reserve (platform + IP + device) → Google. The device key is the httpOnly `boraoke_identity` cookie, else the uuid param, else `anon@ip`. Denial: `200 {degraded: true, reason: "personal-limit", results: []}`, one reason for both personal caps, no remaining counts.
-- **Client (`components/SongSearch.tsx`).** `dailyLimited` became `limitCopy` (`dailyLimit` | `personalLimit` | null). Same notice slot, and load-more retires on either limit. New `Search.personalLimit` copy in en/es/pt-BR, in the existing em-dash register.
+- **Client (`components/SongSearch.tsx`).** `dailyLimited` became `limitCopy` (`dailyLimit` | `personalLimit` | null). Same notice slot, and load-more retires on either limit. New `Search.personalLimit` copy in en/es/pt-BR, in the existing em-dash register (reworded after the opus review to name "this device or network", see the review-fix section).
 - **Test env.** `jest.env.ts` sets `VERCEL=1` (jest runs routes under Vercel's header trust; `client-ip.test.ts` covers off-Vercel by deleting it). `playwright.config.ts` declares `TRUSTED_CLIENT_IP_HEADER=x-forwarded-for` for the e2e server. `.env.example` documents all three env vars.
 
 ## Self-verification
@@ -255,3 +255,98 @@ The combined targeted set (client-ip, single-flight, budget/principal incl. Lua 
 - (d) `triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path` (reorder of an existing limiter).
 
 **Ticket filed.** `work/tickets/TICKET-133-retire-legacy-search-live-fallback.md` (Cyber LOW 3 on #89): sunset the no-`v=2` live fallback once pre-#125 tabs have aged out.
+
+## Opus review fixes (REQUEST-CHANGES at `cd3c9ef`, `work/reports/review/TICKET-126-review.md`)
+
+Lane constraint unchanged: targeted jest and the real-Redis suite only. No e2e, no `next build`, no server.
+
+**Blocking 1, the route's lock release on a personal-cap refusal is now guarded.** New `route wiring` block in `__tests__/search-single-flight.test.ts`, run on both the in-process store and the fake Upstash keyspace. The harness adds control points only: a gate inside one device's reservation and a signal when a waiter appears, so the order is fixed, not lucky.
+- "releases the flight": device 1 has spent its one search (`SEARCH_DEVICE_DAILY_CAP=1`), leads "shared song" and is paused inside its reservation. Device 2 asks the same query and becomes its waiter. Device 1 is refused with `personal-limit`. Device 2 is then answered with the rows (no `deferred`), 1 new billed call, and the charge lands on device 2: its next fresh query is refused `personal-limit`, and on Upstash the two `:dev:` counters are `[1, 1]` with no lock left behind.
+- "a later identical request after the refusal is ANSWERED": device 1 is refused alone, then device 3 sends the same query and gets the rows, not `deferred`.
+
+**Blocking 2, copy is true for both caps.** Used the reviewer's wording, with "device" rather than "phone" in en (laptops search too):
+- en: "Live searches are used up for today on this device or network — karaoke catalogue results still work, or paste a YouTube link"
+- es: "Se acabaron las búsquedas en vivo de hoy en este dispositivo o en esta red — el catálogo de karaoke sigue funcionando, o pega un enlace de YouTube"
+- pt-BR: "As buscas ao vivo de hoje acabaram neste aparelho ou nesta rede — o catálogo de karaokê continua funcionando, ou cole um link do YouTube"
+
+`i18n-completeness` passes (parity kept). `e2e/search.spec.ts` keeps its two assertions and adds `/neste aparelho ou nesta rede/i`. The e2e was not run (lane constraint). The five regexes it uses were checked against the new pt-BR string with node: `/buscas ao vivo de hoje/i=true /neste aparelho ou nesta rede/i=true /catálogo de karaokê/i=true /Busca indisponível/i=false /Chegamos ao limite/i=false`.
+
+**Nit 3.** `FLIGHT_RETRY_MS = LIVE_COOLDOWN_MS` (2000, imported, not a second literal). Not exported, because Next.js route files may only export route fields. Test: a waiter that times out is told `retryAfterMs >= LIVE_COOLDOWN_MS`, and its retry at exactly that time, with the real cooldown, is answered rather than deferred.
+
+**Nit 4.** A leader that acquires the Redis lock now deletes the `sf:err:` marker (best effort, inside try/catch), so the marker is scoped to the flight that set it. Module test: flight 1 fails, flight 2 leads inside the marker's 3 s life, its waiter polls a few times, and flight 2 fills. The waiter must get the page, not `failed`. The in-process path needs no change because each flight has its own settle promise.
+
+**Nit 5.** A legacy (no `v=2`) client whose wait gives up now gets the same 429 `searchRateLimited` as the cooldown path. Test: a legacy request gets 429 with no `deferred`, and a v2 request in the same state still gets `deferred: "single-flight"`.
+
+**Nit 7.** Added "the IP cap is INCLUSIVE" to `search-principal-lua.integration.test.ts`: a network exactly at its cap is refused, even for a brand-new device. Real Redis (`docker run --rm -d --name t126-redis-fix -p 6427:6379 redis:7-alpine`, `REDIS_TEST_URL=redis://127.0.0.1:6427 npx jest principal-lua search-budget-lua --verbose`), container stopped after:
+```
+    ✓ grants the device cap, then returns -3 and charges NOTHING on the denial (17 ms)
+    ✓ returns -2 at the IP cap before the device cap, charging nothing (5 ms)
+    ✓ the IP cap is INCLUSIVE: a network at exactly its cap is refused, even for a brand-new device (4 ms)
+    ✓ returns -1 when the platform is spent, ahead of any personal reason (3 ms)
+    ✓ sets TTLs on create only, on all three keys (7 ms)
+    ✓ grants exactly the device cap under 100 pipelined concurrent evals from one device (8 ms)
+    ✓ deletes the lock only for the token that holds it (5 ms)
+    ✓ an expired leader cannot delete the next leader's lock (125 ms)
+    ✓ counts down to 0 then returns the -1 sentinel, which never collides (24 ms)
+    ✓ sets the TTL on CREATE only (the day key must not have its life extended) (22 ms)
+    ✓ treats a missing key as zero used (9 ms)
+    ✓ FAILS CLOSED (errors) rather than granting when the key holds garbage (12 ms)
+    ✓ grants exactly `budget` times under 300 pipelined concurrent evals (23 ms)
+Tests:       13 passed, 13 total
+```
+Mutant `used(KEYS[2]) >= ipCap` → `>` against the same Redis:
+```
+    ✕ returns -2 at the IP cap before the device cap, charging nothing (18 ms)
+    ✕ the IP cap is INCLUSIVE: a network at exactly its cap is refused, even for a brand-new device (7 ms)
+Tests:       2 failed, 6 passed, 8 total
+  ● RESERVE_PRINCIPAL_SCRIPT executed by a real Redis › the IP cap is INCLUSIVE: a network at exactly its cap is refused, even for a brand-new device
+    Expected: -2
+    Received: 87
+```
+The existing -2 test already killed this mutant on real Redis (`Expected: -2 Received: 86`). It only survives the default jest run because that suite is skipped without `REDIS_TEST_URL`. Running the opt-in suites in the full-suite lane is a gate question for the TM, not a fix in this PR.
+
+**Nit 8.** The build section's Vercel header order is corrected in place to `x-real-ip` → `x-vercel-forwarded-for` → `x-forwarded-for`.
+
+**Nit 6 not changed.** The reviewer marked it optional, and the code order is already right.
+
+### Prove-your-test-can-fail
+(a)/(b): each mutant was applied to the shipped code, the single-flight suite was run, and the file was restored (`cmp` against a saved copy).
+
+| Mutant | Result |
+|---|---|
+| M1 remove `await release("abandoned")` (route) | KILLED: 4 failed (both new tests × both stores), `Tests: 4 failed, 14 passed, 18 total` |
+| M3 `FLIGHT_RETRY_MS = 1500` | KILLED: `Expected: >= 2000 Received: 1500`. With that assertion removed too, the behavioural half still fails: `expect(retry.deferred).toBeUndefined() Received: "live-cooldown"` |
+| M4 no `del(errKey)` on acquire | KILLED: `Tests: 1 failed, 17 passed, 18 total` (stale-marker test) |
+| M5 legacy branch disabled on the flight deferral | KILLED: `Tests: 1 failed, 17 passed, 18 total` (legacy 429 test) |
+| Lua IP `>=` → `>` (real Redis) | KILLED: see above |
+
+M1 verbatim:
+```
+  ● route wiring › a leader refused for its PERSONAL cap (memory store) › releases the flight: the waiting device leads, is answered, and is charged to ITS OWN device
+
+    expect(received).toBeUndefined()
+
+    Received: "single-flight"
+
+    > 401 |         expect(answered.deferred).toBeUndefined();
+
+  ● route wiring › a leader refused for its PERSONAL cap (upstash store) › a later identical request after the refusal is ANSWERED, not told to try again
+
+    expect(received).toBeUndefined()
+
+    Received: "single-flight"
+
+    > 431 |         expect(later.deferred).toBeUndefined();
+```
+(c) The only primitive change is the marker delete on acquire. The existing "upstream failure costs ONE call and every waiter degrades" test was re-examined: its waiters still see the failed leader's marker because no new leader acquires in that window. It still passes, and it is not vacuous, because it counts calls and checks every body is degraded.
+(d) `triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path`.
+
+### Self-verification
+16 targeted suites, every one that touches the search route, limiter, live gate, flight, budget, IP derivation or i18n parity:
+```
+Test Suites: 16 passed, 16 total
+Tests:       13 skipped, 276 passed, 289 total
+```
+(The 13 skips are the real-Redis suites without `REDIS_TEST_URL`. They passed 13/13 against real Redis above.) `npx tsc --noEmit -p .` exits 0.
+
+**Flake note, not reproduced.** The very first run of the 14-suite set, while another lane was loading the machine, showed `search-single-flight` with 2 failed (`Tests: 2 failed, 5 skipped, 243 passed`). The output was not kept, so the failing tests are unknown. After that, 6 sequential reruns, 2 cold-cache reruns, 4 concurrent ×5-suite runs and 10 concurrent single-suite runs all passed: about 22 runs, 0 failures. The likeliest candidate is the existing cross-instance probes under heavy CPU: a request that arrives after the leader has finished becomes a second leader and bills again. That exposure existed before this change. Flagged for the full-suite lane to watch.

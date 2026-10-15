@@ -477,6 +477,8 @@ test("personal search share spent: own copy + paste-link still queues a song", a
   const notice = page.getByTestId("search-degraded");
   await expect(notice).toBeVisible({ timeout: 5000 });
   await expect(notice).toContainText(/buscas ao vivo de hoje/i);
+  // True whichever cap bound: this device OR this network (the bar Wi-Fi).
+  await expect(notice).toContainText(/neste aparelho ou nesta rede/i);
   await expect(notice).toContainText(/catálogo de karaokê/i);
   await expect(notice).not.toContainText(/Busca indisponível/i);
   await expect(notice).not.toContainText(/Chegamos ao limite/i);

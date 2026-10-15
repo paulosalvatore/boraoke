@@ -15,7 +15,7 @@ import { getKaraokeIndex } from "@/lib/karaoke-index/store";
 import { decideTier, INDEX_MORE_TOKEN } from "@/lib/karaoke-index/tier";
 import { containsKaraoke } from "@/lib/search-query";
 import { getTranslations } from "next-intl/server";
-import { isLegacyClient, liveAllowed, liveCooldown } from "@/lib/live-search-gate";
+import { isLegacyClient, liveAllowed, liveCooldown, LIVE_COOLDOWN_MS } from "@/lib/live-search-gate";
 import { clientIpFrom, UNKNOWN_CLIENT_IP } from "@/lib/client-ip";
 import { IDENTITY_COOKIE, isValidUuid } from "@/lib/identity";
 import { acquireSearchFlight, waitForSearchFlight } from "@/lib/search-single-flight";
@@ -31,7 +31,7 @@ import { acquireSearchFlight, waitForSearchFlight } from "@/lib/search-single-fl
  *   200 { degraded: true, reason, results: [] }        — no key / quota / daily-limit / upstream error
  *   200 { results: [], liveRequired: true }            — v2 index-only request the free tiers can't answer
  *   200 { results: [], deferred: "live-cooldown", retryAfterMs } — billed attempt inside the per-uuid cooldown
- *   200 { results: [], deferred: "single-flight", retryAfterMs } — an identical query's leader did not answer in time
+ *   200 { results: [], deferred: "single-flight", retryAfterMs } — an identical query's leader did not answer in time (v2 only; legacy clients get the 429)
  *   200 { degraded: true, reason: "personal-limit", results: [] } — this device's or network's daily share is spent
  *   400 { error }                                      — bad query/uuid/pageToken, or page past the depth cap
  *   429 { error }                                      — per-uuid OR per-IP rate limit exceeded
@@ -67,8 +67,13 @@ const PAGE_TOKEN_RE = /^[A-Za-z0-9_\-=]{1,128}$/;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** How long a single-flight waiter that gave up asks the client to wait. */
-const FLIGHT_RETRY_MS = 1500;
+/**
+ * How long a single-flight waiter that gave up asks the client to wait. A
+ * waiter already passed the per-uuid live cooldown (which records the attempt),
+ * so its one retry must land AFTER that cooldown or it is deferred again as
+ * "live-cooldown" and the client, which retries once, gives up.
+ */
+const FLIGHT_RETRY_MS = LIVE_COOLDOWN_MS;
 
 /**
  * Who a billed search is charged to (TICKET-126). The device is the
@@ -289,6 +294,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ degraded: true, reason: "error", results: [] });
     }
     if (waited.kind === "timeout" || attempt >= 1) {
+      // Legacy clients don't know `deferred` (see the cooldown path above).
+      if (isLegacyClient(params)) {
+        const te = await getTranslations("Errors");
+        return NextResponse.json({ error: te("searchRateLimited") }, { status: 429 });
+      }
       return NextResponse.json({
         results: [],
         deferred: "single-flight",

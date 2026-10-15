@@ -193,6 +193,35 @@ describe("module protocol (Redis path)", () => {
     return m;
   }
 
+  it("a failed flight's error marker does not make the NEXT flight's waiters give up", async () => {
+    let m!: typeof import("@/lib/search-single-flight");
+    let cache!: typeof import("@/lib/search-cache");
+    jest.isolateModules(() => {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      m = require("@/lib/search-single-flight");
+      cache = require("@/lib/search-cache");
+      /* eslint-enable @typescript-eslint/no-require-imports */
+    });
+    // Flight 1 fails upstream: it leaves the short-lived error marker behind.
+    const first = await m.acquireSearchFlight("k5");
+    if (first.role !== "leader") throw new Error("expected leader");
+    await first.release("failed");
+    expect(fake.store.has(m.errKey("k5"))).toBe(true);
+    // Flight 2 starts inside the marker's lifetime and will answer.
+    const second = await m.acquireSearchFlight("k5");
+    if (second.role !== "leader") throw new Error("expected leader");
+    expect((await m.acquireSearchFlight("k5")).role).toBe("waiter");
+    const waiting = m.waitForSearchFlight("k5", { pollMs: 5, deadlineMs: 2000 });
+    await new Promise((r) => setTimeout(r, 80)); // the waiter polls several times first
+    const page = { results: [{ videoId: "vFlight2", title: "t", channelTitle: "c" }] } as unknown as Parameters<
+      typeof cache.setCachedSearchPage
+    >[1];
+    await cache.setCachedSearchPage("k5", page);
+    await second.release("filled");
+    const got = await waiting;
+    expect(got.kind).toBe("page");
+  });
+
   it("a leader that abandons (e.g. denied a reservation) leaves the flight VACANT", async () => {
     const m = await mod();
     const leader = await m.acquireSearchFlight("k1");
@@ -269,5 +298,199 @@ describe("module protocol (in-process path, no Upstash)", () => {
     const bodies = await Promise.all(res.map((r) => r.json()));
     expect(searchListCalls).toBe(1);
     for (const b of bodies) expect((b.results as { videoId: string }[])[0].videoId).toBe("vShared01");
+  });
+});
+
+/**
+ * Route wiring around the flight (review of cd3c9ef). These drive GET with the
+ * real flight + budget modules and only add CONTROL POINTS (a gate inside the
+ * leader's reservation, a signal when a waiter appears), so the interleaving is
+ * deterministic rather than lucky.
+ */
+describe("route wiring", () => {
+  type Deferred = { promise: Promise<void>; resolve: () => void };
+  const deferred = (): Deferred => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => (resolve = r));
+    return { promise, resolve };
+  };
+
+  interface Harness {
+    route: RouteModule;
+    /** Device key whose reservation pauses at the gate (null = no gate). */
+    gateDevice: string | null;
+    inReserve: Deferred;
+    waiterSeen: Deferred;
+    open: Deferred;
+  }
+
+  /** One instance whose reservation can be paused for one device. */
+  function loadGated(opts: { realCooldown?: boolean } = {}): Harness {
+    const h = { gateDevice: null, inReserve: deferred(), waiterSeen: deferred(), open: deferred() } as Harness;
+    jest.isolateModules(() => {
+      jest.doMock("@/lib/search-budget", () => {
+        const actual = jest.requireActual("@/lib/search-budget");
+        return {
+          ...actual,
+          reserveSearchCall: async (...args: Parameters<typeof actual.reserveSearchCall>) => {
+            if (h.gateDevice && args[1]?.device === h.gateDevice) {
+              h.inReserve.resolve();
+              await h.open.promise;
+            }
+            return actual.reserveSearchCall(...args);
+          },
+        };
+      });
+      jest.doMock("@/lib/search-single-flight", () => {
+        const actual = jest.requireActual("@/lib/search-single-flight");
+        return {
+          ...actual,
+          acquireSearchFlight: async (k: string) => {
+            const f = await actual.acquireSearchFlight(k);
+            if (f.role === "waiter") h.waiterSeen.resolve();
+            return f;
+          },
+        };
+      });
+      if (!opts.realCooldown) {
+        // The per-uuid cooldown is covered by live-search-gate.test.ts.
+        jest.doMock("@/lib/live-search-gate", () => ({
+          ...jest.requireActual("@/lib/live-search-gate"),
+          liveCooldown: () => ({ ok: true }),
+        }));
+      }
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      h.route = require("@/app/api/search/route") as RouteModule;
+    });
+    jest.dontMock("@/lib/search-budget");
+    jest.dontMock("@/lib/search-single-flight");
+    jest.dontMock("@/lib/live-search-gate");
+    return h;
+  }
+
+  const json = async (p: Promise<Response> | Response) => (await (await p).json()) as Record<string, unknown>;
+
+  describe.each(["memory", "upstash"])("a leader refused for its PERSONAL cap (%s store)", (driver) => {
+    beforeEach(() => {
+      if (driver === "memory") {
+        delete process.env.UPSTASH_REDIS_REST_URL;
+        process.env.STORE_DRIVER = "memory";
+      }
+      process.env.SEARCH_DEVICE_DAILY_CAP = "1";
+    });
+
+    it(
+      "releases the flight: the waiting device leads, is answered, and is charged to ITS OWN device",
+      async () => {
+        const h = loadGated();
+        // Device 1 spends its one billed search of the day.
+        expect((await json(h.route.GET(req(1, "warm up query")))).degraded).toBeUndefined();
+        expect(searchListCalls).toBe(1);
+
+        // Device 1 leads "shared song" and is held inside its reservation...
+        h.gateDevice = `u:${uuidN(1)}`;
+        const leader = h.route.GET(req(1, "shared song"));
+        await h.inReserve.promise;
+        // ...while device 2 asks the same thing and becomes its waiter.
+        const waiter = h.route.GET(req(2, "shared song"));
+        await h.waiterSeen.promise;
+        h.open.resolve();
+
+        expect(await json(leader)).toEqual({ degraded: true, reason: "personal-limit", results: [] });
+        const answered = await json(waiter);
+        expect(answered.deferred).toBeUndefined();
+        expect(answered.degraded).toBeUndefined();
+        expect((answered.results as { videoId: string }[]).map((r) => r.videoId)).toEqual(["vShared01"]);
+        expect(searchListCalls).toBe(2); // warm-up + the waiter's own call; the refused leader billed nothing
+
+        // The call was charged to device 2: its own one-a-day share is now spent.
+        h.gateDevice = null;
+        expect((await json(h.route.GET(req(2, "another song")))).reason).toBe("personal-limit");
+        expect(searchListCalls).toBe(2);
+        if (driver === "upstash") {
+          const c = counters();
+          const dev = Object.entries(c).filter(([k]) => k.includes(":dev:")).map(([, v]) => v);
+          expect(dev).toEqual([1, 1]); // device 1 (warm-up) and device 2 (the shared song), one each
+          expect([...fake.store.keys()].filter((k) => k.startsWith("sf:lock:"))).toEqual([]);
+        }
+      },
+      20_000,
+    );
+
+    it(
+      "a later identical request after the refusal is ANSWERED, not told to try again",
+      async () => {
+        const h = loadGated();
+        await json(h.route.GET(req(1, "warm up query")));
+        expect(await json(h.route.GET(req(1, "lonely song")))).toEqual({
+          degraded: true,
+          reason: "personal-limit",
+          results: [],
+        });
+        const later = await json(h.route.GET(req(3, "lonely song")));
+        expect(later.deferred).toBeUndefined();
+        expect((later.results as { videoId: string }[]).map((r) => r.videoId)).toEqual(["vShared01"]);
+        expect(searchListCalls).toBe(2);
+      },
+      20_000,
+    );
+  });
+
+  describe("a waiter that gives up (leader too slow or gone)", () => {
+    let mode: "timeout" | "solo" = "timeout";
+    beforeEach(() => {
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      process.env.STORE_DRIVER = "memory";
+      mode = "timeout";
+    });
+
+    function loadTimingOut(): RouteModule {
+      let route!: RouteModule;
+      jest.isolateModules(() => {
+        jest.doMock("@/lib/search-single-flight", () => ({
+          ...jest.requireActual("@/lib/search-single-flight"),
+          acquireSearchFlight: async () => (mode === "solo" ? { role: "solo" } : { role: "waiter" }),
+          waitForSearchFlight: async () => ({ kind: "timeout" }),
+        }));
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        route = require("@/app/api/search/route") as RouteModule;
+      });
+      jest.dontMock("@/lib/search-single-flight");
+      return route;
+    }
+
+    it("is told to retry no sooner than the live cooldown, so its ONE retry is answered", async () => {
+      const route = loadTimingOut();
+      const { LIVE_COOLDOWN_MS } = jest.requireActual("@/lib/live-search-gate") as typeof import("@/lib/live-search-gate");
+      const first = await json(route.GET(req(10, "slow leader song")));
+      expect(first.deferred).toBe("single-flight");
+      const retryAfterMs = first.retryAfterMs as number;
+      expect(retryAfterMs).toBeGreaterThanOrEqual(LIVE_COOLDOWN_MS);
+
+      // The client retries exactly when told to; the leader is gone by then.
+      mode = "solo";
+      const t0 = Date.now();
+      jest.spyOn(Date, "now").mockImplementation(() => t0 + retryAfterMs);
+      const retry = await json(route.GET(req(10, "slow leader song")));
+      expect(retry.deferred).toBeUndefined();
+      expect((retry.results as { videoId: string }[]).map((r) => r.videoId)).toEqual(["vShared01"]);
+    });
+
+    it("a LEGACY client (no v=2) gets the 429 it already renders, not a `deferred` it would show as empty", async () => {
+      const route = loadTimingOut();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { NextRequest: NR } = require("next/server");
+      const legacy = new NR(
+        `http://127.0.0.1:3126/api/search?q=${encodeURIComponent("legacy song")}&uuid=${uuidN(11)}`,
+        { headers: { "x-forwarded-for": "198.51.100.11" } },
+      ) as NextRequest;
+      const res = await route.GET(legacy);
+      expect(res.status).toBe(429);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body.deferred).toBeUndefined();
+      expect(typeof body.error).toBe("string");
+      // The current client still gets the deferred answer.
+      expect((await json(route.GET(req(12, "legacy song")))).deferred).toBe("single-flight");
+    });
   });
 });

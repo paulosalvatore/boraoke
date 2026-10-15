@@ -64,6 +64,19 @@ maybe("RESERVE_PRINCIPAL_SCRIPT executed by a real Redis", () => {
     expect(await reserve(IP_B, DEV_1, caps)).toBe(86);
   });
 
+  it("the IP cap is INCLUSIVE: a network at exactly its cap is refused, even for a brand-new device", async () => {
+    // Kills `used(KEYS[2]) >= ipCap` -> `>`: with `>`, a network sitting AT its
+    // cap would be granted one more call. A fresh device each time, so the
+    // device cap can never be what refuses.
+    const caps = { budget: 90, ip: 2, dev: 10 };
+    expect(await reserve(IP_A, DEV_1, caps)).toBe(89);
+    expect(await reserve(IP_A, DEV_2, caps)).toBe(88); // IP_A now exactly at its cap
+    expect(await reserve(IP_A, DEV_3, caps)).toBe(-2);
+    expect(await get(IP_A)).toBe(2);
+    expect(await get(DEV_3)).toBe(0);
+    expect(await get(G)).toBe(2);
+  });
+
   it("returns -1 when the platform is spent, ahead of any personal reason", async () => {
     const caps = { budget: 2, ip: 1, dev: 1 };
     expect(await reserve(IP_A, DEV_1, caps)).toBe(1);

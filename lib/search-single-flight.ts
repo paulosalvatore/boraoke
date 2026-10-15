@@ -16,7 +16,8 @@
  *   release  — compare-and-delete in a script, so a leader whose lock already
  *              expired can never delete the NEXT leader's lock. A failed
  *              upstream call first sets a short `sf:err:<cacheKey>` marker so
- *              waiters stop waiting instead of timing out.
+ *              waiters stop waiting instead of timing out. The next leader
+ *              to acquire clears that marker, so it never outlives its flight.
  *   wait     — poll the cache every POLL_MS until DEADLINE_MS. A hit → the
  *              page. The err marker → "failed". The lock gone with no page
  *              (the leader was denied a reservation, or died) → "vacant", and
@@ -161,6 +162,16 @@ export async function acquireSearchFlight(cacheKey: string): Promise<Flight> {
     return { role: "solo" }; // fail-open: see header
   }
   if (got !== "OK") return { role: "waiter" };
+  // A failed PREVIOUS flight's error marker outlives its lock by up to
+  // ERROR_MARKER_TTL_MS. It describes that flight, not this one: left in place,
+  // this leader's waiters would read it and give up while this leader is about
+  // to answer. Clearing it here scopes the marker to the flight that set it.
+  // Best-effort: a failure only means waiters may degrade early, as before.
+  try {
+    await redis.del(errKey(cacheKey));
+  } catch {
+    /* see above */
+  }
   let done = false;
   return {
     role: "leader",
