@@ -16,6 +16,7 @@
 ## Decisions (TM, 2026-10-14)
 
 - Caps: 10 per device, 45 per IP, 90 platform; device and IP caps env-configurable with those defaults (`SEARCH_DEVICE_DAILY_CAP`, `SEARCH_IP_DAILY_CAP`). TL sees the numbers at the OK.
+- **Superseded at the TL OK (2026-10-15):** caps raised to **30 per device, 90 per IP** (= platform budget), platform 90. TL: "Lets increase the numbers, because we are rebuilding the search mechanism to allow more searchs. Otherwise the app will be shitty". The caps only stop one abuser; they must never throttle normal patrons.
 - The room-record write race found while planning is filed as TICKET-127, not fixed here.
 
 Plan: `work/plans/TICKET-126-plan.md`.

@@ -31,6 +31,8 @@ import {
   DEFAULT_DEVICE_DAILY_CAP,
   DEFAULT_IP_DAILY_CAP,
   SEARCH_DAILY_BUDGET,
+  deviceDailyCap,
+  ipDailyCap,
   parseCapOverride,
 } from "@/lib/search-budget";
 import { IDENTITY_COOKIE } from "@/lib/identity";
@@ -146,16 +148,44 @@ describe("per-device daily sub-budget", () => {
   });
 });
 
+describe("default caps (TL 2026-10-15: generous, only stop one abuser)", () => {
+  it("defaults to 30 per device and 90 per network (= the platform budget)", () => {
+    expect(DEFAULT_DEVICE_DAILY_CAP).toBe(30);
+    expect(DEFAULT_IP_DAILY_CAP).toBe(90);
+    expect(DEFAULT_IP_DAILY_CAP).toBe(SEARCH_DAILY_BUDGET);
+    expect(deviceDailyCap()).toBe(30);
+    expect(ipDailyCap()).toBe(90);
+  });
+
+  it("loads the overrides when set, and clamps them to the platform budget", () => {
+    process.env.SEARCH_DEVICE_DAILY_CAP = "12";
+    process.env.SEARCH_IP_DAILY_CAP = "500";
+    expect(deviceDailyCap()).toBe(12);
+    expect(ipDailyCap()).toBe(SEARCH_DAILY_BUDGET);
+  });
+
+  it("with default caps one network never hits a personal limit before the platform day runs out", async () => {
+    const ip = "203.0.113.60";
+    for (let i = 0; i < SEARCH_DAILY_BUDGET; i++) {
+      const body = await search({ uuid: uuidN(1500 + i), ip });
+      expect(body.degraded).toBeUndefined();
+    }
+    expect(searchListCalls).toBe(SEARCH_DAILY_BUDGET);
+    expect((await search({ uuid: uuidN(1599), ip })).reason).toBe("daily-limit");
+  });
+});
+
 describe("per-IP daily sub-budget", () => {
-  it(`stops one network at ${DEFAULT_IP_DAILY_CAP} billed calls across many devices`, async () => {
+  it("stops one network at its cap across many devices", async () => {
+    process.env.SEARCH_IP_DAILY_CAP = "5";
     const ip = "203.0.113.50";
-    for (let i = 0; i < DEFAULT_IP_DAILY_CAP; i++) {
+    for (let i = 0; i < 5; i++) {
       const body = await search({ uuid: uuidN(1000 + i), ip });
       expect(body.degraded).toBeUndefined();
     }
     const denied = await search({ uuid: uuidN(1999), ip });
     expect(denied).toEqual({ degraded: true, reason: "personal-limit", results: [] });
-    expect(searchListCalls).toBe(DEFAULT_IP_DAILY_CAP);
+    expect(searchListCalls).toBe(5);
     // Another network is unaffected.
     expect((await search({ uuid: uuidN(2000), ip: "203.0.113.51" })).degraded).toBeUndefined();
   });
@@ -220,9 +250,9 @@ describe("env overrides", () => {
   });
 
   it("clamps an override above the platform budget to the budget", () => {
-    expect(parseCapOverride("100000", 45, "X")).toBe(SEARCH_DAILY_BUDGET);
-    expect(parseCapOverride(String(SEARCH_DAILY_BUDGET), 45, "X")).toBe(SEARCH_DAILY_BUDGET);
-    expect(parseCapOverride("12", 45, "X")).toBe(12);
-    expect(parseCapOverride(undefined, 45, "X")).toBe(45);
+    expect(parseCapOverride("100000", 30, "X")).toBe(SEARCH_DAILY_BUDGET);
+    expect(parseCapOverride(String(SEARCH_DAILY_BUDGET), 30, "X")).toBe(SEARCH_DAILY_BUDGET);
+    expect(parseCapOverride("12", 30, "X")).toBe(12);
+    expect(parseCapOverride(undefined, 30, "X")).toBe(30);
   });
 });
