@@ -109,3 +109,60 @@ Every item from the first pass is fixed, and each new test was mutated by me and
 ## Gate state (not part of this verdict)
 
 Unchanged from the first pass: App Tester PASS unchecked; full jest, real-Redis and e2e are owed on the final head after #89 merges; Cyber M-1's deployed-build probe carries to TICKET-119's close. Targeted evidence from me at `fc91d17`: single-flight 18/18 (×79 runs), the 16-suite set 249 passed / 13 skipped, real-Redis 13/13, i18n 21/21.
+
+---
+
+# [reviewer] APPROVE — D-022 opus re-review r3, head 6a6854c
+
+Re-review of the round-2 blocking item and of the main merge. Head `6a6854c1cf9b1243a9a62571bdcc05d2b7d2b817` = `origin/ticket/126-search-limits` (pulled and fetched). Base is `main`; merge-base with `origin/main` is `4d1940e` (#89 squash).
+
+## Verdict
+
+APPROVE on the code. The round-2 blocking item is fixed and I reproduced the before/after proof myself. The main merge is clean and reverts nothing of #89. The waiter-timer change is correct. The PR body is accurate. Condition: the App Tester PASS is still unchecked and this PR touches a UI surface (`components/SongSearch.tsx`, new copy in three locales), so it is not mergeable until that gate passes.
+
+## Round-2 blocking 1 (probe timeouts), fixed in `ac0f0f1`
+
+- Every cross-instance `fire()` probe now carries `PROBE_TIMEOUT_MS = 30_000`: the 20-request probe, the 8 seeds, NEGATIVE CONTROL, upstream failure, and the different-queries probe.
+- The seeds are `it.each([1..8])`. The per-seed `searchListCalls = 0` was removed, which is correct because `beforeEach` resets it and each seed is now its own test.
+- Proof, run by me at load ~111 (10 cores):
+  - After, at the head: `npx jest __tests__/search-single-flight.test.ts --testTimeout=1000` gave `Tests: 25 passed, 25 total`. The seeds took 179–220 ms each, and every test after them passed.
+  - Before: the pre-fix test file (`git show ac0f0f1^:__tests__/search-single-flight.test.ts`, run against the current lib as a temporary copy, then deleted, tree verified clean) under the same command gave `✕ holds across 8 different interleavings ... (1015 ms)`, `✕ NEGATIVE CONTROL`, `Exceeded timeout of 1000 ms`, `Expected: 20 Received: 21`, `Tests: 2 failed, 16 passed, 18 total`. This matches the Dev's "before" line word for word.
+
+## Waiter timer (`lib/search-single-flight.ts`, in-process path)
+
+Correct. The `Promise` executor runs synchronously, so `timer` is assigned before `Promise.race` starts. `.finally(() => clearTimeout(timer))` clears it whichever side wins. `flight.settled` only ever resolves (it never rejects), so the outcome values are unchanged. The deadline arithmetic (`Math.max(0, deadline - Date.now())`) is the same as before. This is behaviour-preserving, and it only removes the 6 s timer left pending after a fast answer. That was my round-2 optional nit. `sleep` is still used by the Redis poll loop, so it is not dead code.
+
+## Main merge (`5d95dd2`)
+
+- `git diff origin/main...HEAD` has 37 files, all TICKET-126 content: the plan, reports, tickets 127/131/132/133, and the code and tests listed in the body. It is byte-identical to `git diff 4d1940e HEAD`.
+- Nothing of #89 was reverted. Of the 150 files #89 touched, 141 are unchanged since `4d1940e`. The other 9 differ only by TICKET-126 hunks:
+  - `route.ts`: the single-flight block, the personal-limit reason, `clientIpFrom`, and the removed local `clientIp` helper (it was replaced, not reverted). #89's `isLegacyClient`/`liveAllowed`/`liveCooldown` and the `v=2` cooldown doc lines are intact.
+  - `SongSearch.tsx`: `dailyLimited` was renamed to `limitCopy` with `limitCopyFor`. #89's `DEBOUNCE_MS`, `MAX_LIVE_RETRY_MS`, held-query and `clearDegraded` logic are intact.
+  - `e2e/search.spec.ts`: one new test, added only.
+  - `search-rate-isolation.test.ts`: a new describe, added only.
+  - `youtube-search.ts`: the IP-first limiter reorder from round 1.
+  - The three locale files: one new `personalLimit` key each.
+  - `work/events/by-branch/main.jsonl`: one event line.
+- The merge's combined diff (`git show 5d95dd2 --cc`) has one conflict resolution, in the `route.ts` doc header. Both sides were kept: #89's `v=2` cooldown lines and TICKET-126's single-flight and personal-limit lines.
+- The body's claim "numstat identical to the pre-merge TICKET-126 diff" checks out. `git diff 4d1940e 5d95dd2 --numstat` equals `git diff 638d427 1d6298a --numstat`, where 638d427 is the ticket/125 tip at the last 125→126 merge.
+
+## Targeted jest at the head (load ~88–116)
+
+`npx jest client-ip api-search search-budget search-rate-isolation search-single-flight host-auth search-trigger live-search-gate search-pagination i18n`: `Test Suites: 16 passed, 16 total`, `Tests: 5 skipped, 261 passed, 266 total`. The 5 skipped are the opt-in real-Redis suites. The Dev reports those at 13/13 on the head, and I ran 13/13 myself in round 2 with no Lua change since.
+
+## PR body accuracy
+
+Accurate. It names the final head `6a6854c` and the code head `ac0f0f1`. `git diff ac0f0f1 6a6854c` and `git diff 4761cd4 6a6854c` touch only the dev report and event log, so the e2e run at `4761cd4` is on the final code. The before/after numbers match my runs exactly, and the Gates list records the round-2 REQUEST-CHANGES and the fix. Full jest 1182 passed, real Redis 13/13, build OK and e2e 134/134 are Dev-reported. I did not re-run them under the lane constraint, but they are consistent with my targeted run.
+
+## Lines that must appear
+
+- `triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path` (round 3 adds no function; the first-pass NORM table stands).
+- design-parity: copy-only UI change with no approved mockup for this surface. The App Tester still owes it (see the condition above).
+
+## Gate state
+
+- App Tester PASS: still unchecked, and it is the merge blocker.
+- Cyber PASS: done.
+- CI: boraoke has no `verify-green-local.sh`. The Dev's full jest, build and e2e are green on the final code head.
+- Cyber M-1's deployed-build claim probe carries to TICKET-119's close.
+- Not merged by the Reviewer.
