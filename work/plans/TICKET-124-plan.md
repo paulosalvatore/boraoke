@@ -1,5 +1,7 @@
 # TICKET-124 — plan
 
+**APPROVED-BY:** TM dispatch brief 2026-10-14 (+ addenda); validated downstream by gates + merge of PR #88.
+
 **Approval:** the TM's dispatch brief (2026-10-14) is the approved design, plus two TM addenda the same day (option 1 re-harvest with the production key; Global TM data-minimisation + retention). No separate plan gate was requested.
 
 ## Approach

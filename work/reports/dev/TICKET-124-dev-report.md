@@ -7,7 +7,7 @@ Implemented, measured, and self-verified. Draft PR open and awaiting the TM. Qua
 - Worktree: `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t124-index-primary`
 - Branch: `ticket/124-index-primary` (base `af080ca`)
 - App/e2e port: 3124
-- PR: see the Log below once opened.
+- PR: #88 https://github.com/paulosalvatore/boraoke/pull/88 (draft)
 - Plan: `work/plans/TICKET-124-plan.md` (approved via the TM's dispatch brief plus its two addenda).
 
 ## Log
@@ -78,6 +78,12 @@ Triggered mutation pass: not triggered. There is no new parsing/normalisation fu
   - `evidencias` (listen mode) → live, so degraded.
   - `GET /api/cron/karaoke-index` with no `CRON_SECRET` → 503 (fail-closed).
   - Server stopped by PID; port freed.
+
+### 2026-10-14 draft PR opened
+#88 (draft) carries the measurement tables, the retention section, the seeding-bias caveat and the Testing Handoff. Implementation commit: `a680764`. Not merged. Open items for the TM:
+- Set `CRON_SECRET` in production.
+- Do the first population after deploy.
+- Decide what to do with the committed fixture's retention: it will be older than 30 days on 2026-11-13.
 
 ## Friction
 - The spike's harvested data was kept only in a scratchpad and is gone, which cost a full re-harvest. Measurement inputs need to be committed with the code that produced the numbers; this ticket commits its seeds and fixture for that reason.
