@@ -405,9 +405,10 @@ export function _resetCache(): void {
 // MEDIUM #2: the bucket map is CAPPED (same LRU pattern as queryCache) —
 // uuid keys are attacker-minted, so an unbounded Map grows the heap under
 // rotation. Oldest-touched buckets evict first past RATE_BUCKETS_MAX; worst
-// case an evicted rotator gets a fresh uuid window, but the IP bucket (one
-// key per host, constantly re-touched so effectively never the LRU victim)
-// still holds the line.
+// case an evicted rotator gets a fresh uuid window, but the IP bucket still
+// holds the line. That relies on `rateLimitOk` checking the IP first and adding
+// nothing on rejection (see there): "re-touched so never the victim" only ever
+// held for the flooding address's own key, not for a second address's.
 // ---------------------------------------------------------------------------
 
 const RATE_MAX = 5; // per-uuid requests per window
@@ -444,14 +445,24 @@ function evictOverflow(map = hits): void {
  * Returns true if the request is allowed (and records it in both buckets),
  * false when EITHER the uuid bucket or the IP bucket exceeds its window.
  * `ip` may be "" when unavailable (then only the uuid bucket applies).
+ *
+ * The IP bucket is checked FIRST, and a request it rejects adds no uuid key.
+ * Otherwise every rejected request under a fresh uuid inserted a new key, so
+ * one address flooding rejected requests churned the LRU and evicted a SECOND
+ * address's `ip:` bucket, which then got a fresh window every cycle (security
+ * gate probe: 900 billed in 30 s against a ceiling of 90). With this order an
+ * address adds at most RATE_IP_MAX uuid keys per window, whatever it sends.
+ * A request that passes the IP bucket is still charged there even if its uuid
+ * bucket then rejects, so rotating uuids cannot dodge the IP accounting.
  */
 export function rateLimitOk(uuid: string, ip = "", now = Date.now()): boolean {
+  if (ip && !bucketOk(`ip:${ip}`, RATE_IP_MAX, now)) {
+    evictOverflow();
+    return false;
+  }
   const uuidOk = bucketOk(`u:${uuid}`, RATE_MAX, now);
-  // Evaluate (and charge) the IP bucket even when the uuid bucket already
-  // tripped, so rotating uuids can't dodge the IP window's accounting.
-  const ipOk = ip ? bucketOk(`ip:${ip}`, RATE_IP_MAX, now) : true;
   evictOverflow();
-  return uuidOk && ipOk;
+  return uuidOk;
 }
 
 /**

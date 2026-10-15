@@ -1,7 +1,7 @@
 # TICKET-126 — Dev report (PR A: TICKET-119 + per-person caps + single-flight)
 
 ## Status
-Cyber Security gate PASS (D-011, `work/reports/security/TICKET-126-security.md`); the in-PR fixes it asked for (M-1, L-1, L-3) are applied and M-2 / L-2 are filed as TICKET-131 / TICKET-132. Merged `ticket/125-enter-idle-search` @ `638d427`. Verified with targeted jest only (lane constraint: no e2e, no build, no server); the full suite runs after #89 merges. PR B (TICKET-120) not started.
+Cyber Security gate PASS (D-011, `work/reports/security/TICKET-126-security.md`); the in-PR fixes it asked for (M-1, L-1, L-3) are applied and M-2 / L-2 are filed as TICKET-131 / TICKET-132. The #89 re-gate's MEDIUM 7 (billed limiter churn across two IPs) is fixed here too, and its LOW 3 (legacy path sunset) is filed as TICKET-133. Merged `ticket/125-enter-idle-search` @ `638d427`. Verified with targeted jest only (lane constraint: no e2e, no build, no server); the full suite runs after #89 merges. PR B (TICKET-120) not started.
 
 ## Context
 - Picking up from: fresh start. Phase 1 plan approved by the Product TM 2026-10-14 with amendments (recorded at the top of `work/plans/TICKET-126-plan.md`).
@@ -204,3 +204,54 @@ After restoring the fix, `npx jest search-single-flight` gives 11/11 passed.
 **(d)** `triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path` (the change is a key-prefix rename and a header reorder; `normaliseIpBucket` is unchanged and its 14/14 mutation pass above stands).
 
 **Not run, by lane constraint:** e2e, `next build`, servers. These are owed in the full-suite run after #89 merges.
+
+## 2026-10-15 — #89 re-gate MEDIUM 7 (billed limiter churn) + legacy sunset ticket
+
+The source is the TICKET-125 re-gate report (`work/reports/security/TICKET-125-security.md`, on `ticket/125-enter-idle-search` at `c496cbc`; not yet in this tree because it landed after `638d427`).
+
+**MEDIUM 7, `lib/youtube-search.ts` `rateLimitOk`.** The billed limiter gets the same treatment the index limiter got on #89.
+- The `ip:` bucket is checked first, and a request it rejects returns before any `u:<uuid>` key is inserted. An address can therefore add at most RATE_IP_MAX uuid keys per window, whatever it floods, so it cannot churn the 2,000-key LRU and evict a second address's `ip:` bucket.
+- A request that passes the IP bucket is still charged there even when its uuid bucket rejects, so the "rotating uuids cannot dodge IP accounting" property holds.
+- The MEDIUM #2 header comment no longer claims the IP key is "never the LRU victim"; that was only ever true for the flooding address's own key.
+- I did not add a separate `ip:` map (the optional suggestion). With no insert on rejection the probe already holds. The remaining churn source is many distinct addresses, which is the TICKET-131 (IPv6 /56) class.
+
+**Regression tests** (`__tests__/search-rate-isolation.test.ts`, new describe):
+- "probe (e)": over 30 simulated seconds, IP B sends 40/s and IP A sends 2,100/s with fresh uuids. IP B must stay ≤ 90 (3 windows × RATE_IP_MAX).
+- A second test checks that 5,000 requests from one IP leave exactly RATE_IP_MAX + 1 buckets.
+
+Pre-fix run (verbatim, current `rateLimitOk`):
+```
+    ✕ probe (e): IP B stays at its per-IP ceiling while IP A floods fresh uuids (280 ms)
+    ✕ a request rejected by the IP bucket adds no uuid key (26 ms)
+    Expected: <= 90
+    Received:    900
+    Expected: 31
+    Received: 2000
+Tests:       2 failed, 3 passed, 5 total
+```
+900 is exactly the gate's probe (e) figure. Post-fix, every suite that touches the search route, limiter or live gate:
+```
+PASS __tests__/live-search-gate.test.ts
+PASS __tests__/api-search-index-tier.test.ts
+PASS __tests__/youtube-search.test.ts
+PASS __tests__/api-search.test.ts
+PASS __tests__/api-search-personal-caps.test.ts
+PASS __tests__/search-pagination.test.ts
+PASS __tests__/api-search-budget.test.ts
+PASS __tests__/search-rate-isolation.test.ts
+PASS __tests__/search-single-flight.test.ts
+Test Suites: 9 passed, 9 total
+Tests:       134 passed, 134 total
+```
+The combined targeted set (client-ip, single-flight, budget/principal incl. Lua integration, personal caps, host-auth, host-claim, api-search*, rate isolation, youtube-search): 14 suites, 244 passed, 12 skipped (Redis integration skips without Redis).
+
+**Prove-your-test-can-fail.**
+- (a) Mutation that kills the new assertions: restoring the uuid-first order, or any insert of the uuid key before the IP verdict.
+- (b) The pre-fix run is shown above.
+- (c) Hollowing-out: `rateLimitOk`'s order is a primitive under the existing `youtube-search.test.ts` limiter tests. Re-examined:
+  - "caps rotating uuids from one IP" still trips on the IP bucket.
+  - "uuid bucket" / "recovers after the window slides" / "no IP" still exercise the uuid bucket. The uuid bucket is reached only after the IP passes, and those tests stay under RATE_IP_MAX.
+  - The LRU-cap tests use `ip=""` or rotate across many IPs, so they still bound the map.
+- (d) `triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path` (reorder of an existing limiter).
+
+**Ticket filed.** `work/tickets/TICKET-133-retire-legacy-search-live-fallback.md` (Cyber LOW 3 on #89): sunset the no-`v=2` live fallback once pre-#125 tabs have aged out.
