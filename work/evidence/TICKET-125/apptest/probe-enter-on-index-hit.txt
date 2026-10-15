@@ -1,0 +1,5 @@
+search input attributes (phone search key): {"enterkeyhint":"search","inputmode":"search","autocomplete":"off"}
+Enter pressed while INDEX results were on screen (t=0 = Enter):
+   -1.29s  index   q="evidencias karaoke"  -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidências - Play
+    0.00s  LIVE=1  q="evidencias karaoke"  -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidências - Play
+# --- END OF RUN ---

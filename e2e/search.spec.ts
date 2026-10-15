@@ -682,3 +682,166 @@ test("a local narrowing supersedes a search already in flight (TICKET-108)", asy
   await expect(page.getByRole("button", { name: /Borbu Stale Page/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Borbulhas de Amor - versão 0/ })).toBeVisible();
 });
+
+// ── TICKET-125: billed live search only on Enter or after an idle pause ──────
+
+/**
+ * A server-faithful mock of the free/billed split: a request WITHOUT live=1 is
+ * index-only, and here the "index" misses (`liveRequired`), exactly like the
+ * real route for a song the karaoke index doesn't hold. Only live=1 returns
+ * rows. Every request is logged with its live flag.
+ */
+async function mockIndexMissLiveHit(page: Page) {
+  const log: { q: string; live: boolean }[] = [];
+  await page.route("**/api/search**", async (route) => {
+    const url = new URL(route.request().url());
+    const live = url.searchParams.get("live") === "1";
+    log.push({ q: url.searchParams.get("q") ?? "", live });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(live ? { results: MOCK_RESULTS } : { results: [], liveRequired: true }),
+    });
+  });
+  return log;
+}
+const liveCalls = (log: { live: boolean }[]) => log.filter((r) => r.live).length;
+
+/**
+ * Freeze the page clock after joining, so the idle timer can only advance when
+ * the test says so (runFor). Without this a real 4 s pause inside a slow
+ * assertion could fire the idle search and make an Enter test pass for the
+ * wrong reason.
+ */
+async function freezeClock(page: Page) {
+  await page.clock.pauseAt(new Date(Date.now() + 60_000));
+}
+
+test("an index miss shows the Enter hint and bills NOTHING until Enter (TICKET-125)", async ({ page }) => {
+  await page.clock.install();
+  const log = await mockIndexMissLiveHit(page);
+  await joinAs(page, "EnterUser");
+  await freezeClock(page);
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("evidencias");
+  await page.clock.runFor(500); // past the 400 ms debounce only
+
+  // The free lookup ran and missed: a subtle hint, no rows, no billed call.
+  await expect(page.getByTestId("search-enter-hint")).toBeVisible();
+  expect(log).toEqual([{ q: "evidencias karaoke", live: false }]);
+
+  // Enter (the phone's search key) spends ONE live search, immediately.
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
+  expect(log).toEqual([
+    { q: "evidencias karaoke", live: false },
+    { q: "evidencias karaoke", live: true },
+  ]);
+  await expect(page.getByTestId("search-enter-hint")).toHaveCount(0);
+
+  // Pressing Enter again on the same text does not bill again.
+  await input.press("Enter");
+  await page.clock.runFor(10_000);
+  expect(liveCalls(log)).toBe(1);
+});
+
+test("a mode switch re-arms the once-per-text guard: Enter in the new mode bills once more (TICKET-125)", async ({ page }) => {
+  await page.clock.install();
+  const log = await mockIndexMissLiveHit(page);
+  await joinAs(page, "ScopeUser");
+  await freezeClock(page);
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("evidencias");
+  await page.clock.runFor(500);
+  await expect(page.getByTestId("search-enter-hint")).toBeVisible();
+
+  // Sing mode (default): Enter spends one live search and settles.
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
+  expect(liveCalls(log)).toBe(1);
+
+  // Same text, other mode: Enter is a new (text, mode) pair, so exactly one more.
+  await page.getByRole("radio", { name: /Só curtir/i }).check();
+  await input.press("Enter");
+  await expect.poll(() => liveCalls(log)).toBe(2);
+  await page.clock.runFor(10_000);
+  expect(liveCalls(log)).toBe(2);
+  expect(log.filter((r) => r.live).map((r) => r.q)).toEqual(["evidencias karaoke", "evidencias"]);
+});
+
+test("idle: ONE live search after 4 s of no typing — none before, none repeated (TICKET-125)", async ({ page }) => {
+  // Playwright's clock, frozen after joining: time moves only via runFor, so
+  // the idle timer is exercised without real 4 s sleeps.
+  await page.clock.install();
+  const log = await mockIndexMissLiveHit(page);
+  await joinAs(page, "IdleUser");
+  await freezeClock(page);
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("evidencias");
+  await page.clock.runFor(500); // the debounced free lookup
+  await expect(page.getByTestId("search-enter-hint")).toBeVisible();
+
+  await page.clock.runFor(3000); // 3.5 s since the last keystroke
+  expect(liveCalls(log)).toBe(0); // not enough
+
+  await page.clock.runFor(600); // 4.1 s
+  await expect.poll(() => liveCalls(log)).toBe(1);
+  await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
+
+  // Once: a long further silence on the same text never re-bills.
+  await page.clock.runFor(20_000);
+  expect(liveCalls(log)).toBe(1);
+
+  // An edit starts a new idle period, which may fire again (for the new text).
+  await input.fill("bohemian rhapsody");
+  await page.clock.runFor(500);
+  await expect(page.getByTestId("search-enter-hint")).toBeVisible();
+  await page.clock.runFor(3700);
+  await expect.poll(() => liveCalls(log)).toBe(2);
+  expect(log.filter((r) => r.live).map((r) => r.q)).toEqual(["evidencias karaoke", "bohemian rhapsody karaoke"]);
+});
+
+test("an index answer never triggers the idle live search (TICKET-125)", async ({ page }) => {
+  await page.clock.install();
+  const log: { live: boolean }[] = [];
+  await page.route("**/api/search**", async (route) => {
+    log.push({ live: new URL(route.request().url()).searchParams.get("live") === "1" });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: MOCK_RESULTS, nextPageToken: "IDXLIVE", source: "index" }),
+    });
+  });
+  await joinAs(page, "IndexHitUser");
+  await freezeClock(page);
+  await page.getByLabel(/Buscar música/i).fill("evidencias");
+  await page.clock.runFor(500);
+  await expect(page.getByRole("button", { name: /Evidências \(Karaokê\)/ })).toBeVisible();
+  await expect(page.getByTestId("search-enter-hint")).toHaveCount(0);
+  await page.clock.runFor(15_000);
+  expect(log).toEqual([{ live: false }]);
+});
+
+test("the search input asks phone keyboards for a 'search' key (TICKET-125)", async ({ page }) => {
+  await joinAs(page, "KeyboardUser");
+  const input = page.getByLabel(/Buscar música/i);
+  await expect(input).toHaveAttribute("enterkeyhint", "search");
+  await expect(input).toHaveAttribute("inputmode", "search");
+});
+
+test("Enter inside the search field on a pasted link still queues it (TICKET-125)", async ({ page }) => {
+  let searches = 0;
+  await page.route("**/api/search**", async (route) => {
+    searches++;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) });
+  });
+  await joinAs(page, "PasteEnterUser");
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("https://youtu.be/dQw4w9WgXcQ");
+  await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 5000 });
+  // The patron goes back to the field and presses Enter / Go there.
+  await input.focus();
+  await input.press("Enter");
+  await expect(page.getByText(/música na fila/i)).toBeVisible({ timeout: 5000 });
+  expect(searches).toBe(0);
+});

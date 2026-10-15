@@ -1,0 +1,32 @@
+# TICKET-125 apptest API probes 2026-10-15T01:03:33Z — next dev :3135, KARAOKE_INDEX_FILE=fixture, NO YOUTUBE_API_KEY
+## v2 index hit
+$ curl '/api/search?q=evidencias%20karaoke&uuid=f702dcc6-56ca-47b5-a95b-46b3206d8c02&v=2'
+{"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidências - Playback","channelTitle":"Estação Playbacks","duration":"4:34","thumbnailUrl":"https://i.ytimg.com/vi/mE7-1szK4Yg/mqdefault.jpg"},{"videoId":"Ii9aCEPXIS8","title":"BONDE DO FORRÓ - EVIDÊNCIAS ( KARAOKÊ )","channelTitle":"Karaokê Club","duration":"4:58","thumbnailUrl":"https://i.ytimg.com/vi/Ii9aCEPXIS8/mqdefault.jpg"},{"video
+## v2 index miss (no live=1)
+$ curl '/api/search?q=soda%20stete%20karaoke&uuid=f702dcc6-56ca-47b5-a95b-46b3206d8c02&v=2'
+{"results":[],"liveRequired":true}  [HTTP 200]
+## v2 index miss live=1
+$ curl '/api/search?q=soda%20stete%20karaoke&uuid=f702dcc6-56ca-47b5-a95b-46b3206d8c02&v=2&live=1'
+{"degraded":true,"reason":"no-api-key","results":[]}  [HTTP 200]
+## LEGACY (no v=2) index miss -> expect live fallback (degraded:no-api-key without key)
+$ curl '/api/search?q=zzqx%20nomatch%20karaoke&uuid=ee0b7d37-3a4f-417e-aa39-368df133d41e'
+{"degraded":true,"reason":"no-api-key","results":[]}  [HTTP 200]
+## LEGACY index hit -> index rows
+$ curl '/api/search?q=evidencias%20karaoke&uuid=10b203b6-0aa9-483e-a054-b19b199d8a4b'
+{"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidências - Playback","channelTitle":"Estação Playbacks","duration":"4:34","thumbnailUrl":"https://i.ytimg.com/vi/mE7-1szK4Yg/mqdefault.jpg"},{"videoId":"Ii9aCEPXIS8","title":"BONDE DO FORRÓ - EVIDÊNCIAS ( KARAOKÊ )","channelTitle":"Karaokê Club","duration":"4:58","thumbnailUrl":"https://i.ytimg.com/vi/Ii9aCEPXIS8/mqdefault.jpg"},{"video
+## LEGACY second miss within 2s same uuid -> cooldown deferred?
+$ curl '/api/search?q=another%20nomatch%20qq%20karaoke&uuid=ee0b7d37-3a4f-417e-aa39-368df133d41e'
+{"degraded":true,"reason":"no-api-key","results":[]}  [HTTP 200]
+## v2 live=1 twice inside 2s, same uuid (no key)
+{"degraded":true,"reason":"no-api-key","results":[]}
+{"degraded":true,"reason":"no-api-key","results":[]}
+
+## [server restarted with a FAKE YOUTUBE_API_KEY (not a real key) to reach the cooldown] v2 live=1 twice inside 2s, same uuid
+{"degraded":true,"reason":"error","results":[]}
+{"results":[],"deferred":"live-cooldown","retryAfterMs":849}
+## LEGACY (no v) miss twice inside 2s, new uuid
+{"degraded":true,"reason":"error","results":[]}
+{"results":[],"deferred":"live-cooldown","retryAfterMs":1647}
+## v2 live=1 on an INDEX-HIT query (fake key server): does Enter on an index hit bill?
+{"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo - Evidências - Playback","channelTitle":"Estação Playbacks","duration":"4:34","thumbnailUrl":"https://i.ytimg.com/vi/mE7-1szK4Yg/mqdefault.jpg"},{"videoId":"Ii9aCEPXIS8","title":"BONDE DO FORRÓ -
+# --- END OF RUN ---

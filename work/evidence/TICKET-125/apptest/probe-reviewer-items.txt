@@ -1,0 +1,14 @@
+A pasted link: activeElement after paste = BUTTON# type=submit text="Adicionar à fila"
+     0.01s  POST /api/queue
+A2 pasted link, focus forced back INTO the search input, Enter:
+
+B once-guard vs mode (Enter in sing at t=0, flip to listen, Enter again at ~+2.3s, wait 5.5s):
+    -0.50s  GET /api/search?q=soda+stete+karaoke&v=2
+     0.00s  GET /api/search?q=soda+stete+karaoke&v=2&live=1
+C Enter with keyCode 229 (Android IME-style):
+    -0.50s  GET /api/search?q=soda+stete+karaoke&v=2
+   form error text visible? NO — (the probe regex matched the field LABEL "colar link do YouTube"; screenshot 16 shows no error, no submit, hint still shown)
+C after idle:
+    -0.50s  GET /api/search?q=soda+stete+karaoke&v=2
+     3.10s  GET /api/search?q=soda+stete+karaoke&v=2&live=1
+# --- END OF RUN ---

@@ -8,6 +8,15 @@ import { _resetCache, _resetRateLimit, RATE_LIMIT } from "@/lib/youtube-search";
 import { _resetSearchBudget } from "@/lib/search-budget";
 import type { NextRequest } from "next/server";
 
+// TICKET-125: these requests model the BILLED path, so they carry `live=1`.
+// The per-uuid live cooldown is covered by __tests__/live-search-gate.test.ts;
+// it is neutralised here so these suites keep testing what they were written for.
+jest.mock("@/lib/live-search-gate", () => ({
+  ...jest.requireActual("@/lib/live-search-gate"),
+  liveCooldown: () => ({ ok: true }),
+}));
+
+
 const KEY_BACKUP = process.env.YOUTUBE_API_KEY;
 
 /** Deterministic UUID-shaped ids for tests (uuid param must be UUID-shaped). */
@@ -21,7 +30,7 @@ function makeReq(
   uuid = testUuid(0),
   headers: Record<string, string> = {},
 ): NextRequest {
-  const url = `http://127.0.0.1:3040/api/search?q=${encodeURIComponent(q)}&uuid=${encodeURIComponent(uuid)}`;
+  const url = `http://127.0.0.1:3040/api/search?q=${encodeURIComponent(q)}&uuid=${encodeURIComponent(uuid)}&live=1`;
   return new Request(url, { headers }) as unknown as NextRequest;
 }
 
@@ -79,7 +88,7 @@ describe("uuid validation (LOW #3 — uuid is a rate-limit map key)", () => {
     const anon = await GET(makeReq("evidencias", "anon"));
     expect(anon.status).toBe(200);
     const absent = await GET(
-      new Request("http://127.0.0.1:3040/api/search?q=evidencias") as unknown as NextRequest,
+      new Request("http://127.0.0.1:3040/api/search?q=evidencias&live=1") as unknown as NextRequest,
     );
     expect(absent.status).toBe(200);
   });
