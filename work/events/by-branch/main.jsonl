@@ -97,3 +97,4 @@
 {"v": "1", "ts": "2026-10-14T15:18:44Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "e67d431", "message_slug": "docs(status): PR #79 merged, live-verified"}}
 {"v": "1", "ts": "2026-10-14T23:42:57Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-124", "pr": null, "event": "worktree_created", "payload": {"branch": "ticket/124-index-primary", "path": "/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t124-index-primary"}}
 {"v": "1", "ts": "2026-10-15T00:16:43Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-124", "pr": 88, "event": "pr_opened", "payload": {"pr_number": 88, "title": "TICKET-124: karaoke index as the primary search tier", "draft": true}}
+{"v": "1", "ts": "2026-10-15T00:49:41Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-124", "pr": 88, "event": "work_committed", "payload": {"note": "fix batch pushed"}}
