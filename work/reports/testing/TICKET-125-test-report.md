@@ -79,3 +79,60 @@ boraoke ships no `verify-green-local.sh`. The authoritative test record is the d
 
 - The `next dev` dev-only fixture loader ignores `KARAOKE_INDEX_FILE` under `NODE_ENV=production`, so the app has to be tested under `next dev`, not `next start`.
 - The local test room `default` collected 3 test songs in the in-memory store. These came from the paste-link + Enter edge, and they are dev-only.
+
+## Re-check 2026-10-15 — head `638d427` (after the gate fix batch)
+
+**Verdict: PASS.** 43/43 checks: hint fit 9/9, Enter-on-link 7/7, mode flip 18/18, regression 9/9. Scope was only what changed since `7be6824` (hint copy, Enter-with-link, per-mode once-guard); the full e2e suite was not run.
+
+Setup: `next dev -p 3125 -H 127.0.0.1`, `KARAOKE_INDEX_FILE` = the gitignored fixture `work/measurements/ticket-124/index-fixture.json.gz` (present), no `YOUTUBE_API_KEY`, `live=1` answered by a Playwright mock, headless Chromium only. Server stopped afterwards (port 3125 confirmed free). Harness: `work/evidence/TICKET-125/recheck/harness/recheck.cjs`; raw timelines `recheck-timeline-{hint,enter,mode,regr}.txt` in `work/evidence/TICKET-125/recheck/`.
+
+### 1. Hint copy after an index miss (3 locales × 390 / 320 / 1280)
+
+Measured on the element (bounding box, line count via Range rects, scrollWidth vs clientWidth, document overflow, overlap with the input and next sibling) plus screenshots. All 9 combinations: inside the viewport, no horizontal overflow, no overlap, 12.8 px muted grey (`rgb(136,136,136)` on `rgb(13,13,13)`, about 5.4:1), under the input.
+
+| Locale | 390×844 | 320 px | 1280×800 |
+|---|---|---|---|
+| en "Tap Search (or press Enter) to search YouTube" | 1 line | 2 lines | 1 line |
+| es "Toca Buscar (o Enter) para buscar en YouTube" | 1 line | 2 lines | 1 line |
+| pt-BR "Toque em Buscar (ou Enter) para pesquisar no YouTube" | **2 lines** (orphan "YouTube") | 2 lines | 1 line |
+
+The earlier UNVERIFIED "one line at 390 px" is now resolved: true for en and es, **false for pt-BR** (wraps to two lines, width 318 px). It wraps cleanly, with nothing clipped or overlapping, so this is cosmetic, not a defect. **LOW note for Dev:** if a one-liner is wanted in pt-BR, shorten it (for example "Toque em Buscar (ou Enter) para buscar no YouTube").
+
+Evidence: `<locale>-<phone390|phone320|desktop>-hint-1-after-index-miss.png` (full viewport) and `…-hint-2-element-closeup.png`.
+
+### 2. Enter / phone search key inside the field with a pasted link
+
+For each locale at 390 px (Enter, and a CDP keyDown with keyCode 13 for the phone search key), plus en desktop: paste a YouTube link, tap back into `#song-search-input`, press the key. Result in all 7 runs: exactly one `POST /api/queue` with `videoId=dQw4w9WgXcQ` at +0.01–0.02 s, no error alert, no search request. This closes the earlier finding 1 (Enter in the field did nothing). Evidence: `<locale>-phone390-enterlink-{1-before,2-after}-enter-{enter,searchkey}.png`.
+
+### 3. Per-mode once-guard
+
+Same results in pt-BR, en and es (390 px):
+
+| Step | Observed |
+|---|---|
+| Sing mode, no-match text, idle | 1 `live=1` at 3.88 s |
+| Flip to listen, 7 s idle, no typing | **0 requests** (mode change alone fires nothing) |
+| Listen mode, clear and retype the same text, settle | index miss then **1 `live=1` at 3.9 s**, raw `q="soda stete"` (no "karaoke"), so the guard let the same text fire again for the new mode |
+| Enter again on the same mode and text | 0 requests (once-guard holds) |
+| Back to sing, Enter | 1 `live=1` (sing scope differs from the last-fired listen scope) |
+| Sing Enter, flip to listen, Enter on the same text | 2 `live=1` in total; the 2nd is the raw listen query |
+
+Observation, not a defect: the guard holds one last key (mode+text), so after sing then listen, going back to sing and pressing Enter on the identical text fires again, as the above shows. My first harness attempt (type "x" and backspace back to the same text) sent no request at all, because the text settled identically and the component does not re-search an unchanged query; that was a harness error, corrected by clearing and retyping.
+
+Evidence: `<locale>-phone390-modeflip-1-after-flip-nothing.png`, `…-2-listen-settled-live.png`.
+
+### 4. Core timeline regression (3 locales, 390 px)
+
+| Scenario | Result |
+|---|---|
+| Index hit `evidencias` | 0 `live=1` in 9 s |
+| Miss `soda stete`, idle | index `liveRequired`, then exactly 1 `live=1` at 3.88–3.89 s |
+| Miss, Enter at 0.9 s | `live=1` at +0.01 s, a single one, no idle follow-up through +8 s |
+
+### Defects
+
+None. Console and page errors were not asserted in this run beyond the checks above (the known empty-`thumbnailUrl` mock-row warning from the first run is unchanged and not this PR's).
+
+### CI
+
+Unchanged from the first run: boraoke ships no `verify-green-local.sh`; the jest and e2e record is the Dev report (the re-check did not re-run the suites).

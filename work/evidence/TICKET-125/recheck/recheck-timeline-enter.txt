@@ -1,0 +1,16 @@
+[enterlink pt-BR phone390 enter] focus=#song-search-input posts=[{"dt":"0.01","body":"{\"room\":\"default\",\"videoId\":\"dQw4w9WgXcQ\",\"nickname\":\"AppTester\",\"patronUuid\":\"52a02464-7c22-4e44-9c2c-9a98db4af9b2\",\"mo"}] alerts=[""]
+  => PASS pasted link + enter inside search field queues exactly once (pt-BR phone390) — focus=song-search-input posts=1
+[enterlink pt-BR phone390 searchkey] focus=#song-search-input posts=[{"dt":"0.02","body":"{\"room\":\"default\",\"videoId\":\"dQw4w9WgXcQ\",\"nickname\":\"AppTester\",\"patronUuid\":\"a2c74f5d-c3b5-4bfa-8c49-5610a03512dc\",\"mo"}] alerts=[""]
+  => PASS pasted link + searchkey inside search field queues exactly once (pt-BR phone390) — focus=song-search-input posts=1
+[enterlink en phone390 enter] focus=#song-search-input posts=[{"dt":"0.01","body":"{\"room\":\"default\",\"videoId\":\"dQw4w9WgXcQ\",\"nickname\":\"AppTester\",\"patronUuid\":\"72427659-a583-49ef-963f-7ab39daa5cf7\",\"mo"}] alerts=[""]
+  => PASS pasted link + enter inside search field queues exactly once (en phone390) — focus=song-search-input posts=1
+[enterlink en phone390 searchkey] focus=#song-search-input posts=[{"dt":"0.01","body":"{\"room\":\"default\",\"videoId\":\"dQw4w9WgXcQ\",\"nickname\":\"AppTester\",\"patronUuid\":\"6fb6aace-2230-4c8c-9790-c6812d984b7f\",\"mo"}] alerts=[""]
+  => PASS pasted link + searchkey inside search field queues exactly once (en phone390) — focus=song-search-input posts=1
+[enterlink es phone390 enter] focus=#song-search-input posts=[{"dt":"0.01","body":"{\"room\":\"default\",\"videoId\":\"dQw4w9WgXcQ\",\"nickname\":\"AppTester\",\"patronUuid\":\"f98f4dac-bec4-40ee-b9bd-0d25f7071c53\",\"mo"}] alerts=[""]
+  => PASS pasted link + enter inside search field queues exactly once (es phone390) — focus=song-search-input posts=1
+[enterlink es phone390 searchkey] focus=#song-search-input posts=[{"dt":"0.01","body":"{\"room\":\"default\",\"videoId\":\"dQw4w9WgXcQ\",\"nickname\":\"AppTester\",\"patronUuid\":\"baebca75-8aa0-4b99-9dcc-2b7e59b711fc\",\"mo"}] alerts=[""]
+  => PASS pasted link + searchkey inside search field queues exactly once (es phone390) — focus=song-search-input posts=1
+[enterlink en desktop enter] focus=#song-search-input posts=[{"dt":"0.01","body":"{\"room\":\"default\",\"videoId\":\"dQw4w9WgXcQ\",\"nickname\":\"AppTester\",\"patronUuid\":\"67d650bd-1a58-418f-bfcb-9ddd4bd95433\",\"mo"}] alerts=[""]
+  => PASS pasted link + enter inside search field queues exactly once (en desktop) — focus=song-search-input posts=1
+
+SUMMARY: 7/7 passed

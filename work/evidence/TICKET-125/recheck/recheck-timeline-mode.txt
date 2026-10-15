@@ -1,0 +1,62 @@
+[modeflip pt-BR] sing idle
+      0.32s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      4.10s LIVE=1 q="soda stete karaoke"
+  => PASS modeflip pt-BR: sing idle fires 1 live — lives=1
+[modeflip pt-BR] flip→listen, then 7 s idle, no typing
+    (no requests)
+  => PASS modeflip pt-BR: mode change alone fires nothing (0 requests in 7 s) — new=0
+[modeflip pt-BR] settle same text in listen mode (clear + retype; t=0 last key)
+      0.28s index  q="soda stete" -> {"results":[],"liveRequired":true}
+      3.87s LIVE=1 q="soda stete"
+  => PASS modeflip pt-BR: settling in listen fires exactly 1 live for the same text — lives=1 q=soda stete
+  => PASS modeflip pt-BR: same mode+text Enter again fires nothing — lives=0
+[modeflip pt-BR] flip back to sing then Enter (t=0 flip back)
+      0.03s LIVE=1 q="soda stete karaoke"
+  => PASS modeflip pt-BR: back to sing + Enter fires 1 live (new scope) — lives=1
+[modeflip-enter pt-BR] sing Enter, flip listen, Enter
+      0.00s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      0.33s LIVE=1 q="soda stete karaoke"
+      2.49s LIVE=1 q="soda stete"
+  => PASS modeflip-enter pt-BR: Enter after flip fires a fresh live for listen (2 lives total, 2nd raw q) — lives=2 q2=soda stete
+[modeflip en] sing idle
+      0.29s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      3.88s LIVE=1 q="soda stete karaoke"
+  => PASS modeflip en: sing idle fires 1 live — lives=1
+[modeflip en] flip→listen, then 7 s idle, no typing
+    (no requests)
+  => PASS modeflip en: mode change alone fires nothing (0 requests in 7 s) — new=0
+[modeflip en] settle same text in listen mode (clear + retype; t=0 last key)
+      0.28s index  q="soda stete" -> {"results":[],"liveRequired":true}
+      3.89s LIVE=1 q="soda stete"
+  => PASS modeflip en: settling in listen fires exactly 1 live for the same text — lives=1 q=soda stete
+  => PASS modeflip en: same mode+text Enter again fires nothing — lives=0
+[modeflip en] flip back to sing then Enter (t=0 flip back)
+      0.03s LIVE=1 q="soda stete karaoke"
+  => PASS modeflip en: back to sing + Enter fires 1 live (new scope) — lives=1
+[modeflip-enter en] sing Enter, flip listen, Enter
+      0.00s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      0.33s LIVE=1 q="soda stete karaoke"
+      2.49s LIVE=1 q="soda stete"
+  => PASS modeflip-enter en: Enter after flip fires a fresh live for listen (2 lives total, 2nd raw q) — lives=2 q2=soda stete
+[modeflip es] sing idle
+      0.28s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      3.88s LIVE=1 q="soda stete karaoke"
+  => PASS modeflip es: sing idle fires 1 live — lives=1
+[modeflip es] flip→listen, then 7 s idle, no typing
+    (no requests)
+  => PASS modeflip es: mode change alone fires nothing (0 requests in 7 s) — new=0
+[modeflip es] settle same text in listen mode (clear + retype; t=0 last key)
+      0.29s index  q="soda stete" -> {"results":[],"liveRequired":true}
+      3.90s LIVE=1 q="soda stete"
+  => PASS modeflip es: settling in listen fires exactly 1 live for the same text — lives=1 q=soda stete
+  => PASS modeflip es: same mode+text Enter again fires nothing — lives=0
+[modeflip es] flip back to sing then Enter (t=0 flip back)
+      0.03s LIVE=1 q="soda stete karaoke"
+  => PASS modeflip es: back to sing + Enter fires 1 live (new scope) — lives=1
+[modeflip-enter es] sing Enter, flip listen, Enter
+      0.00s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      0.30s LIVE=1 q="soda stete karaoke"
+      2.65s LIVE=1 q="soda stete"
+  => PASS modeflip-enter es: Enter after flip fires a fresh live for listen (2 lives total, 2nd raw q) — lives=2 q2=soda stete
+
+SUMMARY: 18/18 passed

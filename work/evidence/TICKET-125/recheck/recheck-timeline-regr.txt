@@ -1,0 +1,35 @@
+[regr pt-BR] index hit
+      0.28s index  q="evidencias karaoke" -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo
+  => PASS regr pt-BR: index hit fires 0 live=1
+[regr pt-BR] miss + idle
+      0.33s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      3.88s LIVE=1 q="soda stete karaoke"
+  => PASS regr pt-BR: miss+idle → exactly 1 live=1 at ~4 s — lives=1 at=3.88s
+[regr pt-BR] Enter
+     -0.62s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      0.01s LIVE=1 q="soda stete karaoke"
+  => PASS regr pt-BR: Enter → immediate single live=1, no idle follow-up — lives=1 at=0.01s
+[regr en] index hit
+      0.28s index  q="evidencias karaoke" -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo
+  => PASS regr en: index hit fires 0 live=1
+[regr en] miss + idle
+      0.28s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      3.88s LIVE=1 q="soda stete karaoke"
+  => PASS regr en: miss+idle → exactly 1 live=1 at ~4 s — lives=1 at=3.88s
+[regr en] Enter
+     -0.62s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      0.01s LIVE=1 q="soda stete karaoke"
+  => PASS regr en: Enter → immediate single live=1, no idle follow-up — lives=1 at=0.01s
+[regr es] index hit
+      0.28s index  q="evidencias karaoke" -> {"results":[{"videoId":"mE7-1szK4Yg","title":"Zezo
+  => PASS regr es: index hit fires 0 live=1
+[regr es] miss + idle
+      0.28s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      3.89s LIVE=1 q="soda stete karaoke"
+  => PASS regr es: miss+idle → exactly 1 live=1 at ~4 s — lives=1 at=3.89s
+[regr es] Enter
+     -0.62s index  q="soda stete karaoke" -> {"results":[],"liveRequired":true}
+      0.01s LIVE=1 q="soda stete karaoke"
+  => PASS regr es: Enter → immediate single live=1, no idle follow-up — lives=1 at=0.01s
+
+SUMMARY: 9/9 passed
