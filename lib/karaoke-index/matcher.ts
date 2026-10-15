@@ -8,8 +8,14 @@
  *
  * MATCHING. Every DISCRIMINATING query token (articles and karaoke boilerplate
  * dropped — the same definition `filterResults` uses) must match some word of
- * the row's "title + channel" text. A token matches a word at one of three
- * strengths, which become the row's per-token quality:
+ * the row's TITLE. Channel names are deliberately NOT indexed: a karaoke
+ * channel's name ("Neon Karaokê Brasil", "Karaokê Show Oficial") would make
+ * every one of its videos a full-confidence match for that word, so `brasil
+ * karaoke` would serve hundreds of unrelated rows ahead of Cazuza's "Brasil"
+ * and block live search. Measured: dropping channel words changes nothing in
+ * the replay's gain, and removes that whole class of false answers. A token
+ * matches a title word at one of three strengths, which become the row's
+ * per-token quality:
  *
  *   exact   word === token                                     1.0
  *   prefix  word starts with token (patron is mid-word)        PREFIX_Q
@@ -41,6 +47,18 @@ const MIN_PREFIX = 2;
 /** Fuzzy matching only for tokens at least this long. */
 const MIN_FUZZY = 4;
 
+/**
+ * Abuse bounds (the query string is attacker-controlled; the route's 100-char
+ * cap alone still allows ~18 distinct typo tokens, each a full Levenshtein scan
+ * of the ~23k-word vocabulary, ~220 ms of CPU per request):
+ *  - more than MAX_QUERY_TOKENS distinct discriminating tokens -> no index
+ *    answer at all (no real song search needs more; the route goes live);
+ *  - at most MAX_FUZZY_TOKENS tokens per query may fall back to a fuzzy scan;
+ *    a further token with no exact/prefix match simply does not match.
+ */
+export const MAX_QUERY_TOKENS = 8;
+export const MAX_FUZZY_TOKENS = 2;
+
 export interface IndexedVideo {
   videoId: string;
   title: string;
@@ -63,6 +81,8 @@ export interface IndexSearchResult {
   confidence: number;
   /** Discriminating tokens the query was matched on. */
   tokens: string[];
+  /** How many full-vocabulary fuzzy scans this query cost (<= MAX_FUZZY_TOKENS). */
+  fuzzyScans: number;
 }
 
 /** Levenshtein distance, bounded: returns max+1 as soon as it is exceeded. */
@@ -110,7 +130,7 @@ export class KaraokeIndex {
           channelRank,
           titleWords: Math.max(1, titleTokens.size),
         });
-        const words = new Set(queryTokens(`${title} ${shard.channelTitle}`));
+        const words = new Set(queryTokens(title));
         for (const w of words) {
           let list = this.postings.get(w);
           if (!list) this.postings.set(w, (list = []));
@@ -126,7 +146,7 @@ export class KaraokeIndex {
   }
 
   /** word -> quality, for every vocabulary word this token matches. */
-  private wordMatches(token: string): Map<string, number> {
+  private wordMatches(token: string, allowFuzzy: boolean): Map<string, number> {
     const out = new Map<string, number>();
     if (this.postings.has(token)) out.set(token, 1);
     if (token.length >= MIN_PREFIX) {
@@ -142,7 +162,7 @@ export class KaraokeIndex {
         if (!out.has(this.vocab[i])) out.set(this.vocab[i], PREFIX_Q);
       }
     }
-    if (out.size === 0 && token.length >= MIN_FUZZY) {
+    if (out.size === 0 && allowFuzzy && token.length >= MIN_FUZZY) {
       const k = fuzzyBudget(token);
       for (const w of this.vocab) {
         // Whole-word typo ("stete" -> "stereo") or mid-word typo ("onfs" -> "onda…").
@@ -159,18 +179,27 @@ export class KaraokeIndex {
 
   search(query: string, limit = 50): IndexSearchResult {
     const tokens = [...new Set(discriminatingTokens(query))];
-    if (tokens.length === 0 || this.videos.length === 0) return { hits: [], confidence: 0, tokens };
+    const empty = (): IndexSearchResult => ({ hits: [], confidence: 0, tokens, fuzzyScans });
+    let fuzzyScans = 0;
+    if (tokens.length === 0 || this.videos.length === 0) return empty();
+    // Abuse bound: no song search needs this many words; answer nothing (-> live).
+    if (tokens.length > MAX_QUERY_TOKENS) return empty();
 
     // Per token: video index -> best quality among the words it matched through.
     const perToken: Map<number, number>[] = [];
     for (const t of tokens) {
       const best = new Map<number, number>();
-      for (const [w, q] of this.wordMatches(t)) {
+      let matches = this.wordMatches(t, false);
+      if (matches.size === 0 && t.length >= MIN_FUZZY && fuzzyScans < MAX_FUZZY_TOKENS) {
+        fuzzyScans++;
+        matches = this.wordMatches(t, true);
+      }
+      for (const [w, q] of matches) {
         for (const idx of this.postings.get(w) ?? []) {
           if ((best.get(idx) ?? 0) < q) best.set(idx, q);
         }
       }
-      if (best.size === 0) return { hits: [], confidence: 0, tokens };
+      if (best.size === 0) return empty();
       perToken.push(best);
     }
 
@@ -199,6 +228,6 @@ export class KaraokeIndex {
         a.video.channelRank - b.video.channelRank ||
         a.video.videoId.localeCompare(b.video.videoId),
     );
-    return { hits: hits.slice(0, limit), confidence: hits[0]?.score ?? 0, tokens };
+    return { hits: hits.slice(0, limit), confidence: hits[0]?.score ?? 0, tokens, fuzzyScans };
   }
 }

@@ -22,13 +22,14 @@
  * Run:  npm run measure:t124             (add --controls for the falsifiability pass)
  */
 
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { gunzipSync } from "zlib";
 
 import type { SearchResult } from "../../../lib/youtube-search";
 import { PRODUCTION_QUERIES, type GradedQuery } from "../ticket-108/queries";
 import {
+  queryTokens as queryTokensOf,
   isExtensionOf,
   MIN_LOCAL_MATCHES,
   normalizeQuery,
@@ -51,9 +52,26 @@ const ORACLE: Record<string, Row[]> = Object.fromEntries(
   ).map(([k, rows]) => [k, rows.map((r) => ({ ...r, duration: "", thumbnailUrl: "" }))]),
 );
 
-const FIXTURE = JSON.parse(
-  gunzipSync(readFileSync(join(__dirname, "index-fixture.json.gz"))).toString("utf8"),
-) as { harvestedAt: number; shards: ChannelShard[] };
+/**
+ * The harvested index is YouTube API data, so it is NOT committed (gitignored,
+ * local only, refresh-or-delete within 30 days). Regenerate it with:
+ *   YOUTUBE_API_KEY=… npm run index:harvest -- --channels lib/karaoke-index/channels.json \
+ *     --out work/measurements/ticket-124/index-fixture.json.gz --max-units 1600 --max-pages 14
+ */
+const FIXTURE_PATH = join(__dirname, "index-fixture.json.gz");
+if (!existsSync(FIXTURE_PATH)) {
+  console.error(
+    `FATAL: ${FIXTURE_PATH} is missing. It is gitignored YouTube API data; regenerate it with\n` +
+      "  YOUTUBE_API_KEY=… npm run index:harvest -- --channels lib/karaoke-index/channels.json " +
+      "--out work/measurements/ticket-124/index-fixture.json.gz --max-units 1600 --max-pages 14\n" +
+      "(~1,600 units of the 10k/day pool, zero search.list). Refusing to report numbers without it.",
+  );
+  process.exit(2);
+}
+const FIXTURE = JSON.parse(gunzipSync(readFileSync(FIXTURE_PATH)).toString("utf8")) as {
+  harvestedAt: number;
+  shards: ChannelShard[];
+};
 
 const MEASURED = { billedCallsThatDay: 90, songsQueuedThatDay: 24, baselinePerSong: 3.75 };
 
@@ -100,11 +118,19 @@ function reconstructTraces(raws: string[]): string[][] {
   return traces;
 }
 
-// ── grading (identical predicate to the spike and TICKET-108) ─────────────────
+// ── grading ──────────────────────────────────────────────────────────────────
+//
+// The spike / TICKET-108 predicate graded "title + channel". That predicate is
+// BLIND to the channel-name collision class (a row whose channel is "Neon
+// Karaokê Brasil" "hits" `brasil` whatever song it is), so it could not catch
+// an index that matches on channel names. This harness grades on the TITLE
+// ONLY, for both arms. `--legacy-predicate` restores title+channel for
+// comparison with the TICKET-108 figures.
+const LEGACY_PREDICATE = process.argv.includes("--legacy-predicate");
 
 function hit(rows: readonly Row[], want: string[], n: number): boolean {
   return rows.slice(0, n).some((r) => {
-    const t = normalizeQuery(`${r.title} ${r.channelTitle ?? ""}`);
+    const t = normalizeQuery(LEGACY_PREDICATE ? `${r.title} ${r.channelTitle ?? ""}` : r.title);
     return want.every((w) => t.includes(w));
   });
 }
@@ -138,6 +164,7 @@ interface ServerPolicy {
   index: KaraokeIndex | null;
   threshold: number;
   minChars: number;
+  limit?: number;
 }
 interface Replay {
   billed: number;
@@ -165,7 +192,7 @@ function replay(traces: string[][], server: ServerPolicy | null): Replay {
       const key = RAW_TO_KEY.get(raw) as string;
       let rows: Row[];
       if (server) {
-        const d = decideTier({ q: key, pageToken: "", index: server.index, threshold: server.threshold, minChars: server.minChars });
+        const d = decideTier({ q: key, pageToken: "", index: server.index, threshold: server.threshold, minChars: server.minChars, limit: server.limit });
         if (d.tier === "index") {
           indexServed++;
           rows = d.results;
@@ -263,7 +290,7 @@ function main(): void {
     const shards = FIXTURE.shards.map((sh) => ({
       ...sh,
       rows: sh.rows.filter((r) => {
-        const t = normalizeQuery(`${r[1]} ${sh.channelTitle}`);
+        const t = normalizeQuery(LEGACY_PREDICATE ? `${r[1]} ${sh.channelTitle}` : r[1]);
         return !c.want.every((w) => t.includes(w));
       }),
     }));
@@ -293,6 +320,35 @@ function main(): void {
       );
     }
   }
+
+  // ── RESULT-LIMIT SWEEP: how many rows an index answer returns ──────────────
+  console.log(`\n${"─".repeat(110)}`);
+  console.log(`INDEX ANSWER SIZE — rows returned per index answer (threshold ${GOOD_MATCH_THRESHOLD}, minChars ${MIN_INDEX_QUERY_CHARS}); the client reveals 8 per tap`);
+  console.log("─".repeat(110));
+  for (const limit of [10, 16, 24, 50]) {
+    const r = replay(traces, { index, threshold: GOOD_MATCH_THRESHOLD, minChars: MIN_INDEX_QUERY_CHARS, limit });
+    const q = grade(PRODUCTION_QUERIES, (c) => displayedFor(r, c));
+    console.log(
+      `limit=${String(limit).padStart(2)}  billed ${r.billed}  = ${perSong(r.billed, perKeystroke).toFixed(2)}/song   ${qline("", q).trim()}` +
+        `   taps to reach live after a wrong index answer: ${Math.ceil(limit / 8)}`,
+    );
+  }
+
+  // ── CHANNEL-COLLISION PROBE (the reviewer's blocker) ───────────────────────
+  // Words that are part of harvested CHANNEL names. An index answer for
+  // "<word> karaoke" must consist only of rows whose TITLE carries the word.
+  console.log(`\n${"─".repeat(110)}`);
+  console.log("CHANNEL-COLLISION PROBE — every index row served must carry the word in its TITLE");
+  console.log("─".repeat(110));
+  let collisions = 0;
+  for (const w of ["brasil", "show", "zoom", "club", "neon", "palco", "piano", "party", "star", "digital"]) {
+    const d = decideTier({ q: `${w} karaoke`, pageToken: "", index });
+    const rows = d.tier === "index" ? d.results : [];
+    const bad = rows.filter((r) => !queryTokensOf(r.title).some((t) => t.startsWith(w))).length;
+    collisions += bad;
+    console.log(`  "${w} karaoke": ${d.tier}${d.tier === "index" ? ` ${rows.length} rows, ${bad} without "${w}" in the title` : ` (${d.reason})`}`);
+  }
+  console.log(`  → ${collisions === 0 ? "0 channel-only rows served" : `!! ${collisions} rows served only because of a channel name`}`);
 
   const chosen = curve.find((c) => c.th === GOOD_MATCH_THRESHOLD && c.mc === MIN_INDEX_QUERY_CHARS)!;
   console.log(`\n${"─".repeat(110)}`);

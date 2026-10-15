@@ -1,8 +1,16 @@
-import { boundedLevenshtein, FUZZY_Q, KaraokeIndex, PREFIX_Q } from "@/lib/karaoke-index/matcher";
+import {
+  boundedLevenshtein,
+  FUZZY_Q,
+  KaraokeIndex,
+  MAX_FUZZY_TOKENS,
+  MAX_QUERY_TOKENS,
+  PREFIX_Q,
+} from "@/lib/karaoke-index/matcher";
 import {
   decideTier,
   GOOD_MATCH_THRESHOLD,
   INDEX_MORE_TOKEN,
+  INDEX_RESULT_LIMIT,
   MIN_INDEX_QUERY_CHARS,
 } from "@/lib/karaoke-index/tier";
 import { INDEX_MAX_AGE_MS, isShardFresh, type ChannelShard } from "@/lib/karaoke-index/types";
@@ -67,8 +75,24 @@ describe("KaraokeIndex.search", () => {
     expect(r.confidence).toBeCloseTo((1 + FUZZY_Q) / 2);
   });
 
-  it("matches the channel too (order-insensitive)", () => {
+  it("matches title words in any order", () => {
     expect(INDEX.search("rita lee escurinho").hits[0].video.videoId).toBe("v-escurinho");
+  });
+
+  it("channel names never satisfy a query word (the 'brasil karaoke' collision)", () => {
+    const idx = new KaraokeIndex([
+      shard("Neon Karaokê Brasil", [
+        ["v-pitty", "Pitty - Admirável Chip Novo (Karaokê)"],
+        ["v-skank", "Skank - Garota Nacional (Karaokê)"],
+      ]),
+      shard("Karaokê Show Oficial", [["v-plain", "Karaokê"]]),
+      shard("Karaokê Club", [["v-cazuza", "Brasil - Cazuza (Karaokê)"]]),
+    ]);
+    const brasil = idx.search("brasil karaoke");
+    expect(brasil.hits.map((h) => h.video.videoId)).toEqual(["v-cazuza"]);
+    // A word that appears ONLY in a channel name matches nothing at all.
+    expect(idx.search("neon karaoke").hits).toEqual([]);
+    expect(idx.search("show karaoke").hits).toEqual([]);
   });
 
   it("requires EVERY discriminating token: a missing word means confidence 0", () => {
@@ -82,7 +106,65 @@ describe("KaraokeIndex.search", () => {
   });
 });
 
+describe("abuse bounds on attacker-controlled queries", () => {
+  // A realistic-size vocabulary (~25k distinct words), so a full fuzzy scan
+  // costs what it costs in production.
+  const words: string[] = [];
+  let seed = 7;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const letters = "abcdefghijklmnopqrstuvwxyz";
+  for (let i = 0; i < 25_000; i++) {
+    const len = 4 + Math.floor(rnd() * 7);
+    words.push(Array.from({ length: len }, () => letters[Math.floor(rnd() * 26)]).join(""));
+  }
+  const big = new KaraokeIndex([
+    shard(
+      "Big",
+      Array.from({ length: 5_000 }, (_, i) => [`v${i}`, words.slice(i * 5, i * 5 + 5).join(" ")] as [string, string]),
+    ),
+  ]);
+
+  it("the security gate's crafted 18-word typo query is refused without scanning", () => {
+    const q = "qzxv wqzx xqvz zvqx vzqw qwzv wvqz zqwv xzvq vxqz qzvw wxqv zxwq qvxz xwvz vwxq zwqx wqvx karaoke";
+    expect(q.length).toBeLessThanOrEqual(100);
+    const t0 = process.hrtime.bigint();
+    const r = big.search(q);
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    expect(r.tokens.length).toBeGreaterThan(MAX_QUERY_TOKENS);
+    expect(r.fuzzyScans).toBe(0);
+    expect(r.hits).toEqual([]);
+    expect(ms).toBeLessThan(25);
+    expect(decideTier({ q, pageToken: "", index: big })).toEqual({ tier: "live", reason: "query-too-long" });
+  });
+
+  it("at most MAX_FUZZY_TOKENS fuzzy vocabulary scans per query, even when every word is a near-miss", () => {
+    // 8 tokens that each fuzzy-match a real vocabulary word (one substituted
+    // letter) but exact/prefix-match nothing — the worst case for scan cost,
+    // since an unmatched token would otherwise end the search early.
+    const typos: string[] = [];
+    for (const w of words) {
+      if (typos.length === MAX_QUERY_TOKENS) break;
+      if (w.length < 7) continue;
+      const t = w.slice(0, 3) + (w[3] === "z" ? "y" : "z") + w.slice(4);
+      if (!words.some((v) => v.startsWith(t)) && !typos.includes(t)) typos.push(t);
+    }
+    expect(typos).toHaveLength(MAX_QUERY_TOKENS);
+    const r = big.search(`${typos.join(" ")} karaoke`);
+    expect(r.tokens).toHaveLength(MAX_QUERY_TOKENS);
+    expect(r.fuzzyScans).toBe(MAX_FUZZY_TOKENS);
+    expect(r.hits).toEqual([]); // the 3rd near-miss is not scanned, so the query goes live
+  });
+});
+
 describe("decideTier — the good-match threshold and routing", () => {
+  it("caps an index answer at INDEX_RESULT_LIMIT rows so 'load more' reaches live quickly", () => {
+    const many = new KaraokeIndex([
+      shard("Many", Array.from({ length: 60 }, (_, i) => [`v${i}`, `Evidências versão ${i}`] as [string, string])),
+    ]);
+    const d = decideTier({ q: "evidencias karaoke", pageToken: "", index: many });
+    expect(d.tier === "index" && d.results.length).toBe(INDEX_RESULT_LIMIT);
+  });
+
   it("serves a confident sing-mode first page from the index, with the escape cursor", () => {
     const d = decideTier({ q: "escurinho do cinema karaoke", pageToken: "", index: INDEX });
     expect(d.tier).toBe("index");
