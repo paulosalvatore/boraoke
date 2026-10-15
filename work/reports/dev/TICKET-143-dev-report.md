@@ -82,7 +82,8 @@ Most misses are **order**: "<a> - <b>" with no cue for which side is the artist.
 
 ## Implementation log
 
-- (see commits on the branch; SHAs added after push)
+- b1c6a49: parser, tests, labelled sample, scorer, measure script, plan, ticket copy, this report.
+- PR: https://github.com/paulosalvatore/boraoke/pull/93 (draft).
 
 ## Friction
 
