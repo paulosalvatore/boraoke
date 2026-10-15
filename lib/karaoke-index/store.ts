@@ -3,10 +3,10 @@
  *
  * STORAGE CHOICE: Upstash Redis (already provisioned), one key per channel
  * shard, value = gzip(JSON shard) as base64.
- *   - Size: ~36k rows is ~3 MB as JSON and ~1 MB gzipped (measured in the
- *     original harvest spike; re-measured by `npm run index:harvest`). Spread across
- *     ~60 shards that is ~20 KB per key — far inside Upstash free-tier request
- *     and record limits, and ~1.3 MB of bandwidth per cold-instance load.
+ *   - Size (measured): 38,275 rows / 71 channels = 1.09 MB gzipped, ~1.46 MB
+ *     as base64 — ~20 KB per key, far inside Upstash request and record
+ *     limits. A full load is one MGET of ~1.46 MB; the stamps check below
+ *     limits full loads to cold starts plus ~once a day per warm instance.
  *   - Refreshable per channel by the cron without rewriting the whole index.
  *   - Every shard is written with a Redis TTL equal to INDEX_MAX_AGE_MS, so
  *     even if the refresh job stops entirely, Redis itself deletes the data
@@ -18,7 +18,8 @@
  *
  * QUERYING happens in process memory: each instance loads the shards once,
  * builds a `KaraokeIndex` (posting lists — no per-query Redis traffic), and
- * reloads after INDEX_RELOAD_MS. Expired shards are filtered on every load,
+ * reloads after INDEX_RELOAD_MS (after INDEX_RETRY_MS if the load failed),
+ * re-downloading only when `ki:stamps` changed. Expired shards are filtered on every load,
  * and an instance whose OLDEST loaded shard crosses the retention limit while
  * cached rebuilds immediately — so a stale shard is never served, not even
  * from a warm instance.
@@ -43,7 +44,13 @@ import { INDEX_MAX_AGE_MS, isChannelShard, isShardFresh, type ChannelShard } fro
 export const INDEX_RELOAD_MS = 60 * 60 * 1000;
 
 const SHARD_PREFIX = "ki:shard:";
-/** Hash channelId -> harvestedAt; lets the cron pick the oldest without reading rows. */
+/**
+ * Hash channelId -> harvestedAt; lets the cron pick the oldest without reading
+ * rows, and lets instances skip re-downloading unchanged shards. It has NO TTL,
+ * deliberately: it holds only channel ids and timestamps (no YouTube API data
+ * beyond ids), and it must outlive a shard's expiry so the cron sees that
+ * channel as the oldest and re-harvests it first.
+ */
 export const STAMPS_KEY = "ki:stamps";
 
 export const INDEX_CHANNELS: readonly string[] = channelIds as string[];
@@ -133,23 +140,62 @@ interface Loaded {
   index: KaraokeIndex | null;
   loadedAt: number;
   oldestHarvestedAt: number;
+  /** The load hit an error (Redis down, corrupt read): retry soon, not hourly. */
+  failed: boolean;
+  /** `ki:stamps` as of this load; an unchanged signature means unchanged shards. */
+  stampsSig: string;
 }
 let loaded: Loaded | null = null;
 let inflight: Promise<Loaded> | null = null;
 
-async function load(now: number): Promise<Loaded> {
-  let shards: ChannelShard[] = [];
+/** After a FAILED load, retry this soon instead of waiting INDEX_RELOAD_MS. */
+export const INDEX_RETRY_MS = 60 * 1000;
+
+function oldestOf(shards: readonly ChannelShard[]): number {
+  return shards.reduce((m, s) => Math.min(m, s.harvestedAt), Infinity);
+}
+
+async function load(now: number, prev: Loaded | null): Promise<Loaded> {
   const redis = getIndexRedis();
-  try {
-    shards = redis ? await loadFromRedis(redis, now) : loadFromFile(now);
-  } catch {
-    shards = []; // fail-open: no index -> live search
+  if (!redis) {
+    const shards = loadFromFile(now);
+    return {
+      index: shards.length ? new KaraokeIndex(shards) : null,
+      loadedAt: now,
+      oldestHarvestedAt: oldestOf(shards),
+      failed: false,
+      stampsSig: "",
+    };
   }
-  return {
-    index: shards.length ? new KaraokeIndex(shards) : null,
-    loadedAt: now,
-    oldestHarvestedAt: shards.reduce((m, s) => Math.min(m, s.harvestedAt), Infinity),
-  };
+  try {
+    // BANDWIDTH: read the tiny stamps hash first. Shards only change when the
+    // daily cron rewrites them (which rewrites their stamp), so an unchanged
+    // signature with nothing expired means the index in memory is still exact
+    // and the ~1.5 MB MGET is skipped. A warm instance then re-downloads the
+    // shards about once a day instead of every hour.
+    const stamps = await redis.hgetall<Record<string, number | string>>(STAMPS_KEY);
+    const stampsSig = JSON.stringify(stamps ?? {});
+    if (
+      prev &&
+      !prev.failed &&
+      prev.index &&
+      prev.stampsSig === stampsSig &&
+      now - prev.oldestHarvestedAt < INDEX_MAX_AGE_MS
+    ) {
+      return { ...prev, loadedAt: now };
+    }
+    const shards = await loadFromRedis(redis, now);
+    return {
+      index: shards.length ? new KaraokeIndex(shards) : null,
+      loadedAt: now,
+      oldestHarvestedAt: oldestOf(shards),
+      failed: false,
+      stampsSig,
+    };
+  } catch {
+    // Fail-open: no index -> live search; retry after INDEX_RETRY_MS.
+    return { index: null, loadedAt: now, oldestHarvestedAt: Infinity, failed: true, stampsSig: "" };
+  }
 }
 
 /**
@@ -158,11 +204,13 @@ async function load(now: number): Promise<Loaded> {
 export async function getKaraokeIndex(now = Date.now()): Promise<KaraokeIndex | null> {
   const expired =
     !loaded ||
-    now - loaded.loadedAt >= INDEX_RELOAD_MS ||
-    // A cached shard just crossed the retention limit: rebuild without it NOW.
+    now - loaded.loadedAt >= (loaded.failed ? INDEX_RETRY_MS : INDEX_RELOAD_MS) ||
+    // A cached shard just crossed the retention limit: rebuild without it NOW,
+    // not at the next hourly reload.
     now - loaded.oldestHarvestedAt >= INDEX_MAX_AGE_MS;
   if (expired) {
-    inflight ??= load(now).finally(() => {
+    const prev = loaded;
+    inflight ??= load(now, prev).finally(() => {
       inflight = null;
     });
     loaded = await inflight;

@@ -9,8 +9,12 @@ import { KaraokeIndex } from "@/lib/karaoke-index/matcher";
 import type { ChannelShard } from "@/lib/karaoke-index/types";
 
 let mockIndex: KaraokeIndex | null = null;
+let indexLoads = 0;
 jest.mock("@/lib/karaoke-index/store", () => ({
-  getKaraokeIndex: async () => mockIndex,
+  getKaraokeIndex: async () => {
+    indexLoads++;
+    return mockIndex;
+  },
 }));
 
 import { GET } from "@/app/api/search/route";
@@ -93,9 +97,11 @@ describe("index tier", () => {
     expect(searchCalls()).toBe(1);
   });
 
-  it("listen-mode queries (no 'karaoke') always go live", async () => {
+  it("listen-mode queries (no 'karaoke') always go live, without even loading the index", async () => {
+    indexLoads = 0;
     await GET(req("escurinho do cinema"));
     expect(searchCalls()).toBe(1);
+    expect(indexLoads).toBe(0);
   });
 
   it("the cache stays in front of the index", async () => {
