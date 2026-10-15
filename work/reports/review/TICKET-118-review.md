@@ -91,3 +91,69 @@ During my mutation runs an untracked `__tests__/zz-cyber-118-probe.test.ts` appe
 ## Friction
 
 Two gate agents ran mutation work in one worktree at once. Mutation and reverse-check runs should go in a throwaway copy or a separate worktree, not the shared ticket worktree.
+
+---
+
+# Delta re-review (D-022 opus), head `62279c3` — 2026-10-15
+
+**Verdict: APPROVE.** Scope: `git diff 27298b4..62279c3`, read as the fix commit `f83b3e6` plus the merge `6f2d78b` (`--cc`, conflict hunks only), checked against `origin/main` `d0b3301`. Everything else in the range is main content from #90/#94 and was not re-reviewed.
+
+## S1, S2, S3 (correctness and simplicity)
+
+- **S1, fixed.** `claimSession` does one `getRoom`, which is one `MGET` of the record and its counter (`withEffectiveEpoch`). It checks the token against that snapshot (`roomClaimTokenStatus`) and derives the session from the same snapshot (`sessionForRoom`). A read before the bump gets an epoch-E value, which is dead once the bump lands. A read after the bump and before the rebind sees a list tagged E against epoch E+1, so the claim is invalid. A read after the rebind sees only the owner hash plus hashes written after the bump. For non-default rooms, `sessionForRoom` gives the same result as `resolveRoomSecret`, and `claimSession` handles `default` itself. This is the simplest correct shape: verify and derive from one value.
+- **S2, fixed.** The owner check and the keep decision come from `before`, and every rebind re-asserts `owner`. Carrying `postBump` is safe because it requires `claimListIsLive(room)` at an epoch after `beforeEpoch`. A stale write restores its old tag, so it carries nothing. Only a list written after the bump (a code login, or our own earlier rebind) qualifies. My mutant R1 drops the live check, and 4 tests kill it, the S1 straddle test among them.
+- **S3, fixed as the TM default.** The route pre-check (`claimStatus().owner`) runs before `chargeRevoke`, so refusals are never charged. The helper re-checks on the pre-bump snapshot, and that check is the authoritative one. The pin is set to `owner` on every rebind. The fallback mint passes `{ owner: true }`. The throttle is charge-then-check on the atomic INCR count and fails open on a Redis error (`null`), like the rest of the module. Fine for an owner-only lever.
+- S4 (always mirror `PTTL`, `PERSIST` on -1) and S5 (covered by the owner/live check on `before`) are fine.
+
+## Hot path: no added reads or writes, confirmed
+
+- `requireHost` and `resolveRoomSecret` are unchanged in the delta.
+- `GET /api/host/session` and `POST /api/host/login` swap `verifyClaim` (one `getRoom`) for `claimStatus` (one `getRoom`). Same cost, no write.
+- `POST /api/host/claim` goes from two reads (`verifyClaim` plus `issueSession`) to one.
+- The extra cost is all on the revoke route, which is not hot: one `claimStatus` read, one INCR, and `PTTL` on every bump (before, only with retention on), plus `PERSIST`/`PEXPIRE`.
+
+## Can the tests fail?
+
+- Dev evidence: `cyber-fix/13-reverse-check-vs-27298b4.txt` gives 13 failed / 43 passed on the old code, and `14-mutation-pass.txt` shows 8/8 mutants killed.
+- My baseline, in a throwaway detached worktree at `62279c3`: 5 auth suites (`host-session-revocation`, `room-session-epoch-backend`, `host-claim`, `claim-token-owner-pin`, `host-auth`), **130/130 passed**.
+- My own mutants, none of them in the Dev's list, each run on its own and then restored:
+
+| # | Mutant | Result |
+|---|---|---|
+| R1 | `postBump` carries hashes from a DEAD list (drop `claimListIsLive`) | KILLED (4), incl. the S1 straddle and "keeps ONLY the owner's token" |
+| R2 | throttle off-by-one (`<=` → `<`) | KILLED (3), incl. "4th use is a 429" |
+| R3 | route-level owner pre-check removed (staff refusals get charged) | KILLED (1), "a STOLEN session alone … cannot loop it" |
+| R4 | `claimSession` ignores `live` | KILLED (8) |
+| R5 | rebind drops the owner pin | KILLED (5), incl. "owner pin is never removed" |
+
+`triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path` in this delta. `roomClaimTokenStatus` is a refactor of the existing matcher, and R4/R1 mutate it anyway.
+
+## UX and copy
+
+- Only the owner's device shows the button. `owner` comes from the session probe, the claim and the login, and the route re-checks it. A stale hint gets a 403, which hides the button and shows `signOutAllOwnerOnly`. `signedOut:true` now shows the gate (closes my old N3). A 401 now re-probes the session (closes N4).
+- The en/es/pt-BR copy is accurate and natural. "Only the device that created this room" matches the TICKET-120 pin semantics.
+- Non-blocking, for the TL's S3 decision:
+  - **U1.** On the owner's device, the logout confirm (`signOutQuestion`) does not say that logging out removes the owner pin, and with it this device's ability to sign others out, with no way to get it back today. Once S3 ships, this is the main way an owner loses the lever. Either add a clause to the owner-device confirm, or pick the PR body's "re-pin on a code login when no pin exists" fallback.
+  - **U2.** Staff devices get no hint at all. A manager who suspects a copied session has no visible next step, such as "ask the room's creator". This is optional.
+- Nit: the `rollClaimCookie` docblock still says its call sites check with `verifyClaim`. They now use `claimSession`/`claimStatus`.
+
+## Merge resolution (claim-route docblock)
+
+Clean. `--cc` shows main's rewritten line 5 (`clientIpFrom`, TICKET-119) taken verbatim, with this branch's new line 6 (S1) after it. The `owner` response line is kept. `clientIpFrom` is still re-exported from `host-auth` (`./client-ip`), so the claim route's import resolves. The `host-auth` hunk is main's re-export plus the branch's new throttle block, with no lost lines.
+
+## e2e 134/136
+
+The two `socket hang up` failures are transport errors (`apiRequestContext.post/get`), not assertions, and they hit routes outside the delta (`POST /api/rooms` in `moderation.spec:97`, `GET /api/queue` in `tv.spec:942`). The run started at load ~153, and later tests passed, so the server did not crash. All 12 `creator-reentry` tests pass, including the new owner-only check. I accept this as evidence for the review. **Recommendation to the TM: before merge, require one clean full e2e run on the final merge head at normal machine load.** The head will move anyway (Cyber re-gate, App Tester, an possible further main merge). Two runs in a row each ended "green except 2", each time on different specs, and a third excused run would hide a real regression. It costs about 15 minutes. If load cannot be brought down, the minimum is a targeted re-run of `moderation.spec.ts` and `tv.spec.ts` against the seeded suite order.
+
+## PR body accuracy
+
+Accurate. It covers the S1–S6 summary, the reverse-check and mutation figures, the 134/136 numbers, the "TM default, pending TL" label on S3, and "a stolen owner claim token is still owner-equivalent". The pin-less-room limitation is stated correctly, with all three causes: pre-TICKET-120 rooms, an owner logout (verified: `revokeRoomClaimToken` deletes `ownerClaimTokenHash` when it matches), and the TICKET-127 residual. Possible fallbacks are offered. My old N2 (stolen-session line) is resolved. One gap: the limitation is in Known limits but not in the Testing Handoff. Optional: add a step 4c, "owner taps Sair, then logs back in with the code: the button is gone", so the TL sees the trade-off live.
+
+## Conditions (unchanged from the first pass, updated)
+
+1. Cyber re-gate PASS on the final head.
+2. App Tester PASS (UI changed: owner-only button, toasts, 3 locales, 390px).
+3. One clean full e2e on the final head (above).
+4. TL OK, including the S3 default, with U1 put to him.
+
+Evidence: commands above; throwaway worktree `rv96` under the session scratchpad, removed after the run. The shared worktree was not mutated, apart from this report.
