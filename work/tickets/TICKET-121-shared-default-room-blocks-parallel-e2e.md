@@ -1,3 +1,10 @@
+---
+ticket: TICKET-121
+title: 17 of 20 e2e spec files share one default room, which blocks parallel test execution
+product: boraoke
+status: filed
+---
+
 # TICKET-121 — 17 of 20 e2e spec files share one `default` room, which blocks parallel test execution
 
 **Filed:** 2026-09-28, from the TICKET-116 work. The coupling is **pre-existing**; TICKET-116 only made it visible.
@@ -10,6 +17,8 @@
 `playwright.config.ts` pins `workers: 1`. Its old comment said this existed to work around the dev server's in-memory store being wiped between files. **That cause is now gone** (TICKET-116 moved the suite to a production build with `globalThis`-pinned singletons), but `workers: 1` had to stay, because a **second cause underneath it** was exposed:
 
 **17 of the 20 spec files touch the same shared `default` room.** Running them concurrently means they contend for one piece of shared state.
+
+Nine of them seed into it (TICKET-116 dev report section 3.5). `POST /api/queue/advance` is additionally capped at 12 per room per 60s (`lib/advance-rate-limit.ts`, hardcoded, no env override), a budget several workers drain much faster than one.
 
 Measured on the TICKET-116 branch:
 
@@ -33,7 +42,8 @@ Give each spec file its **own room** rather than sharing `default`:
 
 - The room-creation path already exists and is used by several specs (`createRoomWithLanguage` and friends in `e2e/helpers.ts`), so this is mostly mechanical.
 - Identify which specs genuinely *need* the `default` room — the host-auth path treats `default` specially (`lib/host-auth.ts` resolves its secret from `HOST_TOKEN`), so some may. Those can stay serialised via a Playwright project or `describe.serial`.
-- Then lift `workers` and **prove determinism across several runs**, not one.
+- `ROOM_CREATE_LIMIT` is already raised for the test process, so the room-creation throttle is not in the way. `served-lang.spec.ts` asserts on the legacy `default` room deliberately and should stay on it.
+- Then lift `workers` and **prove determinism across several runs**, not one. Use the same harness TICKET-116 used: `work/measurements/ticket-116/cold-run.sh`, several cold runs, all clean.
 
 ## Constraints
 
@@ -45,3 +55,9 @@ Give each spec file its **own room** rather than sharing `default`:
 ## Acceptance
 
 Specs no longer contend for one room; `workers` is lifted above 1 with determinism shown across several runs; the wall-clock improvement is reported as a measurement.
+
+## Out of scope
+
+Changing the advance rate limit. It is a real anti-grief control; per-room fixtures make the cap a non-issue without weakening it.
+
+_Merged 2026-10-15 from a duplicate spec (`TICKET-121-e2e-parallel-safety-shared-default-room.md`, deleted in the backlog cleanup)._

@@ -1,3 +1,9 @@
+---
+ticket: TICKET-113
+product: boraoke
+status: filed
+---
+
 # TICKET-113 — The TV geometry regression test guards only 1080p + the normal state
 
 **Filed:** 2026-09-27, from the TICKET-109 visual gate (PASS-WITH-NOTES follow-up).

@@ -1,3 +1,9 @@
+---
+ticket: TICKET-112
+product: boraoke
+status: planned
+---
+
 # TICKET-112 — Host logout is now a permanent self-inflicted lockout, and nothing warns the creator
 
 **Filed:** 2026-09-27, from the opus review of PR #81 (TICKET-104), finding NB-5.

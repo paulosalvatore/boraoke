@@ -1,7 +1,7 @@
 ---
 ticket: TICKET-2
 title: Deploy pipeline verification (Vercel)
-product: cantai
+product: boraoke
 status: DONE
 actor: dev
 date: 2026-07-06

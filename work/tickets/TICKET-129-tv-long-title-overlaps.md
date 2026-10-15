@@ -1,3 +1,9 @@
+---
+ticket: TICKET-129
+product: boraoke
+status: filed
+---
+
 # TICKET-129 — A very long karaoke title on /tv overlaps the singer line, mic banner and QR card
 
 **Filed:** 2026-10-15, from the App Tester pass on PR #88 (TICKET-124), finding 2.

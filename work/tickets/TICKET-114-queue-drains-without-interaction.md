@@ -1,3 +1,9 @@
+---
+ticket: TICKET-114
+product: boraoke
+status: filed
+---
+
 # TICKET-114 — Investigate: the in-memory queue drains within 1-3s with no browser interaction
 
 **Filed:** 2026-09-27, observed independently by two agents during TICKET-109.

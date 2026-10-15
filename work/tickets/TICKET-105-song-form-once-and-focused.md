@@ -1,3 +1,9 @@
+---
+ticket: TICKET-105
+product: boraoke
+status: filed
+---
+
 # TICKET-105 — Song request: ask table+number once, then title-only; bigger focused phone form
 
 **Filed:** 2026-09-27, from the Tech Lead's live test of 2026-09-26 (brief items 7-8)
