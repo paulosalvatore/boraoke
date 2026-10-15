@@ -26,8 +26,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({}, { status: 429 });
   }
   const meta = await resolveVideoTitle(v);
+  if (!meta) {
+    // No title: a definite "missing" (already cached server-side for 10 min)
+    // or a transient oEmbed error (deliberately not cached). Either way the
+    // browser must not pin the empty answer, or a blip would hide the title
+    // for 10 minutes.
+    return NextResponse.json({}, { status: 200, headers: { "Cache-Control": "no-store" } });
+  }
   return NextResponse.json(
-    meta ? { title: meta.title, ...(meta.channelTitle ? { channelTitle: meta.channelTitle } : {}) } : {},
+    { title: meta.title, ...(meta.channelTitle ? { channelTitle: meta.channelTitle } : {}) },
     { status: 200, headers: { "Cache-Control": "private, max-age=600" } },
   );
 }

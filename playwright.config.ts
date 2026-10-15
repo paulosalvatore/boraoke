@@ -150,9 +150,17 @@ export default defineConfig({
       // open, exactly like an outage, and nothing ever reaches youtube.com or
       // googleapis.com. A production build only honours these loopback
       // overrides with BORAOKE_E2E_STUBS=1 and never on Vercel
-      // (lib/youtube.ts `overrideAllowed`); the app sends a placeholder key to
+      // (lib/youtube-server.ts `overrideAllowed`); the app sends a placeholder key to
       // a stub origin, never a real one.
       BORAOKE_E2E_STUBS: "1",
+      // Specs seed songs through POST /api/queue and tell them apart by title.
+      // With no stub answering, a production server would store no title at
+      // all (it never keeps a client-sent one), so this lets the local e2e
+      // build keep the seeded title when every lookup failed. Same gate as the
+      // origin overrides: ignored on Vercel (lib/youtube-server.ts
+      // `clientTitleFallbackAllowed`). jest does NOT set it, so the unit suites
+      // run the production rule.
+      BORAOKE_TEST_CLIENT_TITLES: "1",
       YOUTUBE_API_ORIGIN: `http://127.0.0.1:${PORT + 1000}`,
       YOUTUBE_OEMBED_ORIGIN: `http://127.0.0.1:${PORT + 1000}`,
     },

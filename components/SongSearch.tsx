@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
-import { parseYouTubeVideoId } from "@/lib/youtube";
+import { MAX_PARSE_INPUT, parseYouTubeVideoId } from "@/lib/youtube";
 import { augmentQuery } from "@/lib/search-query";
 import { planSearch } from "@/lib/search-prefix";
 import type { Mode } from "@/lib/store";
@@ -757,6 +757,8 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         id="song-search-input"
         aria-label={t("aria")}
         placeholder={t("placeholder")}
+        // The link parser ignores anything longer, so the box stops there too.
+        maxLength={MAX_PARSE_INPUT}
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}

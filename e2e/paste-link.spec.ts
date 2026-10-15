@@ -16,8 +16,8 @@ import { test, expect, type Page } from "@playwright/test";
  * browser like search.spec.ts.
  *
  * The fixture ids are used ONLY here, so the server's title cache can never
- * leak a stub title into another spec (submit-song.spec.ts relies on the
- * client title for dQw4w9WgXcQ, which no stub here ever answers).
+ * leak a stub title into another spec (submit-song.spec.ts expects the
+ * `youtu.be/dQw4w9WgXcQ` fallback label, and no stub here ever answers that id).
  */
 
 const STUB_PORT = Number(process.env.PORT ?? 3040) + 1000;

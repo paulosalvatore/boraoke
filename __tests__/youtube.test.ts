@@ -1,14 +1,14 @@
+import { parseYouTubeVideoId, looksLikeBareVideoId, MAX_PARSE_INPUT } from "@/lib/youtube";
 import {
-  parseYouTubeVideoId,
-  looksLikeBareVideoId,
   checkEmbeddable,
   fetchVideoDetails,
   fetchOEmbed,
   cleanMetaText,
+  formatDuration,
   videoApiKey,
   EMBEDDABLE_CHECK_TIMEOUT_MS,
   OEMBED_TIMEOUT_MS,
-} from "@/lib/youtube";
+} from "@/lib/youtube-server";
 
 describe("parseYouTubeVideoId", () => {
   const VALID_ID = "dQw4w9WgXcQ";
@@ -414,5 +414,59 @@ describe("TICKET-140: origin overrides never send the real key and never apply o
     expect(videoApiKey()).toBe("real-key"); // no flag: never
     process.env.BORAOKE_E2E_STUBS = "1";
     expect(videoApiKey()).toBe("local-stub-key"); // local e2e build only
+  });
+});
+
+describe("parser cost stays flat on hostile input (cyber MEDIUM-1)", () => {
+  // The server parses `youtubeUrl` BEFORE its submit rate limit, so its cost
+  // must not grow with what an unauthenticated caller sends. The bounds are
+  // generous on purpose (a loaded CI box): the old end-anchored regex took
+  // ~30 ms for one 4,000-character input and ~20 s at 100,000.
+  const time = (fn: () => void) => {
+    const t0 = performance.now();
+    fn();
+    return performance.now() - t0;
+  };
+
+  it("a long punctuation run inside a link token parses in linear time", () => {
+    // Under the length cap, so this reaches the punctuation strip itself.
+    const token = `https://youtu.be/dQw4w9WgXcQ${".".repeat(MAX_PARSE_INPUT - 40)}a`;
+    expect(token.length).toBeLessThanOrEqual(MAX_PARSE_INPUT);
+    let ms = 0;
+    for (let i = 0; i < 200; i++) ms += time(() => parseYouTubeVideoId(token));
+    expect(ms).toBeLessThan(50); // 200 parses; quadratic was ~0.8 ms each at this size
+  });
+
+  it("the share-text path is linear too", () => {
+    const text = `olha youtu${".".repeat(MAX_PARSE_INPUT - 20)}a b`;
+    let ms = 0;
+    for (let i = 0; i < 200; i++) ms += time(() => parseYouTubeVideoId(text));
+    expect(ms).toBeLessThan(50);
+  });
+
+  it("input over the cap is refused before any regex, however long", () => {
+    const huge = `${".".repeat(100_000)}a`;
+    expect(time(() => expect(parseYouTubeVideoId(huge)).toBeNull())).toBeLessThan(50);
+    expect(parseYouTubeVideoId(`https://youtu.be/dQw4w9WgXcQ ${"x".repeat(MAX_PARSE_INPUT)}`)).toBeNull();
+  });
+
+  it("the cap leaves real links and share text alone, and still strips the glue", () => {
+    expect(MAX_PARSE_INPUT).toBe(512);
+    expect(parseYouTubeVideoId("(https://youtu.be/dQw4w9WgXcQ).")).toBe("dQw4w9WgXcQ");
+    expect(parseYouTubeVideoId("“https://youtu.be/dQw4w9WgXcQ”!?")).toBe("dQw4w9WgXcQ");
+    expect(parseYouTubeVideoId("olha <https://youtu.be/dQw4w9WgXcQ>, 🔥")).toBe("dQw4w9WgXcQ");
+    const padded = `${" ".repeat(MAX_PARSE_INPUT - 30)}https://youtu.be/dQw4w9WgXcQ`;
+    expect(padded.length).toBeLessThanOrEqual(MAX_PARSE_INPUT);
+    expect(parseYouTubeVideoId(padded)).toBe("dQw4w9WgXcQ");
+  });
+});
+
+describe("formatDuration", () => {
+  it("formats minutes and hours", () => {
+    expect(formatDuration("PT4M5S")).toBe("4:05");
+    expect(formatDuration("PT1H2M3S")).toBe("1:02:03");
+    expect(formatDuration("PT45S")).toBe("0:45");
+    expect(formatDuration("P0D")).toBe("");
+    expect(formatDuration("nope")).toBe("");
   });
 });

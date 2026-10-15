@@ -4,8 +4,8 @@
  * WHY: a pasted song used to show as "YouTube link" in the picker and as
  * `youtu.be/<id>` in the queue, the moderation view and on the TV, and the
  * title of every queued song was whatever the client sent. The title is now
- * resolved HERE, server-side, and the client-sent title is only a fallback for
- * when every lookup failed.
+ * resolved HERE, server-side. A client-sent title is never stored; when every
+ * lookup failed the entry has no title and shows `youtu.be/<id>`.
  *
  * SOURCES, cheapest first:
  *  1. this cache (`vm:<videoId>` in Upstash + an in-process L1);
@@ -26,17 +26,15 @@ import "server-only";
 
 import { Redis } from "@upstash/redis";
 
+import { isValidVideoId, type EmbeddableStatus, type VideoMeta } from "@/lib/youtube";
 import {
   cleanMetaText,
   fetchOEmbed,
   fetchVideoDetails,
-  isValidVideoId,
   META_CHANNEL_MAX,
   META_TITLE_MAX,
   videoApiKey,
-  type EmbeddableStatus,
-  type VideoMeta,
-} from "@/lib/youtube";
+} from "@/lib/youtube-server";
 import { getCachedEmbeddable, setCachedEmbeddable } from "@/lib/embed-cache";
 
 export const META_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -218,4 +216,9 @@ export async function lookupForSubmit(videoId: string): Promise<SubmitLookup> {
 /** Test-only: clear the in-process L1. */
 export function _resetMetaCache(): void {
   l1.clear();
+}
+
+/** Test-only: drop the memoized Redis client so the next call re-resolves the driver. */
+export function _resetMetaCacheClient(): void {
+  redisClient = null;
 }

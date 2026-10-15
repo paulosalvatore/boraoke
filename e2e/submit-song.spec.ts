@@ -31,8 +31,8 @@ test("patron submits a song and it appears in the queue", async ({ page }) => {
   // Wait for the resolved-selection confirmation
   await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
 
-  // Optionally add a title
-  await page.getByPlaceholder(/^ex\.: Evidências$/).fill("Rick Roll");
+  // There is no title field any more: the server names the song itself.
+  await expect(page.getByPlaceholder(/^ex\.: Evidências$/)).toHaveCount(0);
 
   // Submit
   await page.getByRole("button", { name: /adicionar à fila/i }).click();
@@ -40,6 +40,9 @@ test("patron submits a song and it appears in the queue", async ({ page }) => {
   // Confirmation message
   await expect(page.getByText(/música na fila/i)).toBeVisible({ timeout: 5000 });
 
-  // The song should appear in the live queue list
-  await expect(page.getByText("Rick Roll")).toBeVisible({ timeout: 6000 });
+  // The song should appear in the live queue list. No YouTube lookup answers
+  // in e2e, so it carries the server's fallback label, never client text.
+  const row = page.getByRole("listitem").filter({ hasText: "TestUser" }).first();
+  await expect(row).toBeVisible({ timeout: 6000 });
+  await expect(row).toContainText("youtu.be/dQw4w9WgXcQ");
 });

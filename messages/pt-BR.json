@@ -96,8 +96,6 @@
     "greeting": "Oi,",
     "addSong": "Adicionar música",
     "selected": "✓ Selecionada: {videoId}",
-    "songTitleLabel": "Título da música (opcional)",
-    "songTitlePlaceholder": "ex.: Evidências",
     "tableLabel": "Mesa (opcional)",
     "tableAria": "Número da mesa",
     "tablePlaceholder": "ex.: 7",

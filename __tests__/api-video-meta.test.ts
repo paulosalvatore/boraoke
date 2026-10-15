@@ -75,6 +75,18 @@ describe("GET /api/video-meta (TICKET-140)", () => {
     expect(await (await GET(req("bbbbbbbbbb2"))).json()).toEqual({ title: "Back" });
   });
 
+  it("a found title may be cached by the browser; an empty answer never is", async () => {
+    const found = await GET(req("dQw4w9WgXcQ"));
+    expect(found.headers.get("cache-control")).toBe("private, max-age=600");
+    fetchMock.mockRejectedValue(Object.assign(new Error("aborted"), { name: "TimeoutError" }));
+    const blip = await GET(req("ccccccccccc"));
+    expect(await blip.json()).toEqual({});
+    expect(blip.headers.get("cache-control")).toBe("no-store");
+    fetchMock.mockResolvedValue(res({}, 404));
+    const missing = await GET(req("ddddddddddd"));
+    expect(missing.headers.get("cache-control")).toBe("no-store");
+  });
+
   it("rejects an invalid id with 400 and makes no call", async () => {
     for (const v of ["", "short", "dQw4w9WgXcQ&x=1", "../../etc/pas"]) {
       expect((await GET(req(v))).status).toBe(400);

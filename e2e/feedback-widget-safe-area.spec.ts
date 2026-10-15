@@ -246,7 +246,6 @@ test.describe("feedback pill never covers queue content (TICKET-71)", () => {
     await patron.getByRole("heading", { name: /adicionar música/i }).waitFor();
     await patron.getByLabel(/Buscar música/i).fill("https://youtu.be/dQw4w9WgXcQ");
     await expect(patron.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
-    await patron.getByPlaceholder(/^ex\.: Evidências$/).fill("Minha musica pendente");
     await patron.getByRole("button", { name: /adicionar à fila/i }).click();
     await expect(patron.getByTestId("patron-pending-waiting")).toBeVisible({ timeout: 6000 });
 

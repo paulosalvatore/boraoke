@@ -8,6 +8,7 @@ import { getTranslations } from "next-intl/server";
 import { clientIpFrom } from "@/lib/host-auth";
 import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
 import { lookupForSubmit } from "@/lib/video-meta";
+import { clientTitleFallbackAllowed } from "@/lib/youtube-server";
 import { track } from "@/lib/telemetry";
 import { pendingStore } from "@/lib/pending-store";
 import {
@@ -172,7 +173,6 @@ export async function POST(req: NextRequest) {
   const entry: QueueEntry = {
     id: uuidv4(),
     videoId: resolvedVideoId,
-    title: typeof title === "string" && title.trim() ? title.trim() : undefined,
     nickname: nickname.trim(),
     patronUuid: patronUuid.trim(),
     table:
@@ -229,13 +229,20 @@ export async function POST(req: NextRequest) {
       { status: 422 },
     );
   }
-  // TICKET-140 gap 6: the title is the server's whenever it has one. The
-  // client-sent title (validated above for length) is only the fallback when
-  // every lookup failed, so the display is never worse than before.
+  // The stored title is the server's, never the client's. When every lookup
+  // failed the entry has no title and every view shows `youtu.be/<id>`
+  // (lib/song-label.ts). A client-sent `title` is still length-checked above
+  // for old clients, then ignored: it would otherwise put free text on the
+  // venue TV on demand, by submitting an id YouTube will not describe.
   if (lookup.meta?.title) {
     entry.title = lookup.meta.title;
     if (lookup.meta.channelTitle) entry.channelTitle = lookup.meta.channelTitle;
     if (lookup.meta.duration) entry.duration = lookup.meta.duration;
+  } else if (clientTitleFallbackAllowed() && typeof title === "string" && title.trim()) {
+    // Test builds only (jest, and the local e2e production build off Vercel):
+    // their YouTube calls go to a closed or stub port, so suites that seed
+    // songs by title keep their labels. Never honoured on a deployed site.
+    entry.title = title.trim();
   }
 
   // TICKET-44: venue-optional moderation. When the room has moderation ON, the

@@ -1,4 +1,11 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
+
+/** The pt-BR catalogue, so a 429 body can carry the server's own copy. */
+const PT = JSON.parse(readFileSync(path.join(__dirname, "../messages/pt-BR.json"), "utf8")) as {
+  Errors: { searchRateLimited: string };
+};
 
 /**
  * E2E for the in-app YouTube search (TICKET-8).
@@ -489,6 +496,60 @@ test("personal search share spent: own copy + paste-link still queues a song", a
   await expect(cta).toBeEnabled();
   await cta.click();
   await expect(page.getByText(/música na fila/i)).toBeVisible({ timeout: 5000 });
+});
+
+/**
+ * Every degraded state tells the patron that pasting a link still works, the
+ * rate limit included. Each case also proves the paste really does select.
+ */
+async function expectPasteStillSelects(page: Page) {
+  await page.getByLabel(/Buscar música/i).fill("https://youtu.be/dQw4w9WgXcQ");
+  await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole("button", { name: /adicionar à fila/i })).toBeEnabled();
+}
+
+test("search rate-limited (429, server copy): the paste hint shows and a paste still selects", async ({ page }) => {
+  await page.route("**/api/search**", async (route) => {
+    await route.fulfill({
+      status: 429,
+      contentType: "application/json",
+      body: JSON.stringify({ error: PT.Errors.searchRateLimited }),
+    });
+  });
+  await joinAs(page, "RateLimitedUser");
+  await page.getByLabel(/Buscar música/i).fill("alguma musica");
+  const notice = page.getByRole("status").filter({ hasText: /Muitas buscas/ });
+  await expect(notice).toBeVisible({ timeout: 8000 });
+  await expect(notice).toContainText(/cole um link do YouTube/);
+  await expectPasteStillSelects(page);
+});
+
+test("search rate-limited (429, no body): the client's own copy carries the paste hint too", async ({ page }) => {
+  await page.route("**/api/search**", async (route) => {
+    await route.fulfill({ status: 429, contentType: "application/json", body: "{}" });
+  });
+  await joinAs(page, "RateLimitedUser2");
+  await page.getByLabel(/Buscar música/i).fill("alguma musica");
+  const notice = page.getByRole("status").filter({ hasText: /Muitas buscas/ });
+  await expect(notice).toBeVisible({ timeout: 8000 });
+  await expect(notice).toContainText(/cole um link do YouTube/);
+  await expectPasteStillSelects(page);
+});
+
+test("search error (degraded, reason 'error'): the paste hint shows and a paste still selects", async ({ page }) => {
+  await page.route("**/api/search**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ degraded: true, reason: "error", results: [] }),
+    });
+  });
+  await joinAs(page, "SearchErrorUser");
+  await page.getByLabel(/Buscar música/i).fill("alguma musica");
+  const notice = page.getByTestId("search-degraded");
+  await expect(notice).toBeVisible({ timeout: 8000 });
+  await expect(notice).toContainText(/cola o link do YouTube/);
+  await expectPasteStillSelects(page);
 });
 
 /**

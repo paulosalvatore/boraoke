@@ -71,14 +71,16 @@ async function setModeration(page: Page, on: boolean) {
   await expect(toggle).toBeChecked({ checked: on });
 }
 
-async function joinAndSubmit(page: Page, roomId: string, nick: string, song: string) {
+// Songs are told apart by the singer's nickname: the server names a song
+// itself and no YouTube lookup answers in e2e, so every row reads
+// `youtu.be/dQw4w9WgXcQ`.
+async function joinAndSubmit(page: Page, roomId: string, nick: string) {
   await page.goto(`/${roomId}`);
   await page.getByLabel("Seu apelido").fill(nick);
   await page.getByRole("button", { name: /entrar na fila/i }).click();
   await page.getByRole("heading", { name: /adicionar música/i }).waitFor();
   await page.getByLabel(/Buscar música/i).fill("https://youtu.be/dQw4w9WgXcQ");
   await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
-  await page.getByPlaceholder(/^ex\.: Evidências$/).fill(song);
   await page.getByRole("button", { name: /adicionar à fila/i }).click();
 }
 
@@ -88,9 +90,9 @@ test.beforeEach(async ({ page }) => {
 
 test("moderation OFF (default): submission goes straight to the queue", async ({ page }) => {
   const { id } = await createRoom(page, "Bar Sem Moderacao");
-  await joinAndSubmit(page, id, "Livre", "Musica Livre");
+  await joinAndSubmit(page, id, "Livre");
   // Song shows up in the public live queue right away — no pending state.
-  await expect(page.getByText("Musica Livre")).toBeVisible({ timeout: 6000 });
+  await expect(page.getByTestId("queue-row").filter({ hasText: "Livre" })).toBeVisible({ timeout: 6000 });
   await expect(page.getByTestId("patron-pending")).toHaveCount(0);
 });
 
@@ -103,7 +105,7 @@ test("moderation ON: submit → pending → approve → appears in queue", async
 
   // Patron submits in a separate tab (own localStorage / uuid).
   const patron = await context.newPage();
-  await joinAndSubmit(patron, id, "Espera", "Musica Pendente");
+  await joinAndSubmit(patron, id, "Espera");
   // Patron sees the "aguardando aprovação" card and NOT a public-queue row.
   await expect(patron.getByTestId("patron-pending-waiting")).toBeVisible({ timeout: 6000 });
   await expect(patron.getByText(/aguardando aprovação/i)).toBeVisible();
@@ -114,7 +116,7 @@ test("moderation ON: submit → pending → approve → appears in queue", async
   await page.getByTestId("pending-approve").first().click();
 
   // Song is now in the real queue (admin queue rows) and the pending card clears.
-  await expect(page.getByText("Musica Pendente")).toBeVisible({ timeout: 6000 });
+  await expect(page.getByTestId("queue-row").filter({ hasText: "Espera" })).toBeVisible({ timeout: 6000 });
   await expect(page.getByTestId("pending-card")).toHaveCount(0);
 
   // The patron's "aguardando" card clears (it left pending → entered the queue).
@@ -128,7 +130,7 @@ test("moderation ON: reject → patron sees the polite rejected state", async ({
   await setModeration(page, true);
 
   const patron = await context.newPage();
-  await joinAndSubmit(patron, id, "Recusado", "Musica Recusada");
+  await joinAndSubmit(patron, id, "Recusado");
   await expect(patron.getByTestId("patron-pending-waiting")).toBeVisible({ timeout: 6000 });
 
   await expect(page.getByTestId("pending-card")).toBeVisible({ timeout: 6000 });

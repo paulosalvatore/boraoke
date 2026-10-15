@@ -42,7 +42,6 @@ async function joinAndSubmit(
   page: Page,
   roomId: string,
   nick: string,
-  song: string,
   table?: string,
 ) {
   await page.goto(`/${roomId}`);
@@ -52,10 +51,11 @@ async function joinAndSubmit(
   if (table) await page.getByLabel("Número da mesa").fill(table);
   await page.getByLabel(/Buscar música/i).fill("https://youtu.be/dQw4w9WgXcQ");
   await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 3000 });
-  await page.getByPlaceholder(/^ex\.: Evidências$/).fill(song);
   await page.getByRole("button", { name: /adicionar à fila/i }).click();
   await expect(page.getByText(/música na fila/i)).toBeVisible({ timeout: 5000 });
-  await expect(page.getByText(song)).toBeVisible({ timeout: 6000 });
+  // The server names the song (no lookup answers in e2e, so it reads
+  // `youtu.be/<id>`); the singer's nickname is what tells rows apart.
+  await expect(page.getByTestId("queue-row").filter({ hasText: nick })).toBeVisible({ timeout: 6000 });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -68,17 +68,18 @@ test("two rooms stay isolated and the TV shows the room's song", async ({ page }
   expect(roomA).not.toBe(roomB);
 
   // Submit a song to room A (with a table number → AC3).
-  await joinAndSubmit(page, roomA, "AliceE2E", "Musica da Sala A", "7");
+  await joinAndSubmit(page, roomA, "AliceE2E", "7");
 
   // Room B stays empty — isolated queue (AC2).
   await page.goto(`/${roomB}`);
   await page.getByRole("heading", { name: /adicionar música/i }).waitFor();
   await expect(page.getByText(/ninguém na fila/i)).toBeVisible();
-  await expect(page.getByText("Musica da Sala A")).toHaveCount(0);
+  await expect(page.getByTestId("queue-row").filter({ hasText: "AliceE2E" })).toHaveCount(0);
 
   // Room A's TV shows the song + table metadata (AC3/AC4).
   await page.goto(`/${roomA}/tv`);
-  await expect(page.getByTestId("tv-hero")).toContainText("Musica da Sala A", { timeout: 8000 });
+  await expect(page.getByTestId("tv-hero")).toContainText("youtu.be/dQw4w9WgXcQ", { timeout: 8000 });
+  await expect(page.getByTestId("tv-singer")).toContainText("AliceE2E");
   // Scope to the singer line — the TICKET-10 "get to the mic" call also shows the
   // table, so a bare /Mesa 7/ getByText is ambiguous.
   await expect(page.getByTestId("tv-singer")).toContainText("Mesa 7");

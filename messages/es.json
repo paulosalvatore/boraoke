@@ -96,8 +96,6 @@
     "greeting": "Hola,",
     "addSong": "Agregar canción",
     "selected": "✓ Seleccionada: {videoId}",
-    "songTitleLabel": "Título de la canción (opcional)",
-    "songTitlePlaceholder": "ej.: La Bamba",
     "tableLabel": "Mesa (opcional)",
     "tableAria": "Número de mesa",
     "tablePlaceholder": "ej.: 7",

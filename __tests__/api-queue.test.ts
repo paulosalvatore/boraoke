@@ -2,9 +2,10 @@
  * API input-validation tests for POST /api/queue (security MEDIUMs #1 and #2).
  * The handler only uses req.text(), so a standard Request suffices.
  */
-import { POST } from "@/app/api/queue/route";
+import { GET, POST } from "@/app/api/queue/route";
+import { songLabel } from "@/lib/song-label";
 import { store, DEFAULT_ROOM } from "@/lib/store";
-import type { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 
 const VALID_UUID = "123e4567-e89b-42d3-a456-426614174000";
 const VALID_VIDEO_ID = "dQw4w9WgXcQ";
@@ -282,6 +283,18 @@ describe("POST /api/queue — server-side video lookup (TICKET-140)", () => {
         expect(r.status).toBe(201);
         expect(videosCalls()).toHaveLength(0);
       });
+
+      it("no API key writes no verdict: once a key is back, the same video is checked for real", async () => {
+        delete process.env.YOUTUBE_API_KEY;
+        const body = freshBody({ source: "paste" });
+        expect((await POST(makeRequest(body))).status).toBe(201);
+        expect(videosCalls()).toHaveLength(0);
+        process.env.YOUTUBE_API_KEY = "test-key";
+        videosHandler = (id) => videoItem(id, false);
+        const again = await POST(makeRequest({ ...body, patronUuid: "88888888-8888-4888-8888-888888888888" }));
+        expect(videosCalls()).toHaveLength(1);
+        expect(again.status).toBe(422);
+      });
     });
   });
 
@@ -359,13 +372,49 @@ describe("POST /api/queue — server-side video lookup (TICKET-140)", () => {
       expect((await store.getQueue(DEFAULT_ROOM))[0].title).toBe("From oEmbed");
     });
 
-    it("every lookup failed: the client title is kept (fallback), and absent stays absent", async () => {
+    it("every lookup failed: the client title is never stored, so every view shows youtu.be/<id>", async () => {
       videosHandler = () => res({}, 500);
       oembedHandler = () => res({}, 503);
-      await POST(makeRequest(freshBody({ title: "Typed by patron" })));
-      await POST(makeRequest(freshBody()));
+      expect((await POST(makeRequest(freshBody({ title: "Typed by patron" })))).status).toBe(201);
+      expect((await POST(makeRequest(freshBody()))).status).toBe(201);
       const q = await store.getQueue(DEFAULT_ROOM);
-      expect(q.map((e) => e.title)).toEqual(["Typed by patron", undefined]);
+      expect(q.map((e) => e.title)).toEqual([undefined, undefined]);
+      expect(songLabel(q[0])).toBe(`youtu.be/${q[0].videoId}`);
+    });
+
+    it("a non-existent id (videos.list empty, oEmbed 404) cannot put client text on the TV", async () => {
+      videosHandler = () => res({ items: [] });
+      oembedHandler = () => res({}, 404);
+      const r = await POST(makeRequest(freshBody({ title: "FREE DRINKS at table 9" })));
+      expect(r.status).toBe(201);
+      const [entry] = await store.getQueue(DEFAULT_ROOM);
+      expect(entry.title).toBeUndefined();
+      const listed = await (await GET(new NextRequest("http://127.0.0.1:3040/api/queue"))).json();
+      expect(JSON.stringify(listed)).not.toContain("FREE DRINKS");
+    });
+
+    it("the test-only client-title seam is off on a deployed site even with its flag set", async () => {
+      videosHandler = () => res({}, 500);
+      oembedHandler = () => res({}, 503);
+      const env = process.env as Record<string, string | undefined>;
+      const saved = { NODE_ENV: env.NODE_ENV, VERCEL: env.VERCEL, flag: env.BORAOKE_TEST_CLIENT_TITLES, stubs: env.BORAOKE_E2E_STUBS };
+      try {
+        env.BORAOKE_TEST_CLIENT_TITLES = "1";
+        // The seam itself works where it is meant to (jest/e2e builds)…
+        await POST(makeRequest(freshBody({ title: "Seeded label" })));
+        expect((await store.getQueue(DEFAULT_ROOM))[0].title).toBe("Seeded label");
+        // …and never on Vercel, even with both test flags set.
+        env.BORAOKE_E2E_STUBS = "1";
+        env.NODE_ENV = "production";
+        env.VERCEL = "1";
+        await POST(makeRequest(freshBody({ title: "On Vercel" })));
+        expect((await store.getQueue(DEFAULT_ROOM)).map((e) => e.title)).toEqual(["Seeded label", undefined]);
+      } finally {
+        env.NODE_ENV = saved.NODE_ENV;
+        if (saved.VERCEL === undefined) delete env.VERCEL; else env.VERCEL = saved.VERCEL;
+        if (saved.flag === undefined) delete env.BORAOKE_TEST_CLIENT_TITLES; else env.BORAOKE_TEST_CLIENT_TITLES = saved.flag;
+        if (saved.stubs === undefined) delete env.BORAOKE_E2E_STUBS; else env.BORAOKE_E2E_STUBS = saved.stubs;
+      }
     });
   });
 

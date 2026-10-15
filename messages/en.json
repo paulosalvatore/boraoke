@@ -96,8 +96,6 @@
     "greeting": "Hi,",
     "addSong": "Add a song",
     "selected": "✓ Selected: {videoId}",
-    "songTitleLabel": "Song title (optional)",
-    "songTitlePlaceholder": "e.g. Bohemian Rhapsody",
     "tableLabel": "Table # (optional)",
     "tableAria": "Table number",
     "tablePlaceholder": "e.g. 7",
