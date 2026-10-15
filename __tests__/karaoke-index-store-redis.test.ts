@@ -34,7 +34,7 @@ import {
   INDEX_RELOAD_MS,
   INDEX_RETRY_MS,
 } from "@/lib/karaoke-index/store";
-import type { ChannelShard } from "@/lib/karaoke-index/types";
+import { INDEX_MAX_AGE_MS, type ChannelShard } from "@/lib/karaoke-index/types";
 
 const CH = "UC0000000000000000000001";
 const NOW = Date.now();
@@ -83,4 +83,12 @@ it("re-downloads when the cron has rewritten a shard (stamps changed)", async ()
   shardsByKey = { [`ki:shard:${CH}`]: encodeShard(shard(NOW + 5)) };
   await getKaraokeIndex(NOW + INDEX_RELOAD_MS);
   expect(calls.mget).toBe(2);
+});
+
+it("an expired shard is not served even when ki:stamps is unchanged (cron dead)", async () => {
+  expect((await getKaraokeIndex(NOW))?.size).toBe(1);
+  // The shard (harvested at NOW - 1000) is now exactly at the retention limit,
+  // and the cron never ran, so the stamps are unchanged: the reload must NOT
+  // reuse the in-memory index, it must re-read and drop the expired shard.
+  expect(await getKaraokeIndex(NOW - 1000 + INDEX_MAX_AGE_MS)).toBeNull();
 });

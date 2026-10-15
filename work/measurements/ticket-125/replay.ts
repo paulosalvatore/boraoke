@@ -59,10 +59,27 @@ const MEASURED = { baselinePerSong: 3.75 }; // production day: 90 billed / 24 qu
 // PR #88 after its fix batch (work/measurements/ticket-124/RESULTS.txt, title-only predicate).
 const PR88 = { billed: 26, perSong: 1.22, h10: 25 };
 
+/**
+ * The TICKET-108 production oracle. It is YouTube API data, so it is gitignored
+ * and local only (removed from the repo 2026-10-15). Refuse to report numbers
+ * without it, exactly like work/measurements/ticket-124/replay.ts.
+ */
+const ORACLE_PATH = join(__dirname, "../ticket-108/production-search-results.json");
+if (!existsSync(ORACLE_PATH)) {
+  console.error(
+    `FATAL: ${ORACLE_PATH} (the TICKET-108 production oracle) is missing.\n` +
+      "It is YouTube API data, so it is gitignored and local only (removed from the repo 2026-10-15).\n" +
+      "Regenerate it by dumping the production search cache (sc:* keys) read-only with the KV read-only\n" +
+      "token, as described in work/reports/dev/TICKET-108-dev-report.md. A fresh dump holds today's pages,\n" +
+      "not the 2026-09-27 ones, so the measured numbers will move. Refusing to report numbers without it.",
+  );
+  process.exit(2);
+}
+
 const ORACLE: Record<string, Row[]> = Object.fromEntries(
   Object.entries(
     JSON.parse(
-      readFileSync(join(__dirname, "../ticket-108/production-search-results.json"), "utf8"),
+      readFileSync(ORACLE_PATH, "utf8"),
     ) as Record<string, { videoId: string; title: string; channelTitle: string }[]>,
   ).map(([k, rows]) => [k, rows.map((r) => ({ ...r, duration: "", thumbnailUrl: "" }))]),
 );
