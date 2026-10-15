@@ -1,1 +1,2 @@
 {"v": "1", "ts": "2026-10-15T23:02:54Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-135", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/135-cache-key", "short_sha": "c476597", "message_slug": "TICKET-135/136: fold the search cache key, cache non-empty pages 7 days"}}
+{"v": "1", "ts": "2026-10-15T23:04:15Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-135", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/135-cache-key", "short_sha": "d85165c", "message_slug": "TICKET-135/136: dev report"}}
