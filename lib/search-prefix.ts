@@ -65,6 +65,15 @@ const NON_DISCRIMINATING = new Set([
   "karaoke", "playback", "instrumental", "cover", "videoke", "letra",
 ]);
 
+/**
+ * Discriminating tokens of a query: normalized, minus the articles/boilerplate
+ * above. Shared with the karaoke index matcher (lib/karaoke-index/matcher.ts) so
+ * "what counts as a real search word" has exactly one definition.
+ */
+export function discriminatingTokens(s: string): string[] {
+  return queryTokens(s).filter((t) => !NON_DISCRIMINATING.has(t));
+}
+
 /** Strip combining diacritical marks (NFD decomposition, then drop U+0300–U+036F). */
 function stripDiacritics(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -130,7 +139,7 @@ export function isExtensionOf(next: string, held: string): boolean {
  * "Escurinho do Cinema — Rita Lee".
  */
 export function filterResults(rows: readonly SearchResult[], query: string): SearchResult[] {
-  const wanted = queryTokens(query).filter((t) => !NON_DISCRIMINATING.has(t));
+  const wanted = discriminatingTokens(query);
   if (wanted.length === 0) return [...rows];
   return rows.filter((r) => {
     const words = queryTokens(`${r.title} ${r.channelTitle ?? ""}`);

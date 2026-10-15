@@ -10,6 +10,8 @@ import {
 import { getCachedSearchPage, setCachedSearchPage } from "@/lib/search-cache";
 import { reserveSearchCall } from "@/lib/search-budget";
 import { track } from "@/lib/telemetry";
+import { getKaraokeIndex } from "@/lib/karaoke-index/store";
+import { decideTier, INDEX_MORE_TOKEN } from "@/lib/karaoke-index/tier";
 import { getTranslations } from "next-intl/server";
 
 /**
@@ -129,26 +131,57 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Degraded mode: no key provisioned → this is the local-dev / CI / outage path.
-  const key = process.env.YOUTUBE_API_KEY;
-  if (!key) {
-    return NextResponse.json({ degraded: true, reason: "no-api-key", results: [] });
-  }
+  // Index escape hatch: "load more" past an index answer arrives as page 2
+  // carrying INDEX_MORE_TOKEN. It is answered as the LIVE FIRST page of the same
+  // query (cache-first, then one billed call — the price of any deep page today).
+  const indexEscape = pageToken === INDEX_MORE_TOKEN;
+  const livePageToken = indexEscape ? "" : pageToken;
 
   // Cross-instance read cache for identical queries (TICKET-55): memory L1 +
   // Upstash Redis when configured; fail-open (any Redis error = cache miss).
   // Served BEFORE any Data API call — a hit burns zero quota.
   // TICKET-83: the key is pageToken-scoped, so every page (not just the first)
   // is served free on revisit.
-  const ck = cacheKey(q, SEARCH_DEFAULTS.regionCode, pageToken);
+  // Karaoke index: the cache is still the FIRST tier — a query already answered live is served
+  // from cache before the index is consulted.
+  const ck = cacheKey(q, SEARCH_DEFAULTS.regionCode, livePageToken);
   const cached = await getCachedSearchPage(ck);
   if (cached) {
-    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: cached.results.length } }); // TICKET-12: fire-and-forget, fail-open
+    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: cached.results.length, source: "cache" } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({
       results: cached.results,
       nextPageToken: cached.nextPageToken,
       cached: true,
     });
+  }
+
+  // ── The karaoke index, second tier ──────────────────────────────────
+  // Harvested via playlistItems (10k-unit pool), searched in process memory,
+  // ZERO search.list. It answers only a sing-mode first page with a confident
+  // match (see lib/karaoke-index/tier.ts for the threshold and its tuning);
+  // anything else falls through to the unchanged live path below. Index
+  // answers are not written to the search cache: the index is already local,
+  // and caching would keep serving rows past a shard's retention expiry.
+  // Fail-open: a missing/expired/unreadable index is simply "no answer".
+  if (!pageToken) {
+    const decision = decideTier({ q, pageToken, index: await getKaraokeIndex() });
+    if (decision.tier === "index") {
+      void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: decision.results.length, source: "index" } }); // fire-and-forget, fail-open
+      return NextResponse.json({
+        results: decision.results,
+        // Lets "load more" escape to live search once the index rows run out.
+        nextPageToken: INDEX_MORE_TOKEN,
+        source: "index",
+      });
+    }
+  }
+
+  // Degraded mode: no key provisioned → this is the local-dev / CI / outage path.
+  // (Placed below the cache + index tiers, which spend nothing
+  // and need no key: a configured index keeps answering when live search can't.)
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) {
+    return NextResponse.json({ degraded: true, reason: "no-api-key", results: [] });
   }
 
   // ── TICKET-87: platform-wide DAILY spend ceiling ──────────────────────────
@@ -185,11 +218,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const page = await searchYouTubePage(q, key, { pageToken: pageToken || undefined });
+    const page = await searchYouTubePage(q, key, { pageToken: livePageToken || undefined });
     // Only SUCCESSFUL responses reach this line — errors threw above and are
     // never cached. Non-empty → 12h TTL; empty → 10min TTL (see search-cache).
     await setCachedSearchPage(ck, page);
-    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: page.results.length } }); // TICKET-12: fire-and-forget, fail-open
+    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: page.results.length, source: "live" } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({ results: page.results, nextPageToken: page.nextPageToken });
   } catch (err) {
     if (err instanceof YouTubeQuotaError) {
