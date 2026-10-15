@@ -1,14 +1,21 @@
-import { liveAllowed, liveCooldown, _resetLiveGate, LIVE_COOLDOWN_MS } from "@/lib/live-search-gate";
+import { isLegacyClient, liveAllowed, liveCooldown, _resetLiveGate, LIVE_COOLDOWN_MS } from "@/lib/live-search-gate";
 
 beforeEach(() => _resetLiveGate());
 
 describe("liveAllowed", () => {
   const p = (qs: string) => new URLSearchParams(qs);
-  it("a first page is index-only unless it says live=1", () => {
-    expect(liveAllowed(p("q=x"), "")).toBe(false);
-    expect(liveAllowed(p("q=x&live=0"), "")).toBe(false);
-    expect(liveAllowed(p("q=x&live=true"), "")).toBe(false);
-    expect(liveAllowed(p("q=x&live=1"), "")).toBe(true);
+  it("a v2 first page is index-only unless it says live=1", () => {
+    expect(liveAllowed(p("q=x&v=2"), "")).toBe(false);
+    expect(liveAllowed(p("q=x&v=2&live=0"), "")).toBe(false);
+    expect(liveAllowed(p("q=x&v=2&live=true"), "")).toBe(false);
+    expect(liveAllowed(p("q=x&v=2&live=1"), "")).toBe(true);
+  });
+  it("a request without the v=2 marker is a legacy client and keeps live fallback", () => {
+    expect(isLegacyClient(p("q=x"))).toBe(true);
+    expect(isLegacyClient(p("q=x&v=1"))).toBe(true);
+    expect(isLegacyClient(p("q=x&v=2"))).toBe(false);
+    expect(liveAllowed(p("q=x"), "")).toBe(true);
+    expect(liveAllowed(p("q=x&live=0"), "")).toBe(true);
   });
   it("a pageToken request ('load more') is a deliberate tap and may bill", () => {
     expect(liveAllowed(p("q=x"), "CDIQAA")).toBe(true);

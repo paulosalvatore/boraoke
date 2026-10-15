@@ -8,6 +8,7 @@ import { planSearch } from "@/lib/search-prefix";
 import type { Mode } from "@/lib/store";
 import { MAX_SEARCH_PAGES, type SearchResult } from "@/lib/youtube-search";
 import { LiveSearchTrigger, isSearchKey } from "@/lib/search-trigger";
+import { SEARCH_PROTOCOL_VERSION } from "@/lib/live-search-gate";
 
 const DEBOUNCE_MS = 400;
 /** Upper bound on how long we honour the server's live-cooldown `retryAfterMs`. */
@@ -242,7 +243,9 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       try {
         // Mode-aware augmentation (TICKET-40): sing → append "karaoke", others → raw.
         const augmented = augmentQuery(q, searchMode);
-        const params = new URLSearchParams({ q: augmented, uuid: patronUuid || "anon" });
+        // v=2: this client understands `liveRequired`, so the server may keep
+        // as-you-type lookups free (lib/live-search-gate.ts).
+        const params = new URLSearchParams({ q: augmented, uuid: patronUuid || "anon", v: SEARCH_PROTOCOL_VERSION });
         if (live) params.set("live", "1");
         const res = await fetch(`/api/search?${params.toString()}`);
         if (seq !== seqRef.current) return; // a newer query superseded this one
@@ -385,6 +388,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       const params = new URLSearchParams({
         q: augmented,
         uuid: patronUuid || "anon",
+        v: SEARCH_PROTOCOL_VERSION,
         pageToken: nextPageToken,
         page: String(pagesFetched + 1),
       });

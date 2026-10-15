@@ -17,7 +17,7 @@ import { getTranslations } from "next-intl/server";
 import { liveAllowed, liveCooldown } from "@/lib/live-search-gate";
 
 /**
- * GET /api/search?q=<query>&uuid=<patronUuid>[&live=1][&pageToken=<token>&page=<n>]
+ * GET /api/search?q=<query>&uuid=<patronUuid>[&v=2[&live=1]][&pageToken=<token>&page=<n>]
  *
  * Server-side YouTube Data API v3 search. The API key is read from the
  * YOUTUBE_API_KEY env var HERE (server only) and never sent to the client.
@@ -25,7 +25,7 @@ import { liveAllowed, liveCooldown } from "@/lib/live-search-gate";
  * Response contract (all non-throwing so the client fails soft to paste-link):
  *   200 { results: SearchResult[], nextPageToken?: string }  — success
  *   200 { degraded: true, reason, results: [] }        — no key / quota / daily-limit / upstream error
- *   200 { results: [], liveRequired: true }            — index-only request the free tiers can't answer
+ *   200 { results: [], liveRequired: true }            — v2 index-only request the free tiers can't answer
  *   200 { results: [], deferred: "live-cooldown", retryAfterMs } — billed attempt inside the per-uuid cooldown
  *   400 { error }                                      — bad query/uuid/pageToken, or page past the depth cap
  *   429 { error }                                      — per-uuid OR per-IP rate limit exceeded
@@ -39,9 +39,11 @@ import { liveAllowed, liveCooldown } from "@/lib/live-search-gate";
  * cache key, so paging back to an already-seen page costs zero. Page depth is
  * hard-capped at MAX_SEARCH_PAGES; nothing is ever prefetched.
  *
- * LIVE PERMISSION: a first page is INDEX-ONLY unless the request carries
- * `live=1` — the client sends that on Enter, after an idle pause, or on "search
- * again". Index-only requests are answered from the free tiers (cache, karaoke
+ * LIVE PERMISSION: the current client sends `v=2` on every request. A v2 first
+ * page is INDEX-ONLY unless it also carries `live=1` — sent on Enter, after an
+ * idle pause, or on "search again". A request without `v=2` is a legacy client
+ * (a page loaded before this shipped) and keeps the old cache -> index -> live
+ * fallback, still behind the per-uuid cooldown, rate limits and daily budget. Index-only requests are answered from the free tiers (cache, karaoke
  * index) or get `liveRequired`; they never reach the key, the daily budget or
  * Google. A `pageToken` request ("load more") is a deliberate tap and is
  * live-allowed. A per-uuid cooldown in front of the budget stops a modified

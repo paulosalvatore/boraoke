@@ -138,36 +138,69 @@ function reqAs(q: string, uuid: string, extra = "", ip = "198.51.100.7"): NextRe
 describe("index-only vs live-allowed requests", () => {
   afterEach(() => jest.restoreAllMocks());
 
+  it("a v2 request without live=1 gets liveRequired on an index miss, and bills nothing", async () => {
+    const body = await (await GET(reqAs("bohemian rhapsody karaoke", PATRON, "&v=2"))).json();
+    expect(body).toEqual({ results: [], liveRequired: true });
+    expect(fetchUrls).toEqual([]);
+  });
+
+  it("a LEGACY request (no v=2, a page loaded before this shipped) on an index miss still gets live results", async () => {
+    const body = await (await GET(reqAs("bohemian rhapsody karaoke", PATRON))).json();
+    expect(body.liveRequired).toBeUndefined();
+    expect(body.results[0].videoId).toBe("vLive000001");
+    expect(searchCalls()).toBe(1);
+  });
+
+  it("legacy requests stay under the per-uuid billed cooldown (no per-keystroke billing by omitting v=2)", async () => {
+    let now = 3_000_000;
+    jest.spyOn(Date, "now").mockImplementation(() => now);
+    const first = await (await GET(reqAs("bohe karaoke", PATRON))).json();
+    expect(first.results[0].videoId).toBe("vLive000001");
+    now += 400; // the old client's debounce cadence
+    const second = await (await GET(reqAs("bohemian karaoke", PATRON))).json();
+    expect(second.deferred).toBe("live-cooldown");
+    expect(searchCalls()).toBe(1);
+    now += LIVE_COOLDOWN_MS;
+    await GET(reqAs("bohemian rhapsody karaoke", PATRON));
+    expect(searchCalls()).toBe(2);
+  });
+
+  it("legacy requests still get index answers first (free)", async () => {
+    const body = await (await GET(reqAs("escurinho do cinema karaoke", PATRON))).json();
+    expect(body.source).toBe("index");
+    expect(fetchUrls).toEqual([]);
+  });
+
   it("an index-only request the index cannot answer bills NOTHING and says liveRequired", async () => {
-    const body = await (await GET(req("bohemian rhapsody karaoke"))).json();
+    const body = await (await GET(req("bohemian rhapsody karaoke", "&v=2"))).json();
     expect(body).toEqual({ results: [], liveRequired: true });
     expect(fetchUrls).toEqual([]);
   });
 
   it("an index-only listen-mode request never bills either", async () => {
-    const body = await (await GET(req("bohemian rhapsody"))).json();
+    const body = await (await GET(req("bohemian rhapsody", "&v=2"))).json();
     expect(body.liveRequired).toBe(true);
     expect(fetchUrls).toEqual([]);
   });
 
   it("an index-only miss needs no API key and is not reported as degraded", async () => {
     delete process.env.YOUTUBE_API_KEY;
-    const body = await (await GET(req("bohemian rhapsody karaoke"))).json();
+    const body = await (await GET(req("bohemian rhapsody karaoke", "&v=2"))).json();
     expect(body.liveRequired).toBe(true);
     expect(body.degraded).toBeUndefined();
   });
 
   it("only live=1 unlocks billing: other spellings stay index-only", async () => {
     for (const v of ["0", "true", "yes", "", "11"]) {
-      const body = await (await GET(req(`bohemian rhapsody karaoke ${v}x`, `&live=${v}`))).json();
+      const body = await (await GET(req(`bohemian rhapsody karaoke ${v}x`, `&v=2&live=${v}`))).json();
       expect(body.liveRequired).toBe(true);
     }
     expect(fetchUrls).toEqual([]);
   });
 
   it("index-only requests are still served from the cache (free)", async () => {
-    await GET(req("bohemian rhapsody karaoke", "&live=1")); // billed once, now cached
-    const body = await (await GET(req("bohemian rhapsody karaoke"))).json();
+    await GET(req("bohemian rhapsody karaoke", "&v=2&live=1")); // billed once, now cached
+    const body = await (await GET(req("bohemian rhapsody karaoke", "&v=2"))).json();
     expect(body.cached).toBe(true);
     expect(body.results[0].videoId).toBe("vLive000001");
     expect(searchCalls()).toBe(1);
@@ -181,7 +214,7 @@ describe("index-only vs live-allowed requests", () => {
     const keystrokes = ["bohe", "bohem", "bohemi", "bohemia"];
     const bodies = [];
     for (const k of keystrokes) {
-      bodies.push(await (await GET(reqAs(`${k} karaoke`, PATRON, "&live=1"))).json());
+      bodies.push(await (await GET(reqAs(`${k} karaoke`, PATRON, "&v=2&live=1"))).json());
       now += 250; // a fast phone typist
     }
     expect(searchCalls()).toBe(1);
@@ -194,17 +227,17 @@ describe("index-only vs live-allowed requests", () => {
     }
     // Once the cooldown has passed, a deliberate live search bills again.
     now = 1_000_000 + LIVE_COOLDOWN_MS;
-    await GET(reqAs("bohemian rhapsody karaoke", PATRON, "&live=1"));
+    await GET(reqAs("bohemian rhapsody karaoke", PATRON, "&v=2&live=1"));
     expect(searchCalls()).toBe(2);
   });
 
   it("the cooldown also covers 'load more' (a page-2 escape cannot be used per keystroke)", async () => {
     let now = 2_000_000;
     jest.spyOn(Date, "now").mockImplementation(() => now);
-    await GET(reqAs("bohe karaoke", PATRON, "&live=1"));
+    await GET(reqAs("bohe karaoke", PATRON, "&v=2&live=1"));
     now += 300;
     const body = await (
-      await GET(reqAs("bohem karaoke", PATRON, `&page=2&pageToken=${INDEX_MORE_TOKEN}`))
+      await GET(reqAs("bohem karaoke", PATRON, `&v=2&page=2&pageToken=${INDEX_MORE_TOKEN}`))
     ).json();
     expect(body.deferred).toBe("live-cooldown");
     expect(searchCalls()).toBe(1);
@@ -225,7 +258,7 @@ describe("index-only vs live-allowed requests", () => {
 
   it("as-you-type lookups use their own rate bucket and never starve the patron's Enter", async () => {
     for (let i = 0; i < 12; i++) {
-      const res = await GET(reqAs(`bohemian rhapsody karaoke ${i}`, PATRON));
+      const res = await GET(reqAs(`bohemian rhapsody karaoke ${i}`, PATRON, "&v=2"));
       expect(res.status).toBe(200);
     }
     expect(fetchUrls).toEqual([]);

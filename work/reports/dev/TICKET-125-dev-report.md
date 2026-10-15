@@ -1,7 +1,9 @@
 # TICKET-125 — Dev report
 
 ## Status
-Implemented, measured and self-verified. Draft PR open, base `ticket/124-index-primary` (stacked on PR #88; retarget to main after #88 merges). Not merged. No gate requested yet.
+Implemented and measured. The TM-requested compat change (protocol marker `v=2`, legacy fallback) is pushed. **Waiting on #88's fix batch to rebase, then re-measure and run e2e.** e2e has not been re-run since the compat change.
+
+Earlier status: implemented, measured and self-verified. Draft PR open, base `ticket/124-index-primary` (stacked on PR #88; retarget to main after #88 merges). Not merged. No gate requested yet.
 
 ## Context
 - Picking up from: fresh start (no prior TICKET-125 record). Read the ticket brief, PR #88's dev report, RESULTS and replay harness.
@@ -103,8 +105,35 @@ The 3 that pass on the pre-fix route are companions, not regression tests: cache
   - `soda stete karaoke` (index-only) → `{"results":[],"liveRequired":true}`; the same query with `live=1` → `degraded:no-api-key`, which is correct with no key.
   - The server was stopped by PID and port 3125 was freed.
 
+### 2026-10-14 TM change: protocol version (old tabs)
+TM finding: a page loaded before the deploy (venues keep pages open all night) never sends `live=1`. On an index miss it would show an empty list until reloaded, which is a patron-facing regression.
+
+Fix (`lib/live-search-gate.ts`, `SongSearch.tsx`, route doc):
+- The current client sends `v=2` on every request, including "load more".
+- **A request without `v=2` is a legacy client** and keeps the pre-#125 path: cache → index → live fallback. It is still subject to the 2 s per-uuid billed cooldown, the strict per-uuid/per-IP rate limit and the daily budget.
+- A v2 request without `live=1` gets `liveRequired`.
+- **Residual:** a client can omit the marker on purpose to get live fallback on every request. The cooldown still holds it to at most 1 billed call per 2 s per uuid. Rotating uuids is bounded by the per-IP bucket (30/10 s) and the daily cap.
+
+New tests:
+- "a v2 request without live=1 gets liveRequired on an index miss, and bills nothing"
+- "a LEGACY request (no v=2 …) on an index miss still gets live results"
+- "legacy requests stay under the per-uuid billed cooldown"
+- "legacy requests still get index answers first"
+- gate unit tests for `isLegacyClient` / `liveAllowed`
+
+The per-keystroke and load-more cooldown tests now send `v=2` explicitly.
+
+Mutation pass (each mutation restored afterwards; the mutated files were back in their pre-mutation state):
+```
+$(cat $S/mut2.txt)
+```
+(The L3 line above is from before the cooldown tests were split into v2 and legacy. Re-run after the split: `L3 legacy exempt from the billed cooldown: Tests: 1 failed, 27 passed, 28 total`, failing on `legacy requests stay under the per-uuid billed cooldown (no per-keystroke billing by omitting v=2)`.)
+
+jest after the change: **61 suites, 1,071 passed, 5 skipped, 0 failed** (load ~12-13 on 10 cores).
+
 ## Open items for the TM
-- **Deploy skew:** a browser still holding the pre-#125 bundle sends no `live=1`. On an index miss it sees an empty list until reload; its "load more" and IDXLIVE escape still work. Consider deploying #88 and #125 together, or accept a short skew.
+- Deploy skew: resolved by the `v=2` protocol marker (see above).
+- **Legacy client + cooldown:** an old page that hits the 2 s cooldown (two billed misses less than 2 s apart from one uuid) gets `{results: [], deferred}`. It doesn't know `deferred`, so it shows an empty list for that keystroke; its next debounced fetch after 2 s recovers. Under #88 the same old client usually narrows locally, so this needs two consecutive live-needing pauses inside 2 s.
 - The timing model is an assumption. Real keystroke timing would need client telemetry (pause lengths), which is not collected. A possible follow-up.
 - The cooldown is per instance (in memory), like the existing rate limiter. The cross-instance hard cap is still the TICKET-87 budget.
 

@@ -7,11 +7,20 @@
  * is index-only and free. The client is not trusted to keep that promise, so
  * the server enforces it in two layers:
  *
- *  1. `liveAllowed` — a first-page request may reach live search ONLY when it
- *     says so explicitly (`live=1`). Anything else is answered from the free
- *     tiers (cache, karaoke index) or gets `liveRequired`. Fail-closed: a naive
- *     or stale client that sends nothing never bills. A `pageToken` request is
- *     a deliberate "load more" tap and is live-allowed by definition.
+ *  1. `liveAllowed` — the current client marks every request with the
+ *     protocol version `v=2`. A v2 first page may reach live search ONLY when
+ *     it says so explicitly (`live=1`); otherwise it is answered from the free
+ *     tiers (cache, karaoke index) or gets `liveRequired`. A `pageToken`
+ *     request is a deliberate "load more" tap and is live-allowed by
+ *     definition.
+ *
+ *     A request WITHOUT the marker is a LEGACY client: a page loaded before
+ *     this protocol shipped (venues keep pages open all night). It knows
+ *     nothing about `liveRequired`, so it keeps the previous behaviour (cache
+ *     -> index -> live fallback); otherwise it would show an empty list on
+ *     every index miss until reloaded. The residual: a client can omit the
+ *     marker on purpose to get live fallback on every request. Layer 2 still
+ *     holds it to one billed call per LIVE_COOLDOWN_MS per uuid.
  *
  *  2. `liveCooldown` — a client that is modified to send `live=1` on every
  *     keystroke is still held to ONE billed attempt per LIVE_COOLDOWN_MS per
@@ -24,9 +33,18 @@
  * lib/youtube-search.ts: it is a demand shaper, not the budget's guarantee.
  */
 
-/** Parse the request's explicit live permission. */
+/** The protocol marker the current client sends on every search request. */
+export const SEARCH_PROTOCOL_VERSION = "2";
+
+/** A request from a client that predates the Enter/idle protocol. */
+export function isLegacyClient(params: URLSearchParams): boolean {
+  return params.get("v") !== SEARCH_PROTOCOL_VERSION;
+}
+
+/** May this request fall through to a billed live search? */
 export function liveAllowed(params: URLSearchParams, pageToken: string): boolean {
   if (pageToken !== "") return true;
+  if (isLegacyClient(params)) return true; // pre-v2 behaviour, cooldown-bound
   return params.get("live") === "1";
 }
 
