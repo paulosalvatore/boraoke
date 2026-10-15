@@ -1,0 +1,16 @@
+MUTATION: H1 logout revokes before its refusal check — vs the OLD refusal tests (no claim cookie)
+FILE: app/api/host/session/route.ts
+--- replaced:
+  if (isCrossSiteRequest(req) || !(await requireHost(req, roomId))) {
+    // Nothing to log out of, and nothing is changed — no cookie cleared, no
+
+--- with:
+  await revokeRoomClaimToken(roomId, claimTokenFrom(req, roomId)); // H1: revoke before the refusal
+  if (isCrossSiteRequest(req) || !(await requireHost(req, roomId))) {
+    // Nothing to log out of, and nothing is changed — no cookie cleared, no
+
+--- jest __tests__/zz-hollow-old-host-claim.test.ts (exit 0)
+Test Suites: 1 passed, 1 total
+Tests:       34 passed, 34 total
+--- failing tests:
+

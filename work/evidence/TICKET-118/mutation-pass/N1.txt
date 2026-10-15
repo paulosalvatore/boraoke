@@ -1,0 +1,32 @@
+MUTATION: N1 normaliseSessionEpoch
+FILE: lib/rooms.ts
+--- replaced:
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+--- with:
+  const n = typeof raw === "number" ? raw : NaN;
+--- jest __tests__/host-session-revocation.test.ts (exit 1)
+    ✕ COERCES a numeric string rather than failing open to 0 (1 ms)
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 36 passed, 37 total
+--- failing tests:
+● normaliseSessionEpoch › COERCES a numeric string rather than failing open to 0
+
+--- first failure, verbatim:
+  ● normaliseSessionEpoch › COERCES a numeric string rather than failing open to 0
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 3
+    Received: 0
+
+      514 |     // A JSON-driver round trip handing back "3" must NOT resurrect every session
+      515 |     // that epoch 3 revoked. This is the security-relevant case.
+    > 516 |     expect(normaliseSessionEpoch("3")).toBe(3);
+          |                                        ^
+      517 |     expect(normaliseSessionEpoch(" 12 ")).toBe(12);
+      518 |   });
+      519 |
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:516:40)
+
+Test Suites: 1 failed, 1 total

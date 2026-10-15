@@ -1,0 +1,49 @@
+MUTATION: RC2 no-op epoch bump, claim pruning kept
+FILE: lib/rooms.ts
+--- replaced:
+  const bumped = await roomBackend.bumpSessionEpoch(
+    roomId,
+    normaliseSessionEpoch(before.sessionEpoch),
+  );
+
+--- with:
+  const bumped = normaliseSessionEpoch(before.sessionEpoch); // RC2: no-op bump
+
+--- jest __tests__/host-session-revocation.test.ts (exit 1)
+    ✕ the OLD session value is dead — on a real host route, not just a helper (32 ms)
+    ✕ the old session can no longer ROLL ITSELF a fresh cookie — the re-gate's exact finding (2 ms)
+    ✕ a session copied by a SECOND device dies while the acting device keeps working (1 ms)
+    ✕ successive revokes keep killing — epoch N, N+1 and N+2 sessions are all dead at N+3 (1 ms)
+    ✕ the response's session cookie is derived from the epoch that is ACTUALLY stored (2 ms)
+    ✕ re-entering the host code after a revoke still works — the other devices' way back (1 ms)
+    ✕ CONCURRENT revokes from the acting device never leave it without a credential (2 ms)
+    ✕ a revoke racing an unrelated room write still leaves the device with a working credential (1 ms)
+    ✕ a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule)
+    ✕ bumps by exactly one and reports the new epoch (2 ms)
+    ✕ keeps ONLY the presented token, and only when it is genuinely live
+    ✕ an INVENTED token is not written into the record on its own say-so (1 ms)
+    ✕ a concurrent LOGIN that read before the revoke and wrote after it (2 ms)
+    ✕ a concurrent SETTINGS change (staff flips the mode) that read before the revoke
+    ✕ holds every invariant across 120 seeded interleavings (4 ms)
+Test Suites: 1 failed, 1 total
+Tests:       15 failed, 22 passed, 37 total
+
+--- first failure, verbatim:
+  ● an ALREADY-MINTED session stops working after the owner signs out all devices › the OLD session value is dead — on a real host route, not just a helper
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      151 |
+      152 |     // THE ASSERTION THIS TICKET EXISTS FOR.
+    > 153 |     expect(await verifySessionValue(v.room.id, stolen)).toBe(false);
+          |                                                         ^
+      154 |     expect((await moderationRoute(moderationReq(v.room.id, stolen))).status).toBe(401);
+      155 |   });
+      156 |
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:153:57)
+
+  ● an ALREADY-MINTED session stops working after the owner signs out all devices › the old session can no longer ROLL ITSELF a fresh cookie — the re-gate's exact finding

@@ -1,0 +1,34 @@
+MUTATION: RC4 whole-record update also writes the epoch counter (epoch-in-record shape)
+FILE: lib/rooms.ts
+--- replaced:
+    if (this.rooms.has(room.id)) this.rooms.set(room.id, room);
+--- with:
+    if (this.rooms.has(room.id)) { this.rooms.set(room.id, room); this.epochs.set(room.id, normaliseSessionEpoch(room.sessionEpoch)); } // RC4
+--- jest __tests__/host-session-revocation.test.ts __tests__/host-claim.test.ts __tests__/claim-token-owner-pin.test.ts __tests__/room-session-epoch-backend.test.ts (exit 1)
+Test Suites: 1 failed, 3 passed, 4 total
+Tests:       4 failed, 87 passed, 91 total
+--- failing tests:
+● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule)
+● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent LOGIN that read before the revoke and wrote after it
+● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent SETTINGS change (staff flips the mode) that read before the revoke
+● randomized stale-writer probe around a revoke (TICKET-127 x TICKET-118) › holds every invariant across 120 seeded interleavings
+
+--- first failure, verbatim:
+  ● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+      473 |     // A stale writer puts the epoch-0 list back, tag and all.
+      474 |     await roomBackend.update(listAtEpoch0);
+    > 475 |     expect(await getRoomSessionEpoch(room.id)).toBe(1); // the counter held
+          |                                                ^
+      476 |     expect(await verifyRoomClaimToken(room.id, token)).toBe(false); // the list is dead
+      477 |     // ...and the next mint starts a fresh list at the live epoch rather than reviving it.
+      478 |     const fresh = (await issueRoomClaimToken(room.id))!;
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:475:48)
+
+  ● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent LOGIN that read before the revoke and wrote after it

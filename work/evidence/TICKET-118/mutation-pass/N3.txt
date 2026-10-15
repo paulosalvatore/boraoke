@@ -1,0 +1,32 @@
+MUTATION: N3 normaliseSessionEpoch
+FILE: lib/rooms.ts
+--- replaced:
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+--- with:
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? parseInt(raw, 10) : NaN;
+--- jest __tests__/host-session-revocation.test.ts (exit 1)
+    ✕ reads absent and un-interpretable input as 0 — the legacy derivation (1 ms)
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 36 passed, 37 total
+--- failing tests:
+● normaliseSessionEpoch › reads absent and un-interpretable input as 0 — the legacy derivation
+
+--- first failure, verbatim:
+  ● normaliseSessionEpoch › reads absent and un-interpretable input as 0 — the legacy derivation
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 3
+
+      539 |       () => 3,
+      540 |     ]) {
+    > 541 |       expect(normaliseSessionEpoch(raw)).toBe(0);
+          |                                          ^
+      542 |     }
+      543 |   });
+      544 | });
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:541:42)
+
+Test Suites: 1 failed, 1 total

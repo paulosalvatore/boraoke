@@ -1,0 +1,64 @@
+MUTATION: N4 normaliseSessionEpoch
+FILE: lib/rooms.ts
+--- replaced:
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+--- with:
+  const n = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+--- jest __tests__/host-session-revocation.test.ts (exit 1)
+    ✕ the OLD session value is dead — on a real host route, not just a helper (12 ms)
+    ✕ the old session can no longer ROLL ITSELF a fresh cookie — the re-gate's exact finding (3 ms)
+    ✕ a session copied by a SECOND device dies while the acting device keeps working (2 ms)
+    ✕ successive revokes keep killing — epoch N, N+1 and N+2 sessions are all dead at N+3 (2 ms)
+    ✕ the response's session cookie is derived from the epoch that is ACTUALLY stored (3 ms)
+    ✕ re-entering the host code after a revoke still works — the other devices' way back (1 ms)
+    ✕ CONCURRENT revokes from the acting device never leave it without a credential (3 ms)
+    ✕ a revoke racing an unrelated room write still leaves the device with a working credential (1 ms)
+    ✕ a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule) (1 ms)
+    ✕ a hand-written record at a later epoch invalidates every epoch-0 value
+    ✕ honours non-negative integers (4 ms)
+    ✕ bumps by exactly one and reports the new epoch (4 ms)
+    ✕ keeps ONLY the presented token, and only when it is genuinely live (4 ms)
+    ✕ an INVENTED token is not written into the record on its own say-so
+    ✕ a concurrent LOGIN that read before the revoke and wrote after it (2 ms)
+    ✕ a concurrent SETTINGS change (staff flips the mode) that read before the revoke (1 ms)
+    ✕ holds every invariant across 120 seeded interleavings (6 ms)
+Test Suites: 1 failed, 1 total
+Tests:       17 failed, 20 passed, 37 total
+--- failing tests:
+● an ALREADY-MINTED session stops working after the owner signs out all devices › the OLD session value is dead — on a real host route, not just a helper
+● an ALREADY-MINTED session stops working after the owner signs out all devices › the old session can no longer ROLL ITSELF a fresh cookie — the re-gate's exact finding
+● an ALREADY-MINTED session stops working after the owner signs out all devices › a session copied by a SECOND device dies while the acting device keeps working
+● an ALREADY-MINTED session stops working after the owner signs out all devices › successive revokes keep killing — epoch N, N+1 and N+2 sessions are all dead at N+3
+● the acting device is never locked out by its own successful use of the lever › the response's session cookie is derived from the epoch that is ACTUALLY stored
+● the acting device is never locked out by its own successful use of the lever › re-entering the host code after a revoke still works — the other devices' way back
+● the acting device is never locked out by its own successful use of the lever › CONCURRENT revokes from the acting device never leave it without a credential
+● the acting device is never locked out by its own successful use of the lever › a revoke racing an unrelated room write still leaves the device with a working credential
+● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule)
+● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a hand-written record at a later epoch invalidates every epoch-0 value
+● normaliseSessionEpoch › honours non-negative integers
+● revokeRoomHostSessions — the helper's own contract › bumps by exactly one and reports the new epoch
+● revokeRoomHostSessions — the helper's own contract › keeps ONLY the presented token, and only when it is genuinely live
+● revokeRoomHostSessions — the helper's own contract › an INVENTED token is not written into the record on its own say-so
+● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent LOGIN that read before the revoke and wrote after it
+● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent SETTINGS change (staff flips the mode) that read before the revoke
+● randomized stale-writer probe around a revoke (TICKET-127 x TICKET-118) › holds every invariant across 120 seeded interleavings
+
+--- first failure, verbatim:
+  ● an ALREADY-MINTED session stops working after the owner signs out all devices › the OLD session value is dead — on a real host route, not just a helper
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      151 |
+      152 |     // THE ASSERTION THIS TICKET EXISTS FOR.
+    > 153 |     expect(await verifySessionValue(v.room.id, stolen)).toBe(false);
+          |                                                         ^
+      154 |     expect((await moderationRoute(moderationReq(v.room.id, stolen))).status).toBe(401);
+      155 |   });
+      156 |
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:153:57)
+
+  ● an ALREADY-MINTED session stops working after the owner signs out all devices › the old session can no longer ROLL ITSELF a fresh cookie — the re-gate's exact finding

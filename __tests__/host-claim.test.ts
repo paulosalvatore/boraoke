@@ -344,7 +344,7 @@ describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () 
 
   it("a WRONG session value cannot log the room out either", async () => {
     const { room, token } = await roomWithClaim("Bar Sessao Falsa");
-    const res = await logoutRoute(logoutReq(room.id, { session: "f".repeat(64) }));
+    const res = await logoutRoute(logoutReq(room.id, { session: "f".repeat(64), claimToken: token }));
     expect(res.status).toBe(401);
     expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
   });
@@ -360,8 +360,11 @@ describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () 
   it("a valid session presented from ANOTHER SITE cannot log the room out", async () => {
     const { room, token } = await roomWithClaim("Bar Sec Fetch");
     const session = (await issueSession(room.id))!;
+    // The device's claim cookie rides along too (TICKET-112): logout only ever
+    // revokes the PRESENTED token, so without it "nothing was revoked" below
+    // would be true even if the provenance check were deleted.
     const res = await logoutRoute(
-      logoutReq(room.id, { session, fetchSite: "cross-site" }),
+      logoutReq(room.id, { session, claimToken: token, fetchSite: "cross-site" }),
     );
     expect(res.status).toBe(401);
     expect(res.headers.getSetCookie?.() ?? []).toEqual([]);
@@ -375,7 +378,7 @@ describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () 
     const { room, token } = await roomWithClaim("Bar Origem Estranha");
     const session = (await issueSession(room.id))!;
     const res = await logoutRoute(
-      logoutReq(room.id, { session, origin: "http://evil.test" }),
+      logoutReq(room.id, { session, claimToken: token, origin: "http://evil.test" }),
     );
     expect(res.status).toBe(401);
     expect((await getRoom(room.id))!.claimTokenHashes).toHaveLength(1);
@@ -420,7 +423,9 @@ describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () 
     const res = await logoutRoute(
       new NextRequest(`http://127.0.0.1:3040/api/host/session?room=${room.id}`, {
         method: "POST",
-        headers: { cookie: `${hostCookieName(other.room.id)}=${otherSession}` },
+        headers: {
+          cookie: `${hostCookieName(other.room.id)}=${otherSession}; ${claimCookieName(room.id)}=${token}`,
+        },
       }),
     );
     expect(res.status).toBe(401);
