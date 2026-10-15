@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-10-15T19:57:13Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-143", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/143-title-parser", "short_sha": "b1c6a49", "message_slug": "TICKET-143: title parser for song, artist and kind"}}
