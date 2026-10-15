@@ -30,17 +30,29 @@
  * search payloads; staleness bounds are the tiers' TTLs).
  *
  * TTL DECISIONS (documented per ticket):
- *  - Non-empty result sets: 12 hours (`SEARCH_CACHE_TTL_MS`). Karaoke search
- *    results are highly static day-over-day; 12h means a query popular across
- *    an evening's venues costs ONE of the day's 100 searches per day-part instead of one
- *    per instance per minute, while still picking up fresh uploads within a
- *    day. (Ticket guidance: 6–24h; 12h is the midpoint.)
+ *  - Non-empty result sets: 7 days (`SEARCH_CACHE_TTL_MS`, TICKET-136; was
+ *    12 h from TICKET-55). Karaoke search results are highly static, and 12 h
+ *    only covered one evening while busy nights have so far been weeks apart,
+ *    so a song searched one night was billed again the next. 7 d is the
+ *    default the scope proposed (work/plans/SCOPE-search-cache-pagination.md);
+ *    TICKET-134's repeat curve may tune it. Cost: a new upload can be missed
+ *    for up to 7 d on a query already cached, which is low for karaoke.
+ *  - HARD CEILING: 30 days. A cached page is YouTube API data (videoIds,
+ *    titles), which the YouTube API Services Developer Policies allow us to
+ *    store for at most 30 days (TICKET-141). The index enforces the same
+ *    limit as `INDEX_MAX_AGE_MS`, and a guard test asserts every TTL in this
+ *    cache (this one, the empty one and the memory L1's) is at most that. A
+ *    Redis write always carries its TTL (`px`), and the entry is only ever
+ *    rewritten by a fresh Google answer, so no stored page outlives
+ *    `SEARCH_CACHE_TTL_MS` (+ the L1's 60 s after a final Redis read).
+ *    Footprint at 7 d: about 9-12 KB a 50-row page x at most 90 billed pages a
+ *    day x 7 d, roughly 5-8 MB, inside the Upstash free tier.
  *  - Empty result sets: 10 minutes (`SEARCH_CACHE_EMPTY_TTL_MS`). Empties are
  *    cached (they are successful API answers and repeated typo/miss queries
  *    would otherwise each re-spend one of the 100 daily searches), but only
  *    briefly — an empty is
  *    more likely transient (typo, regional hiccup, brand-new upload) and must
- *    not pin "no results" for 12h.
+ *    not pin "no results" for days. Unchanged by TICKET-136.
  *  - API errors are NEVER cached: callers only write to this cache after
  *    `searchYouTube()` resolves successfully.
  *
@@ -60,8 +72,8 @@ import {
   type SearchResult,
 } from "@/lib/youtube-search";
 
-/** Redis TTL for cached NON-EMPTY search results (12h — see header). */
-export const SEARCH_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+/** Redis TTL for cached NON-EMPTY search results (7 days — see header). */
+export const SEARCH_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Redis TTL for cached EMPTY search results (10min — see header). */
 export const SEARCH_CACHE_EMPTY_TTL_MS = 10 * 60 * 1000;
@@ -126,7 +138,7 @@ function isSearchResultArray(v: unknown): v is SearchResult[] {
  * TICKET-83 changed the stored shape from `SearchResult[]` to
  * `{ results, nextPageToken? }` so a page's forward cursor is cached alongside
  * its rows. A BARE ARRAY is still accepted — entries written by the previous
- * deploy stay valid for their 12h TTL instead of being treated as corrupt and
+ * deploy stay valid for their TTL instead of being treated as corrupt and
  * re-spending one of the day's 100 searches each.
  */
 function toSearchPage(v: unknown): SearchPage | null {
@@ -143,7 +155,7 @@ function toSearchPage(v: unknown): SearchPage | null {
 
 /**
  * Read a cached PAGE for a normalized cache key (build it with `cacheKey()`
- * from lib/youtube-search — trim/lowercase/collapse-whitespace, region-scoped,
+ * from lib/youtube-search — folded (TICKET-135), region-scoped,
  * and since TICKET-83 pageToken-scoped). Returns null on miss, expiry, or ANY
  * Redis error (fail-open).
  *
@@ -174,7 +186,7 @@ export async function getCachedSearchPage(
 /**
  * Cache a SUCCESSFUL search page. Callers must only invoke this after
  * `searchYouTubePage()` resolved (errors are never cached). Non-empty results
- * get the 12h TTL; empty results the short 10min TTL (see header). Any Redis
+ * get the 7-day TTL; empty results the short 10min TTL (see header). Any Redis
  * error is swallowed (fail-open) — the memory L1 is always written regardless.
  *
  * TICKET-83: deep pages are cached under their own pageToken-scoped key with

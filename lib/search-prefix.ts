@@ -96,6 +96,63 @@ export function normalizeQuery(s: string): string {
     .trim();
 }
 
+/**
+ * Anything that is not a letter, a combining mark or a digit, in ANY script.
+ * Built with the RegExp constructor because the `u`-flag property escapes are
+ * ES2018 syntax and this project's TypeScript target is ES2017 (every browser
+ * and Node version boraoke runs on supports them).
+ */
+const NOT_WORD_CHAR = new RegExp("[^\\p{L}\\p{M}\\p{N}]+", "gu");
+
+/** The token sing mode appends (lib/search-query.ts), in folded form. */
+const KARAOKE_TOKEN = "karaoke";
+
+/**
+ * Tokens of the search-cache fold (see `foldSearchKey`): lowercase, Latin
+ * diacritics stripped, split on anything that is not a letter, mark or digit.
+ */
+export function foldTokens(s: string): string[] {
+  return stripDiacritics(String(s).toLowerCase())
+    .replace(NOT_WORD_CHAR, " ")
+    .split(" ")
+    .filter(Boolean);
+}
+
+/**
+ * The fold used for the QUERY part of the search cache key (TICKET-135).
+ *
+ * Two patrons asking the same question must land on one cache entry, so one
+ * billed call answers both: `maná` and `mana`, `Cerol na Mão` and
+ * `cerol na mao`, NFC and NFD spellings, `karaoke evidencias` and
+ * `evidencias karaoke`. Steps:
+ *
+ *  1. The same comparison form as `normalizeQuery` (and so the karaoke index
+ *     matcher): lowercase, NFD with the combining diacritics stripped,
+ *     punctuation collapsed to single spaces, trimmed.
+ *  2. Every `karaoke` token (which includes an accented `karaokê`, after step
+ *     1) is removed and ONE is put back at the end. Sing mode appends it
+ *     client-side, and patrons also type it first, so its position carries no
+ *     meaning.
+ *
+ * ONE DELIBERATE DIFFERENCE FROM `normalizeQuery`: letters and digits of every
+ * script are kept (`\p{L}`, `\p{M}`, `\p{N}`), where `normalizeQuery` keeps only
+ * `[a-z0-9]`. For anything `normalizeQuery` can see the two agree exactly, and
+ * two queries that share a fold also share their `normalizeQuery` tokens (up
+ * to where `karaoke` sits). But the
+ * index matcher can afford to drop a Japanese or Cyrillic query to "" (it just
+ * finds nothing), while a cache key cannot: every such query would share one
+ * key and be served the first one's videos.
+ *
+ * Returns "" when the query has no letter or digit at all; `cacheKey` handles
+ * that case.
+ */
+export function foldSearchKey(s: string): string {
+  const tokens = foldTokens(s);
+  const words = tokens.filter((t) => t !== KARAOKE_TOKEN);
+  if (words.length < tokens.length) words.push(KARAOKE_TOKEN);
+  return words.join(" ");
+}
+
 /** Normalized, non-empty tokens of a query. */
 export function queryTokens(s: string): string[] {
   const n = normalizeQuery(s);
