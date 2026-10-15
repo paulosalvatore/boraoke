@@ -325,13 +325,18 @@ const queryCache = new Map<string, CacheEntry>();
  * `karaoke evidencias` / `evidencias karaoke` / `evidências karaokê` each share
  * one entry. Only the KEY is folded: Google still receives the patron's
  * original `q`, so whichever variant misses first decides the page every
- * variant is served for the TTL. Old keys are not migrated; they age out.
+ * variant is served for the TTL. That is only safe while every variant means
+ * the same thing to Google, which is why the search operators `-word`, `|` and
+ * `"` are kept in the fold rather than stripped as punctuation:
+ * `evidencias -karaoke` must not share `evidencias karaoke`'s page.
+ * Old keys are not migrated; they age out.
  *
- * A query with no letter or digit at all (e.g. "???") folds to "", and would
- * then share one key with every other such query. It keeps the pre-135 form
- * (trim + lowercase + collapse whitespace) instead. That form contains no
- * letter or digit and a fold result always contains one, so the two can never
- * produce the same key.
+ * A query with no letter, mark, digit, `|` or `"` at all (e.g. "???") folds to
+ * "", and would then share one key with every other such query. It keeps the
+ * pre-135 form (trim + lowercase + collapse whitespace) instead. The fallback
+ * is only used when the fold is empty, so a fallback string contains none of
+ * those characters, while every non-empty fold contains at least one of them.
+ * The two can therefore never produce the same key.
  *
  * THE MODE IS ALREADY IN THIS KEY, transitively, and must not be added again:
  * `augmentQuery()` (lib/search-query.ts) appends "karaoke" for sing mode

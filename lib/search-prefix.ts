@@ -97,12 +97,42 @@ export function normalizeQuery(s: string): string {
 }
 
 /**
- * Anything that is not a letter, a combining mark or a digit, in ANY script.
- * Built with the RegExp constructor because the `u`-flag property escapes are
- * ES2018 syntax and this project's TypeScript target is ES2017 (every browser
- * and Node version boraoke runs on supports them).
+ * Fallback for `NOT_WORD_CHAR` on engines without Unicode property escapes:
+ * whitespace plus ASCII, Latin-1, General Punctuation and CJK punctuation.
+ * Everything else, including every letter of every script, is kept, so
+ * non-Latin queries still produce distinct tokens. Coarser than the primary
+ * class (a few rare symbols survive as part of a token), which only matters on
+ * those old engines and only for the client-side `containsKaraoke`; the cache
+ * key itself is built on the server.
  */
-const NOT_WORD_CHAR = new RegExp("[^\\p{L}\\p{M}\\p{N}]+", "gu");
+export const NOT_WORD_CHAR_FALLBACK =
+  /[\s\x00-\x2F\x3A-\x40\x5B-\x60\x7B-\xA9\xAB-\xB9\xBB-\xBF\xD7\xF7\u2000-\u206F\u3000-\u303F\uFF01-\uFF0F]+/g;
+
+/**
+ * Anything that is not a letter, a combining mark or a digit, in ANY script.
+ *
+ * Built with the RegExp constructor because the `u`-flag property escapes are
+ * ES2018 syntax and this project's TypeScript target is ES2017. Not every
+ * declared browser has them at runtime: Chrome 64+, Safari 11.1+ and Edge 79+
+ * do, but Firefox only from 78, and the browserslist floor is Firefox 67. This
+ * module is imported by the patron client (SongSearch -> planSearch, and
+ * augmentQuery -> containsKaraoke -> foldTokens), so an unguarded constructor
+ * would throw a SyntaxError at module load there and take the whole search UI
+ * down. Hence the try/catch and `NOT_WORD_CHAR_FALLBACK`. Node (the server,
+ * where the cache key is built) always has them.
+ */
+export function buildNotWordChar(): RegExp {
+  try {
+    return new RegExp("[^\\p{L}\\p{M}\\p{N}]+", "gu");
+  } catch {
+    return NOT_WORD_CHAR_FALLBACK;
+  }
+}
+
+const NOT_WORD_CHAR = buildNotWordChar();
+
+/** Test hook: true when this engine lacked property escapes at module load. */
+export const _usingNotWordCharFallback = NOT_WORD_CHAR === NOT_WORD_CHAR_FALLBACK;
 
 /** The token sing mode appends (lib/search-query.ts), in folded form. */
 const KARAOKE_TOKEN = "karaoke";
@@ -119,6 +149,45 @@ export function foldTokens(s: string): string[] {
 }
 
 /**
+ * Chunks of a query for the key fold: a run of `|`, a `"` (with any `-` right
+ * before it), or a run of anything that is not whitespace, `|` or `"`.
+ */
+const KEY_CHUNK = /\|+|-*"|[^\s|"]+/g;
+
+/**
+ * Fold tokens plus the YouTube search operators the Data API honours in `q`:
+ * `-word` (exclude), `|` (OR) and `"` (phrase). These change WHICH results
+ * Google returns, so they must survive into the cache key, or
+ * `evidencias -karaoke` would share an entry with `evidencias karaoke` and
+ * whoever missed first would pin an off-intent page on every variant for the
+ * whole TTL (TICKET-135 security review, MEDIUM).
+ *
+ *  - a `|` anywhere becomes a `|` token (runs collapse to one);
+ *  - a `"` becomes a `"` token, or `-"` when a `-` opens it (excluded phrase);
+ *  - a chunk that STARTS with `-` keeps the `-` on its first token
+ *    (`-karaoke`). A hyphen inside a word (`evidencias-karaoke`) is plain
+ *    punctuation, as before.
+ *
+ * Without any of these characters the result is exactly `foldTokens(s)`, so
+ * every plain query keeps the key it had.
+ */
+function foldKeyTokens(s: string): string[] {
+  const out: string[] = [];
+  for (const chunk of stripDiacritics(String(s).toLowerCase()).match(KEY_CHUNK) ?? []) {
+    if (chunk[0] === "|") {
+      out.push("|");
+    } else if (chunk.endsWith('"')) {
+      out.push(chunk[0] === "-" ? '-"' : '"');
+    } else {
+      const tokens = foldTokens(chunk);
+      if (tokens.length > 0 && chunk[0] === "-") tokens[0] = `-${tokens[0]}`;
+      out.push(...tokens);
+    }
+  }
+  return out;
+}
+
+/**
  * The fold used for the QUERY part of the search cache key (TICKET-135).
  *
  * Two patrons asking the same question must land on one cache entry, so one
@@ -132,7 +201,13 @@ export function foldTokens(s: string): string[] {
  *  2. Every `karaoke` token (which includes an accented `karaokê`, after step
  *     1) is removed and ONE is put back at the end. Sing mode appends it
  *     client-side, and patrons also type it first, so its position carries no
- *     meaning.
+ *     meaning. An excluded `-karaoke` is a different token and stays put.
+ *
+ * Search operators (`-word`, `|`, `"`) are the exception to step 1: Google
+ * receives the patron's original `q`, and those characters change its answer,
+ * so they are kept as markers (see `foldKeyTokens`). `x -karaoke`,
+ * `x | karaoke` and `"x" karaoke` each get their own key; `x!!! karaokê` still
+ * shares `x karaoke`'s.
  *
  * ONE DELIBERATE DIFFERENCE FROM `normalizeQuery`: letters and digits of every
  * script are kept (`\p{L}`, `\p{M}`, `\p{N}`), where `normalizeQuery` keeps only
@@ -141,13 +216,15 @@ export function foldTokens(s: string): string[] {
  * to where `karaoke` sits). But the
  * index matcher can afford to drop a Japanese or Cyrillic query to "" (it just
  * finds nothing), while a cache key cannot: every such query would share one
- * key and be served the first one's videos.
+ * key and be served the first one's videos. Diacritic stripping also applies
+ * to non-Latin text, so e.g. Cyrillic `й`/`и` and Vietnamese tone marks fold
+ * together, the same trade as the Latin accents.
  *
- * Returns "" when the query has no letter or digit at all; `cacheKey` handles
- * that case.
+ * Returns "" when the query has no letter, mark, digit, `|` or `"` at all;
+ * `cacheKey` handles that case.
  */
 export function foldSearchKey(s: string): string {
-  const tokens = foldTokens(s);
+  const tokens = foldKeyTokens(s);
   const words = tokens.filter((t) => t !== KARAOKE_TOKEN);
   if (words.length < tokens.length) words.push(KARAOKE_TOKEN);
   return words.join(" ");

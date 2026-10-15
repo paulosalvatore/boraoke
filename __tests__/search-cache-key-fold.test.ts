@@ -11,7 +11,7 @@
 import type { NextRequest } from "next/server";
 
 import { GET } from "@/app/api/search/route";
-import { foldSearchKey, normalizeQuery } from "@/lib/search-prefix";
+import { _usingNotWordCharFallback, foldSearchKey, normalizeQuery } from "@/lib/search-prefix";
 import { cacheKey, MEMORY_CACHE_TTL_MS, _resetCache, _resetRateLimit } from "@/lib/youtube-search";
 import { SEARCH_CACHE_TTL_MS, SEARCH_CACHE_EMPTY_TTL_MS } from "@/lib/search-cache";
 import { INDEX_MAX_AGE_MS } from "@/lib/karaoke-index/types";
@@ -90,6 +90,110 @@ describe("cacheKey keeps different questions apart", () => {
     expect(cacheKey("???", "BR")).toBe("BR::???");
     expect(cacheKey("???", "BR")).not.toBe(cacheKey("!!!", "BR"));
     expect(cacheKey("???", "BR")).not.toBe("BR::");
+  });
+});
+
+describe("YouTube search operators stay significant in the key (security review MEDIUM)", () => {
+  const plain = cacheKey("evidencias karaoke", "BR");
+
+  it.each([
+    "evidencias -karaoke",
+    "evidencias | karaoke",
+    "evidencias|karaoke",
+    '"evidencias" karaoke',
+    '"evidencias karaoke"',
+    'evidencias -"karaoke"',
+  ])("%s does not share the plain query's key", (q) => {
+    expect(cacheKey(q, "BR")).not.toBe(plain);
+  });
+
+  it("each operator form keeps its own key", () => {
+    const forms = ["x karaoke", "x -karaoke", "x | karaoke", '"x" karaoke', 'x "karaoke"', 'x -"karaoke"'];
+    expect(new Set(forms.map((q) => cacheKey(q, "BR"))).size).toBe(forms.length);
+  });
+
+  it("an excluded karaoke is not moved or merged with the sing-mode token", () => {
+    expect(cacheKey("-karaoke evidencias", "BR")).toBe("BR::-karaoke evidencias");
+    expect(cacheKey("evidencias -karaoke karaoke", "BR")).toBe("BR::evidencias -karaoke karaoke");
+  });
+
+  it("benign punctuation variants still merge with the plain query", () => {
+    for (const q of [
+      "evidências!!! karaokê",
+      "Karaoke  EVIDENCIAS",
+      "evidencias_karaoke",
+      "evidencias-karaoke",
+      "evidencias.karaoke",
+      "evidencias (karaoke)",
+      "evidencias karaoke karaoke",
+      "evidencias karaoke -",
+    ]) {
+      expect(cacheKey(q, "BR")).toBe(plain);
+    }
+  });
+
+  it("operator markers never put a ':' in the key", () => {
+    expect(foldSearchKey('a -b | "c"')).toBe('a -b | " c "');
+    expect(foldSearchKey('a -b | "c"')).not.toContain(":");
+  });
+});
+
+describe("Unicode property escapes missing at runtime (Firefox 67-77)", () => {
+  it("a normal engine uses the property-escape class", () => {
+    expect(_usingNotWordCharFallback).toBe(false);
+  });
+
+  // Firefox before 78 throws a SyntaxError on `\p{...}` in a RegExp. The module
+  // is loaded by the patron client, so it must still load and fold sensibly.
+  type Fold = typeof import("@/lib/search-prefix");
+  type Query = typeof import("@/lib/search-query");
+  function loadWithoutPropertyEscapes(): { fold: Fold; query: Query; threw: number } {
+    const Real = RegExp;
+    let threw = 0;
+    const NoPropertyEscapes = function (this: unknown, src: string | RegExp, flags?: string) {
+      if (String(src).includes("\\p{")) {
+        threw++;
+        throw new SyntaxError("Invalid regular expression: invalid escape");
+      }
+      return new Real(src, flags);
+    } as unknown as RegExpConstructor;
+    let fold!: Fold;
+    let query!: Query;
+    global.RegExp = NoPropertyEscapes;
+    try {
+      jest.isolateModules(() => {
+        fold = require("@/lib/search-prefix");
+        query = require("@/lib/search-query");
+      });
+    } finally {
+      global.RegExp = Real;
+    }
+    return { fold, query, threw };
+  }
+
+  it("the module loads, using the fallback class", () => {
+    const { fold, threw } = loadWithoutPropertyEscapes();
+    expect(threw).toBeGreaterThan(0); // the stub really was hit
+    expect(fold._usingNotWordCharFallback).toBe(true);
+  });
+
+  it("containsKaraoke and the fold still work", () => {
+    const { fold, query } = loadWithoutPropertyEscapes();
+    expect(query.containsKaraoke("evidencias karaoke")).toBe(true);
+    expect(query.containsKaraoke("Evidências, KARAOKÊ!")).toBe(true);
+    expect(query.containsKaraoke("karaokestar")).toBe(false);
+    expect(query.augmentQuery("evidências karaokê", "sing")).toBe("evidências karaokê");
+    expect(fold.foldTokens("Evidências!!! (Karaokê)")).toEqual(["evidencias", "karaoke"]);
+    expect(fold.foldSearchKey("evidências!!! karaokê")).toBe("evidencias karaoke");
+  });
+
+  it("non-Latin scripts keep distinct tokens", () => {
+    const { fold } = loadWithoutPropertyEscapes();
+    const qs = ["千本桜", "残酷な天使のテーゼ", "Кино", "Звезда", "사랑", "हम"];
+    const keys = qs.map((q) => fold.foldSearchKey(`${q} karaoke`));
+    expect(new Set(keys).size).toBe(qs.length);
+    expect(keys).not.toContain("karaoke");
+    expect(fold.foldTokens("千本桜、karaoke")).toEqual(["千本桜", "karaoke"]);
   });
 });
 
