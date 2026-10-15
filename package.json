@@ -12,7 +12,9 @@
     "check:es-target": "node scripts/check-bundle-es-target.mjs",
     "check:css-target": "node scripts/check-css-target.mjs",
     "measure:t108": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' work/measurements/ticket-108/replay.ts",
-    "check:tv-runtime": "node scripts/tv-runtime-check.mjs"
+    "check:tv-runtime": "node scripts/tv-runtime-check.mjs",
+    "index:harvest": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' scripts/karaoke-index-harvest.ts",
+    "measure:t124": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' work/measurements/ticket-124/replay.ts"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

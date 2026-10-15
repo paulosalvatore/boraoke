@@ -1,0 +1,82 @@
+  shot mobile-01-sing-evidencias-loading.png
+[mobile] "evidencias" -> api q="evidencias karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot mobile-01-sing-evidencias.png
+[mobile] "escurinho do cinema" -> api q="escurinho do cinema karaoke" status=200 source=index apiRows=1 uiRows=1 degraded=false
+  shot mobile-02-sing-escurinho-do-cinema.png
+[mobile] "escurinho do cin" -> api q="escurinho do cin karaoke" status=200 source=index apiRows=1 uiRows=1 degraded=false
+  shot mobile-03-sing-escurinho-do-cin-partial.png
+[mobile] "ze ramalho" -> api q="ze ramalho karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot mobile-04-sing-ze-ramalho.png
+[mobile] "brasil karaoke" -> api q="brasil karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot mobile-05-sing-brasil-karaoke.png
+[mobile] "brasil" -> api q="brasil karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot mobile-06-sing-brasil.png
+[mobile] channel-dump check "brasil karaoke": 16 rows, 0 without "brasil" in title 
+[mobile] channel-dump check "brasil": 16 rows, 0 without "brasil" in title 
+[mobile] "evidencas" -> api q="evidencas karaoke" status=200 source=degraded:no-api-key apiRows=0 uiRows=0 degraded=true
+  shot mobile-07-sing-typo-evidencas.png
+[mobile] "ze ramlho" -> api q="ze ramlho karaoke" status=200 source=degraded:no-api-key apiRows=0 uiRows=0 degraded=true
+  shot mobile-08-sing-typo-ze-ramlho.png
+[mobile] "evid" -> api q="evid karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot mobile-09-sing-partial-evid.png
+[mobile] "zeca pagod" -> api q="zeca pagod karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot mobile-10-sing-partial-zeca-pagod.png
+[mobile] "xyzzyqq florbix" -> api q="xyzzyqq florbix karaoke" status=200 source=degraded:no-api-key apiRows=0 uiRows=0 degraded=true
+  shot mobile-11-sing-no-match-live-unavailable.png
+[mobile] "evidencias" -> api q="evidencias karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot mobile-12-loadmore-0-index-answer.png
+[mobile] load-more tap 1: uiRows=16 newRequest=none degraded=false
+  shot mobile-13-loadmore-tap1.png
+[mobile] load-more tap 2: uiRows=16 newRequest={"page":"2","pageToken":"IDXLIVE","source":"degraded:no-api-key","status":200} degraded=false
+  shot mobile-13-loadmore-tap2.png
+[mobile] mode flip fetched: false
+[mobile] "evidencias " -> api q="evidencias" status=200 source=degraded:no-api-key apiRows=0 uiRows=0 degraded=true
+  shot mobile-14-listen-evidencias.png
+[mobile] "escurinho do cin" -> api q="escurinho do cin karaoke" status=200 source=index apiRows=1 uiRows=1 degraded=false
+  shot mobile-15-queue-0-search.png
+  shot mobile-16-queue-1-queued.png
+[mobile] /api/queue contains picked title: true (title="Flagra (No Escurinho do Cinema)- karaokê - MÚSICA ORIGINAL SEM VOZ c/ letra - Rita Lee")
+[mobile] /tv shows picked title: true
+  shot mobile-17-tv-shows-queued.png
+[mobile] console errors: 0 []
+  shot desktop-01-sing-evidencias-loading.png
+[desktop] "evidencias" -> api q="evidencias karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot desktop-01-sing-evidencias.png
+[desktop] "escurinho do cinema" -> api q="escurinho do cinema karaoke" status=200 source=index apiRows=1 uiRows=1 degraded=false
+  shot desktop-02-sing-escurinho-do-cinema.png
+[desktop] "escurinho do cin" -> api q="escurinho do cin karaoke" status=200 source=index apiRows=1 uiRows=1 degraded=false
+  shot desktop-03-sing-escurinho-do-cin-partial.png
+[desktop] "ze ramalho" -> api q="ze ramalho karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot desktop-04-sing-ze-ramalho.png
+[desktop] "brasil karaoke" -> api q="brasil karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot desktop-05-sing-brasil-karaoke.png
+[desktop] "brasil" -> api q="brasil karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot desktop-06-sing-brasil.png
+[desktop] channel-dump check "brasil karaoke": 16 rows, 0 without "brasil" in title 
+[desktop] channel-dump check "brasil": 16 rows, 0 without "brasil" in title 
+[desktop] "evidencas" -> api q="evidencas karaoke" status=200 source=degraded:no-api-key apiRows=0 uiRows=0 degraded=true
+  shot desktop-07-sing-typo-evidencas.png
+[desktop] "ze ramlho" -> api q="ze ramlho karaoke" status=200 source=degraded:no-api-key apiRows=0 uiRows=0 degraded=true
+  shot desktop-08-sing-typo-ze-ramlho.png
+[desktop] "evid" -> api q="evid karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot desktop-09-sing-partial-evid.png
+[desktop] "zeca pagod" -> api q="zeca pagod karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot desktop-10-sing-partial-zeca-pagod.png
+[desktop] "xyzzyqq florbix" -> api q="xyzzyqq florbix karaoke" status=200 source=degraded:no-api-key apiRows=0 uiRows=0 degraded=true
+  shot desktop-11-sing-no-match-live-unavailable.png
+[desktop] "evidencias" -> api q="evidencias karaoke" status=200 source=index apiRows=16 uiRows=8 degraded=false
+  shot desktop-12-loadmore-0-index-answer.png
+[desktop] load-more tap 1: uiRows=16 newRequest=none degraded=false
+  shot desktop-13-loadmore-tap1.png
+[desktop] load-more tap 2: uiRows=16 newRequest={"page":"2","pageToken":"IDXLIVE","source":"degraded:no-api-key","status":200} degraded=false
+  shot desktop-13-loadmore-tap2.png
+[desktop] mode flip fetched: false
+[desktop] "evidencias " -> api q="evidencias" status=200 source=degraded:no-api-key apiRows=0 uiRows=0 degraded=true
+  shot desktop-14-listen-evidencias.png
+[desktop] "escurinho do cin" -> api q="escurinho do cin karaoke" status=200 source=index apiRows=1 uiRows=1 degraded=false
+  shot desktop-15-queue-0-search.png
+  shot desktop-16-queue-1-queued.png
+[desktop] /api/queue contains picked title: true (title="Flagra (No Escurinho do Cinema)- karaokê - MÚSICA ORIGINAL SEM VOZ c/ letra - Rita Lee")
+[desktop] /tv shows picked title: true
+  shot desktop-17-tv-shows-queued.png
+[desktop] console errors: 0 []

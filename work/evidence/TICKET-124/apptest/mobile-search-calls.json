@@ -1,0 +1,152 @@
+[
+  {
+    "q": "evidencias karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 16,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "escurinho do cinema karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 1,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "escurinho do cin karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 1,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "ze ramalho karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 16,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "brasil karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 16,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": 0
+  },
+  {
+    "q": "brasil karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 16,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": 0
+  },
+  {
+    "q": "evidencas karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "degraded:no-api-key",
+    "n": 0,
+    "next": null,
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "ze ramlho karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "degraded:no-api-key",
+    "n": 0,
+    "next": null,
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "evid karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 16,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "zeca pagod karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 16,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "xyzzyqq florbix karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "degraded:no-api-key",
+    "n": 0,
+    "next": null,
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "evidencias karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 16,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "evidencias karaoke",
+    "page": "2",
+    "pageToken": "IDXLIVE",
+    "status": 200,
+    "source": "degraded:no-api-key",
+    "n": 0,
+    "next": null,
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "evidencias",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "degraded:no-api-key",
+    "n": 0,
+    "next": null,
+    "rowsWithoutQueryWordBrasil": null
+  },
+  {
+    "q": "escurinho do cin karaoke",
+    "page": null,
+    "pageToken": null,
+    "status": 200,
+    "source": "index",
+    "n": 1,
+    "next": "IDXLIVE",
+    "rowsWithoutQueryWordBrasil": null
+  }
+]

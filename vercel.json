@@ -5,5 +5,11 @@
       "main": true,
       "**": false
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/karaoke-index",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }
