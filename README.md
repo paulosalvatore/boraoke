@@ -73,9 +73,9 @@ YOUTUBE_API_KEY=… npm run index:harvest -- --channels lib/karaoke-index/channe
   --out work/measurements/ticket-124/index-fixture.json.gz --max-units 1600 --max-pages 14
 ```
 
-(~1,600 units of the 10k/day pool, zero `search.list`; never writes Redis. `--seeds-from-oracle work/measurements/ticket-108/production-search-results.json --channels-out …` re-derives the channel list from scratch.)
+(~1,600 units of the 10k/day pool, zero `search.list`; never writes Redis. `--seeds-from-oracle work/measurements/ticket-108/production-search-results.json --channels-out …` re-derives the channel list from scratch; that oracle is also YouTube API data, gitignored and local only, so it must be regenerated first — see `work/reports/dev/TICKET-108-dev-report.md`.)
 
-**Measurement.** `npm run measure:t124 -- --controls` (needs the local fixture above; it refuses to run without it) replays the real production traces through cache → index → live and prints calls per queued song and hit@10 across the threshold curve, the long-tail simulation, the answer-size sweep and the channel-collision probe. `work/measurements/ticket-124/refresh-sim.ts` simulates one cron run at a given per-call latency.
+**Measurement.** `npm run measure:t124 -- --controls` (needs the local fixture above and the local TICKET-108 oracle; it refuses to run without either) replays the real production traces through cache → index → live and prints calls per queued song and hit@10 across the threshold curve, the long-tail simulation, the answer-size sweep and the channel-collision probe. `work/measurements/ticket-124/refresh-sim.ts` simulates one cron run at a given per-call latency.
 
 ## Prototype limitations
 

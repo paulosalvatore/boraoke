@@ -3,7 +3,8 @@
  * karaoke-index tier in front of live search.
  *
  * Same inputs as TICKET-108, unchanged:
- *   - the production oracle (work/measurements/ticket-108/production-search-results.json:
+ *   - the production oracle (work/measurements/ticket-108/production-search-results.json,
+ *     gitignored and local only since 2026-10-15:
  *     80 real production cache keys -> the real YouTube pages production served),
  *   - the same keystroke traces, reconstructed the same way from those keys,
  *   - the same 32 graded production queries and the same hit predicate.
@@ -44,10 +45,22 @@ type Row = SearchResult;
 /** components/SongSearch.tsx MIN_CHARS on main (TICKET-108 shipped 4). */
 const CLIENT_MIN_CHARS = 4;
 
+const ORACLE_PATH = join(__dirname, "../ticket-108/production-search-results.json");
+if (!existsSync(ORACLE_PATH)) {
+  console.error(
+    `FATAL: ${ORACLE_PATH} (the TICKET-108 production oracle) is missing.\n` +
+      "It is YouTube API data, so it is gitignored and local only (removed from the repo 2026-10-15).\n" +
+      "Regenerate it by dumping the production search cache (sc:* keys) read-only with the KV read-only\n" +
+      "token, as described in work/reports/dev/TICKET-108-dev-report.md. A fresh dump holds today's pages,\n" +
+      "not the 2026-09-27 ones, so the measured numbers will move. Refusing to report numbers without it.",
+  );
+  process.exit(2);
+}
+
 const ORACLE: Record<string, Row[]> = Object.fromEntries(
   Object.entries(
     JSON.parse(
-      readFileSync(join(__dirname, "../ticket-108/production-search-results.json"), "utf8"),
+      readFileSync(ORACLE_PATH, "utf8"),
     ) as Record<string, { videoId: string; title: string; channelTitle: string }[]>,
   ).map(([k, rows]) => [k, rows.map((r) => ({ ...r, duration: "", thumbnailUrl: "" }))]),
 );

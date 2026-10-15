@@ -10,8 +10,9 @@
  *      `planSearch`, on small hand-written inputs;
  *   2. a REPLAY of the real production keystroke ladder that caused this ticket,
  *      against the real YouTube pages production served for it. That fixture is
- *      the production search cache read on 2026-09-27 and committed under
- *      `work/measurements/ticket-108/`. A hand-written fixture cannot test this
+ *      the production search cache read on 2026-09-27. It is YouTube API data,
+ *      so since 2026-10-15 it is NOT committed (gitignored, local only); without
+ *      it the replay half is SKIPPED, not failed. A hand-written fixture cannot test this
  *      honestly, because the whole question is whether a short prefix's REAL
  *      top-50 contains the song — which is a fact about YouTube, not about us.
  *
@@ -20,7 +21,7 @@
  * in `work/reports/dev/TICKET-108-dev-report.md`.
  */
 
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 import {
@@ -201,13 +202,25 @@ describe("planSearch", () => {
 // ── the production regression ─────────────────────────────────────────────────
 
 /**
- * The real pages production served, read from the committed measurement fixture.
+ * The real pages production served, read from the local measurement fixture.
  * Keys are the AUGMENTED query (sing mode appends "karaoke"), so the ladder below
  * is expressed in raw-input space and mapped through `pageFor`.
+ *
+ * The fixture is YouTube API data, so it is gitignored and local only (removed
+ * from the repo 2026-10-15). When it is absent this describe block is SKIPPED,
+ * visibly, rather than failing. To regenerate it, dump the production search
+ * cache (`sc:*` keys) read-only with the KV read-only token into
+ * work/measurements/ticket-108/production-search-results.json, as described in
+ * work/reports/dev/TICKET-108-dev-report.md. A fresh dump holds the pages
+ * production serves today, not the 2026-09-27 ones, so the pinned counts below
+ * (e.g. 6 billed calls) are expected to move and must be re-measured.
  */
-const FIXTURE: Record<string, { videoId: string; title: string; channelTitle: string }[]> = JSON.parse(
-  readFileSync(join(__dirname, "..", "work", "measurements", "ticket-108", "production-search-results.json"), "utf8"),
-);
+const FIXTURE_PATH = join(__dirname, "..", "work", "measurements", "ticket-108", "production-search-results.json");
+const HAS_FIXTURE = existsSync(FIXTURE_PATH);
+const FIXTURE: Record<string, { videoId: string; title: string; channelTitle: string }[]> = HAS_FIXTURE
+  ? JSON.parse(readFileSync(FIXTURE_PATH, "utf8"))
+  : {};
+const describeReplay = HAS_FIXTURE ? describe : describe.skip;
 
 function pageFor(raw: string): SearchResult[] {
   const rows = FIXTURE[`${raw} karaoke`] ?? FIXTURE[raw];
@@ -252,7 +265,7 @@ function replayLadder(ladder: string[]): { billed: number; reasons: string[]; fi
   return { billed, reasons, finalRows: shown };
 }
 
-describe("production regression: the escurinho ladder (TICKET-108)", () => {
+describeReplay("production regression: the escurinho ladder (TICKET-108)", () => {
   it("is still the 11-call disaster it was, if every step is treated as a new query", () => {
     // Positive control on the FIXTURE, not on our code: proves the ladder really
     // does consist of 11 separately-billed production queries, so the assertion

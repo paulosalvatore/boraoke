@@ -17,6 +17,8 @@
  * seeds = every karaoke/playback-named channel in the TICKET-108 production
  * oracle, ranked by how many production result rows it supplied; seed
  * videoIds resolve to channels with videos.list (1 unit per 50).
+ * The oracle is YouTube API data too: gitignored and local only since
+ * 2026-10-15, so regenerate it first (work/reports/dev/TICKET-108-dev-report.md).
  *
  *   YOUTUBE_API_KEY=… npm run index:harvest -- \
  *     --seeds-from-oracle work/measurements/ticket-108/production-search-results.json \
