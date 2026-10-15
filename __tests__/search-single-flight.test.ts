@@ -79,6 +79,13 @@ function req(n: number, q: string): NextRequest {
   ) as NextRequest;
 }
 
+/**
+ * The cross-instance probes fire 20 requests with real timers. Under a loaded
+ * machine they can take longer than jest's 5 s default; an explicit budget
+ * keeps a slow probe from timing out and leaking its requests into the next test.
+ */
+const PROBE_TIMEOUT_MS = 30_000;
+
 async function fire(q: string): Promise<Record<string, unknown>[]> {
   const routes = loadInstances();
   const res = await Promise.all(
@@ -145,33 +152,35 @@ describe("concurrent identical queries across instances", () => {
     expect(Object.entries(c).filter(([k]) => k.includes(":dev:")).map(([, v]) => v)).toEqual([1]);
     // The lock is released.
     expect([...fake.store.keys()].filter((k) => k.startsWith("sf:"))).toEqual([]);
-  });
+  }, PROBE_TIMEOUT_MS);
 
-  it("holds across 8 different interleavings (seeds), not one lucky schedule", async () => {
-    const perSeed: number[] = [];
-    for (let seed = 1; seed <= 8; seed++) {
+  // One test per seed (8 different interleavings, not one lucky schedule): if a
+  // probe ever times out under load, at most ONE probe's requests are left
+  // running into the next test, not the rest of the seeds.
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])(
+    "holds across different interleavings: seed %i bills ONE call",
+    async (seed) => {
       fake = makeFakeUpstash(seed, 8);
       (globalThis as unknown as { __t126Fake?: unknown }).__t126Fake = fake;
-      searchListCalls = 0;
       await fire(`seeded query ${seed}`);
-      perSeed.push(searchListCalls);
-    }
-    expect(perSeed).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
-  });
+      expect(searchListCalls).toBe(1);
+    },
+    PROBE_TIMEOUT_MS,
+  );
 
   it("NEGATIVE CONTROL: with the lock disabled the same probe bills every request", async () => {
     soloMode = true;
     await fire("escurinho do cinema");
     expect(searchListCalls).toBeGreaterThan(1);
     expect(searchListCalls).toBe(REQUESTS);
-  });
+  }, PROBE_TIMEOUT_MS);
 
   it("an upstream failure costs ONE call and every waiter degrades instead of retrying", async () => {
     failUpstream = true;
     const bodies = await fire("borbulhas de amor");
     expect(searchListCalls).toBe(1);
     for (const b of bodies) expect(b).toMatchObject({ degraded: true, results: [] });
-  });
+  }, PROBE_TIMEOUT_MS);
 
   it("different queries are not serialised behind each other", async () => {
     const routes = loadInstances();
@@ -180,7 +189,7 @@ describe("concurrent identical queries across instances", () => {
     );
     expect(res.every((r) => r.status === 200)).toBe(true);
     expect(searchListCalls).toBe(6);
-  });
+  }, PROBE_TIMEOUT_MS);
 });
 
 describe("module protocol (Redis path)", () => {

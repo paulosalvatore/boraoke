@@ -206,10 +206,13 @@ export async function waitForSearchFlight(
   if (!redis) {
     const flight = memFlights.get(cacheKey);
     if (flight) {
-      const outcome = await Promise.race([
-        flight.settled,
-        sleep(Math.max(0, deadline - Date.now())).then(() => "timeout" as const),
-      ]);
+      // Clear the deadline timer once the leader settles, so a fast answer
+      // does not leave a 6 s timer pending behind every waiter.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<"timeout">((r) => {
+        timer = setTimeout(() => r("timeout"), Math.max(0, deadline - Date.now()));
+      });
+      const outcome = await Promise.race([flight.settled, timedOut]).finally(() => clearTimeout(timer));
       if (outcome === "timeout") return { kind: "timeout" };
       if (outcome === "failed") return { kind: "failed" };
     }
