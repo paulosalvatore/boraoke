@@ -176,6 +176,56 @@ describe("parseTitle: song and artist", () => {
     expect(p("Stand by Me (Ben E. King) Karaoke")).toEqual(["Stand by Me", "Ben E. King"]);
   });
 
+  it("a dropped track number passes its karaoke tag to the part before it", () => {
+    expect(p("Signos - 01 (Karaoke) - Soda Stereo")).toEqual(["Signos", "Soda Stereo"]);
+    expect(p("Hold My Hand - 03 (Karaoke Version) - Hootie and the Blowfish")).toEqual([
+      "Hold My Hand",
+      "Hootie and the Blowfish",
+    ]);
+  });
+
+  it("'X by Y' still splits when the bracket is a featuring credit, not a name", () => {
+    expect(p("Hello by Adele (feat. Drake)")).toEqual(["Hello", "Adele"]);
+    expect(p("Hello by Adele (ft. Drake)")).toEqual(["Hello", "Adele"]);
+    expect(p("Hello by Adele (featuring Drake)")).toEqual(["Hello", "Adele"]);
+  });
+
+  it("'X by Y' still splits when the bracket is a version descriptor, not a name", () => {
+    expect(p("Hello by Adele (Acoustic)")).toEqual(["Hello", "Adele"]);
+    expect(p("Hello by Adele (Acoustic Cover)")).toEqual(["Hello", "Adele"]);
+  });
+
+  it("'X by Y' still splits when the bracket has 5 or more words", () => {
+    expect(p("Hello by Adele (Recorded At The Royal Albert Hall)")).toEqual(["Hello", "Adele"]);
+  });
+
+  it("with two brackets, only the last one decides whether 'X by Y' is split", () => {
+    // first long (not a name), last a name: the name is the credit
+    expect(p("Stand by Me (Recorded At The Royal Albert Hall) (Ben E. King)")).toEqual(["Stand by Me", "Ben E. King"]);
+    // first a name, last a descriptor: split on "by"
+    expect(p("Hello by Adele (Ben E. King) (Acoustic)")).toEqual(["Hello", "Adele"]);
+  });
+
+  // KNOWN WRONG, tracked in TICKET-145: any bracket that starts with "by" is
+  // read as the credit, so "(By Request)" gives the artist "Request".
+  test.failing("TICKET-145: '(By Request)' is not an artist credit", () => {
+    expect(p("Hello (By Request) Karaoke")).toEqual(["Hello", null]);
+  });
+
+  it("caps the channel title so a long one cannot stall the parser", () => {
+    const channel = ". ".repeat(10_000) + "Karaoke"; // 20k chars
+    const start = Date.now();
+    parseTitle("Soda Stereo - Signos (Karaoke)", channel);
+    parseTitle("Soda Stereo - Signos", ". ".repeat(10_000)); // a trailing ". " run
+    expect(Date.now() - start).toBeLessThan(200);
+  });
+
+  it("reads only the first 200 chars of the channel title and the first 300 of the title", () => {
+    expect(parseTitle("Hello", "x".repeat(200) + " Karaoke").kind).toBe("unknown");
+    expect(parseTitle("Hello", "x".repeat(190) + " Karaoke").kind).toBe("karaoke");
+    expect(parseTitle("Hello " + "x".repeat(300) + " Karaoke", "").kind).toBe("unknown");
+  });
+
   // KNOWN WRONG, tracked in TICKET-145: the duo-credit cue fires on the song
   // "Live and Let Die" (capitalised words around "and"), so the pair is swapped.
   test.failing("TICKET-145: a song named 'X and Y' is not read as a duo credit", () => {

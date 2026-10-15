@@ -60,6 +60,8 @@ export interface ParsedTitle {
 
 /** Upper bound on the title length we parse (YouTube caps titles at 100). */
 const MAX_TITLE = 300;
+/** Real YouTube channel titles are about 100 chars at most. */
+const MAX_CHANNEL = 200;
 
 // ---------------------------------------------------------------- helpers
 
@@ -240,7 +242,12 @@ const TEMPLATES: Record<string, ChannelTemplate> = {
 };
 
 function channelKey(channelTitle: string): string {
-  return fold(channelTitle).replace(/\s+/g, " ").replace(/[.\s]+$/, "").trim();
+  const s = fold(channelTitle).replace(/\s+/g, " ");
+  // Strip trailing dots and spaces with an end scan: the regex form
+  // /[.\s]+$/ is quadratic on a long run of ". ".
+  let end = s.length;
+  while (end > 0 && (s[end - 1] === "." || s[end - 1] === " ")) end--;
+  return s.slice(0, end).trim();
 }
 
 /** The channel's own name minus boilerplate ("Nox Karaoke" -> "nox"). */
@@ -318,6 +325,29 @@ function cutBoilerplateRuns(text: string): string {
     }
   }
   return out.join(" ");
+}
+
+// Words that describe a version of a song rather than name anyone. Used only to
+// decide whether a bracket can be a credit, not to classify the bracket as noise.
+const DESCRIPTOR_WORDS = new Set([
+  "acoustic", "acustico", "acústico", "piano", "instrumental", "demo", "version", "versão", "versao",
+  "versión", "original", "official", "oficial", "extended", "slowed", "reverb", "sped", "up",
+  "solo", "duet", "dueto", "orchestral", "orquestra",
+]);
+
+/**
+ * True when a bracket reads as a person or band name: at most four words, no
+ * featuring marker ("feat. Drake" is a guest, not the credit), and not made
+ * only of version/boilerplate words ("Acoustic", "Acoustic Cover").
+ */
+function looksLikeName(extra: string): boolean {
+  const words = extra.split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 4) return false;
+  if (HAS_FEAT_RE.test(extra)) return false;
+  return !words.every((w) => {
+    const lw = stripWordPunct(w).toLowerCase();
+    return !lw || BRACKET_NOISE_WORDS.has(lw) || DESCRIPTOR_WORDS.has(lw);
+  });
 }
 
 interface Segments {
@@ -411,10 +441,10 @@ function segment(title: string, channelTitle: string): Segments {
     parts.push(it.s);
   }
 
-  // "X by Y" in a single segment, unless a short bracketed name already reads
-  // as the credit ("Stand by Me (Ben E. King) Karaoke").
-  const shortExtra = extras.length > 0 && extras[extras.length - 1].split(/\s+/).length <= 4;
-  if (!cueArtist && !shortExtra && parts.length >= 1) {
+  // "X by Y" in a single segment, unless the last bracket reads as a name and
+  // so is already the credit ("Stand by Me (Ben E. King) Karaoke").
+  const nameExtra = extras.length > 0 && looksLikeName(extras[extras.length - 1]);
+  if (!cueArtist && !nameExtra && parts.length >= 1) {
     const by = parts[0].match(/^(.+?)\s+by\s+(.+)$/i);
     if (by && parts.length === 1) {
       parts[0] = by[1];
@@ -468,8 +498,9 @@ function decideOrder(a: string, b: string, aTagged: boolean): Order {
  * Never throws; returns nulls for what it cannot isolate.
  */
 export function parseTitle(title: string, channelTitle: string): ParsedTitle {
-  const safeTitle = typeof title === "string" ? title : "";
-  const safeChannel = typeof channelTitle === "string" ? channelTitle : "";
+  // Cap both inputs before any regex runs on them.
+  const safeTitle = typeof title === "string" ? title.slice(0, MAX_TITLE) : "";
+  const safeChannel = typeof channelTitle === "string" ? channelTitle.slice(0, MAX_CHANNEL) : "";
   const kind = classifyKind(decodeEntities(safeTitle), safeChannel);
 
   const { parts, taggedBeforeSep, extras, cueArtist } = segment(safeTitle, safeChannel);

@@ -121,3 +121,57 @@ Picked up from `work/reports/review/TICKET-143-review.md` and PR comment 6201310
 
 **Not run / owed.** No app code touched (the parser is imported only by its test, `score.ts` and `measure.ts`), so `next build` was not run. Full jest: see the line below.
 - Full jest suite: **still owed**. Host load at 17:25 was `load averages: 192.46 161.77 165.81`, far above the ~40 threshold; only the targeted file was run.
+
+## Re-review + security fixes (2026-10-15, picking up from the opus re-review REQUEST-CHANGES at d4821a1 and the Cyber Security M1)
+
+Picked up from `work/reports/review/TICKET-143-review.md` (re-review section, commit 228205a), PR comment 6201795246, `work/reports/security/TICKET-143-security.md` M1 and PR comment 6201829714. Branch tip at pickup: 75e9956 (parser identical to 228205a).
+
+**Status:** fixes implemented, targeted jest green, ready for re-review.
+
+**N2 (dropped number hands its tag back).** New test: `Signos - 01 (Karaoke) - Soda Stereo` -> Signos / Soda Stereo, plus `Hold My Hand - 03 (Karaoke Version) - Hootie and the Blowfish`. No code change; the rule existed, the test did not.
+
+**The "X by Y" guard.** `shortExtra` (any last bracket of <= 4 words) is replaced by `looksLikeName()`: the last bracket blocks the split only when it has 1 to 4 words, no featuring marker (`HAS_FEAT_RE`), and is not made only of boilerplate/version words (`BRACKET_NOISE_WORDS` plus a new `DESCRIPTOR_WORDS` set: acoustic, piano, instrumental, version, ...). `DESCRIPTOR_WORDS` is used only for this decision, not for bracket-noise classification, so kind scoring does not move.
+- `Hello by Adele (feat. Drake)` -> Hello / Adele (also `ft.`, `featuring`). Fixed.
+- `Hello by Adele (Acoustic)` and `(Acoustic Cover)` -> Hello / Adele. Fixed (cheap, so no `test.failing`).
+- New tests: the feat case, the descriptor case, a 6-word bracket (`(Recorded At The Royal Albert Hall)`), and two two-bracket cases (long-then-name keeps `Stand by Me` / `Ben E. King`; name-then-descriptor splits).
+- `Hello (By Request) Karaoke` -> artist `Request`: pinned as `test.failing` for TICKET-145 (not cheap: the "(by X)" cue would need to know names).
+
+**Security M1 (quadratic channel trim, uncapped inputs).** At the top of `parseTitle`, the title is cut to `MAX_TITLE` (300) and the channel title to a new `MAX_CHANNEL` (200) before `decodeEntities`, `classifyKind` or any other regex. `channelKey()` now strips trailing dots/spaces with an end scan instead of `/[.\s]+$/`. Tests: a 20k-char `". "` channel (twice, with and without a trailing run) must finish in < 200 ms; a behaviour test pins both caps (`"Karaoke"` past char 200 of the channel / char 300 of the title is not read).
+
+**Evidence (verbatim).**
+- Targeted jest, sample present: `Tests:       50 passed, 50 total`.
+- Targeted jest, sample moved aside: `Tests:       3 skipped, 47 passed, 50 total`.
+- New tests on the 228205a parser (swapped in, then restored): `Tests:       5 failed, 45 passed, 50 total`. Failing: `'X by Y' still splits when the bracket is a featuring credit, not a name`, `... a version descriptor, not a name`, `with two brackets, only the last one decides whether 'X by Y' is split`, `caps the channel title so a long one cannot stall the parser (5578 ms)`, `reads only the first 200 chars of the channel title and the first 300 of the title`. The N2 test and the 5+-word test pass on 228205a by design: 228205a already reads those titles right; they exist to kill mutants N2 and N4 (below). The `(By Request)` `test.failing` passes on both (wrong on both).
+- `npm run measure:t143`, sample present:
+  ```
+  rows: 300
+  kind precision (strict, all rows): 300/300 = 100.0%
+    predicted karaoke: 292/292 correct
+    predicted playback: 8/8 correct
+  song+artist exact: 240/289 = 83.0%  (song 245/289, artist 244/289; 11 rows marked skipSongArtist)
+  ```
+  The 240/289 floor holds.
+- `tsc --noEmit -p .`: no errors in `lib/karaoke-index/title-parser.ts` or `work/measurements/ticket-143/*`.
+
+**Mutation pass (each mutant applied to the new parser, targeted jest, then restored).**
+
+| Mutant | Result |
+|---|---|
+| N2 dropped number no longer hands its tag back | KILLED (1 failed) |
+| N4 `looksLikeName` word cap 4 -> 100 | KILLED (1 failed) |
+| N5 guard reads the first extra, not the last | KILLED (1 failed) |
+| N6 featuring check removed from `looksLikeName` | KILLED (1 failed) |
+| N7 descriptor words removed from `looksLikeName` | KILLED (2 failed) |
+| N8 guard removed (always split) | KILLED (2 failed) |
+| C1 channel cap removed | KILLED (1 failed) |
+| C2 channel trim back to the regex | SURVIVED-equivalent: the 200-char cap bounds the regex to 200^2 steps, so no test can see it; the end scan is defence in depth |
+| C3 cap removed AND regex trim restored (the old code) | KILLED (2 failed, timing test 2973 ms) |
+| C4 title cap removed before `classifyKind` | KILLED (1 failed) |
+
+9 killed, 1 survived-equivalent, 0 real gaps.
+
+**prove-your-test-can-fail declarations.** (c) no primitive beneath existing assertions changed. (d) triggered mutation pass: not strictly triggered (YouTube titles, not money/quantity/identity); run anyway, table above.
+
+**Not run / owed.**
+- Full jest suite: not run. Load at 17:45 was `load averages: 153.28 173.37 182.87`, above the ~40 threshold.
+- `verify-green-local.sh`: not run (same host load). Owed before merge.
