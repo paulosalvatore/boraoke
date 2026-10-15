@@ -1,3 +1,9 @@
+---
+ticket: TICKET-123
+product: boraoke
+status: filed
+---
+
 # TICKET-123 — CI only triggers on `pull_request`, so nothing ever re-verifies `main`
 
 **Filed:** 2026-09-28, from the TICKET-116 review, which corrected that ticket's own premise.

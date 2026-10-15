@@ -1,3 +1,9 @@
+---
+ticket: TICKET-100
+product: boraoke
+status: filed
+---
+
 # TICKET-100 — control model: the phone creates and controls the room, the TV is a display
 
 **Filed:** 2026-09-01, TL direction from the real test of 2026-08-27 (`work/status/TL-REAL-TEST-2026-08-27.md`)

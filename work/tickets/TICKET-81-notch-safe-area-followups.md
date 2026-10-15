@@ -1,3 +1,9 @@
+---
+ticket: TICKET-81
+product: boraoke
+status: filed
+---
+
 # TICKET-81 — Notch/safe-area layout follow-ups under `viewportFit: cover` (TICKET-73/74 follow-up)
 
 **Filed:** 2026-08-08, interactive TM session (TL present)

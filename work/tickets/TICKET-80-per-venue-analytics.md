@@ -1,3 +1,9 @@
+---
+ticket: TICKET-80
+product: boraoke
+status: filed
+---
+
 # TICKET-80 — Per-venue analytics (TICKET-77 exposed the gap)
 
 **Filed:** 2026-08-08, interactive TM session (TL present)
