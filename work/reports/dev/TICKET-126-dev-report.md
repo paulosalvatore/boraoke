@@ -8,6 +8,7 @@ PR A implemented and self-verified with jest, the real-Redis Lua suites and `npm
 - Worktree: `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t126-search-limits`
 - Branch: `ticket/126-search-limits`, cut from `origin/ticket/125-enter-idle-search` @ `7be6824` (PR #89, which already contains #88).
 - App/e2e port: 3126.
+- PR: #90 https://github.com/paulosalvatore/boraoke/pull/90 (draft, base `ticket/125-enter-idle-search`; retarget to `main` after #89 merges).
 - Ticket: `work/tickets/TICKET-126-per-person-search-limit-and-single-flight.md`. Follow-up filed: `work/tickets/TICKET-127-room-record-write-race.md`.
 
 ## Pre-build facts established
@@ -44,7 +45,7 @@ Read-only, via `vercel env pull` to a mode-600 scratch file that was deleted rig
 
 ## Implementation log
 
-### Build (commit: see PR)
+### Build (commit `d2633d4`)
 - **`lib/client-ip.ts` (new): the one IP derivation.** A declared `TRUSTED_CLIENT_IP_HEADER` wins. Otherwise on Vercel (`VERCEL=1`) the order is `x-vercel-forwarded-for` → `x-real-ip` → `x-forwarded-for` (first hop). Otherwise the shared `"unknown"` bucket (fail-closed). IPv6 is keyed by /64, IPv4-mapped IPv6 folds to IPv4, garbage is one length-capped bucket. `lib/host-auth.ts` re-exports it, so login, claim, rooms, queue, telemetry and search all use it. The search route's private XFF-first `clientIp()` is gone.
 - **"server-derived" claims corrected** in `lib/host-auth.ts` (the `claimKey` docblock and the `clientIpFrom` docblock), `app/api/t/route.ts` and the search route. The round-3 report line lives in TICKET-104's report on its own (merged) branch history; the corrected statement is now in the code where the next reader looks.
 - **`lib/search-budget.ts`: per-person sub-budgets.** `DEFAULT_DEVICE_DAILY_CAP = 10`, `DEFAULT_IP_DAILY_CAP = 45`, overridable by `SEARCH_DEVICE_DAILY_CAP` / `SEARCH_IP_DAILY_CAP` (positive integer, clamped to 90; anything else ignored with a warning). `reserveSearchCall(now, principal)` runs the new `RESERVE_PRINCIPAL_SCRIPT`: check platform, IP and device, then INCR all three or none, returning `-1/-2/-3` for which cap denied (platform checked first). Counter keys hold a sha256 digest, not the raw IP or uuid. A malformed reply or store error stays fail-closed. Calls without a principal keep the old platform-only script.
@@ -119,4 +120,4 @@ The route-level reverse checks (no principal → 13 of 15 personal-cap tests fai
 All three were fixed in-PR with new assertions (`::ffff:300.1.1.1` stays raw, `1:2:3:4::5:6:7:8` stays raw, a declared-but-absent header on Vercel is the shared bucket). **Second pass: 14/14 KILLED.** Raw outputs: scratchpad `t126-mutation.txt`, `t126-mutation-r2.txt`, `t126-lua-mutation.txt`, `t126-reverse-clientip.txt`.
 
 ## Friction
-- `emit-event.sh --repo <worktree>` appended the `worktree_created` event to `work/events/by-branch/main.jsonl` inside the worktree, not to a ticket-branch file. I restored the file rather than commit a `main` event log line on a ticket branch.
+- `emit-event.sh --repo <worktree>` appended the `worktree_created` event to `work/events/by-branch/main.jsonl` inside the worktree, not to a ticket-branch file. I restored it at first; the commit script's own auto-commit then showed this is the repo's normal pattern (PR #89's branch also carries `main.jsonl` lines), so later events are committed as-is.
