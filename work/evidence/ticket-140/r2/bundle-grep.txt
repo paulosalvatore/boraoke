@@ -1,0 +1,9 @@
+BUILD_ID B36gJjedproDR_T4g37ZH mtime Oct 15 19:51:53 2026
+client files scanned: 51 js files under .next/static
+positive control (parser host string, must be >0): 1 files
+positive control 2 (music.youtube.com, the parser host set): 1 files
+YOUTUBE_API_KEY in client bundle: 0 files
+AIza in client bundle: 0 files
+local-stub-key in client bundle: 0 files
+oembed/videos.list server code in client bundle: 0 files
+server-side control (key reader present server-side, must be >0): 3 files

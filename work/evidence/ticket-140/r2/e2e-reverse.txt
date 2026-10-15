@@ -1,0 +1,22 @@
+START 20:06:10 load averages: 116.75 133.99 139.82
+pt-BR copy: rateLimited + searchRateLimited reverted to origin/main (pre-PR) text; degraded copy mutated to drop the paste hint
+  ✘  1 [chromium] › e2e/search.spec.ts:511:5 › search rate-limited (429, server copy): the paste hint shows and a paste still selects (8.4s)
+  ✘  2 [chromium] › e2e/search.spec.ts:527:5 › search rate-limited (429, no body): the client's own copy carries the paste hint too (9.7s)
+  ✘  3 [chromium] › e2e/search.spec.ts:539:5 › search error (degraded, reason 'error'): the paste hint shows and a paste still selects (8.5s)
+  1) [chromium] › e2e/search.spec.ts:511:5 › search rate-limited (429, server copy): the paste hint shows and a paste still selects 
+    Error: expect(locator).toContainText(expected) failed
+    Expected pattern: /cole um link do YouTube/
+    Received string:  "Muitas buscas — aguarde um instante e tente de novo."
+  2) [chromium] › e2e/search.spec.ts:527:5 › search rate-limited (429, no body): the client's own copy carries the paste hint too 
+    Error: expect(locator).toContainText(expected) failed
+    Expected pattern: /cole um link do YouTube/
+    Received string:  "Muitas buscas — aguarde um instante."
+  3) [chromium] › e2e/search.spec.ts:539:5 › search error (degraded, reason 'error'): the paste hint shows and a paste still selects 
+    Error: expect(locator).toContainText(expected) failed
+    Expected pattern: /cola o link do YouTube/
+    Received string:  "Busca indisponível"
+  3 failed
+    [chromium] › e2e/search.spec.ts:511:5 › search rate-limited (429, server copy): the paste hint shows and a paste still selects 
+    [chromium] › e2e/search.spec.ts:527:5 › search rate-limited (429, no body): the client's own copy carries the paste hint too 
+    [chromium] › e2e/search.spec.ts:539:5 › search error (degraded, reason 'error'): the paste hint shows and a paste still selects 
+END 20:12:35 load averages: 113.87 116.99 127.97

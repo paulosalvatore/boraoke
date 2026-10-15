@@ -1,0 +1,29 @@
+START 19:50:11 load averages: 153.08 154.01 147.60
++ First Load JS shared by all             102 kB
+  ├ chunks/1255-d90f22433f14e976.js      46.3 kB
+  ├ chunks/4bd1b696-f785427dddbba9fb.js  54.2 kB
+  └ other shared chunks (total)          1.96 kB
+
+
+ƒ Middleware                             34.1 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+bundle-es-target: OK — all 51 chunk(s) parse at ES2019.
+css-target: advisory — 10 finding(s) outside the TV surface (phone/desktop, not build-blocking):
+  gap inside display:flex (Chrome 84) x6 — .next/static/css/06f39afe86bd05f3.css
+  gap inside display:flex (Chrome 84) x11 — .next/static/css/6b874ce48f378a25.css
+  aspect-ratio (Chrome 88) x1 — .next/static/css/fe5a198a335cfb9b.css
+  clamp() (Chrome 79) x1 — .next/static/css/fe5a198a335cfb9b.css
+  gap inside display:flex (Chrome 84) x6 — .next-e2e/static/css/06f39afe86bd05f3.css
+  gap inside display:flex (Chrome 84) x11 — .next-e2e/static/css/6b874ce48f378a25.css
+  aspect-ratio (Chrome 88) x1 — .next-e2e/static/css/fe5a198a335cfb9b.css
+  clamp() (Chrome 79) x1 — .next-e2e/static/css/fe5a198a335cfb9b.css
+  gap inside display:flex (Chrome 84) x11 — app/(patron)/[room]/admin/admin.module.css
+  gap inside display:flex (Chrome 84) x6 — app/admin/analytics/analytics.module.css
+
+css-target: OK — the TV surface uses nothing newer than Chrome 68 (18 stylesheet(s) scanned).
+exit=
+END 19:53:30 load averages: 142.61 147.52 146.02
+Note: "exit=" is blank because zsh has no PIPESTATUS; the build succeeded: BUILD_ID B36gJjedproDR_T4g37ZH written 19:51:53 and both post-build checks (which only run after a successful `next build` in `npm run build`) ran and passed.
