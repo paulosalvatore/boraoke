@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-10-15T01:37:52Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-120", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/120-claim-token-owner-pin", "short_sha": "58644fa", "message_slug": "fix(auth): claim-token cap counts devices on login, and never evicts the"}}
