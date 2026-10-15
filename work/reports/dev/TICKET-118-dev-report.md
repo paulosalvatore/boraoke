@@ -143,3 +143,122 @@ Primitives that changed beneath existing assertions: `sessionValue`/`issueSessio
 - **The revoke keeps the acting device's own claim-token hash** and prunes the others in one write, so the acting device needs nothing from the response to get back in.
 - `tsc` reports hundreds of pre-existing errors in `__tests__/**`; filter with `grep -E "^(app|lib|components)/.*error TS"`. `app/` and `lib/` are clean.
 - `playwright.config.ts` uses `HOST=localhost` because production-build cookies are `Secure`.
+
+---
+
+## 2026-10-15 — Cyber gate FAIL addressed (S1–S6)
+
+**Picking up from:** Cyber FAIL on `27298b4` (`work/reports/security/TICKET-118-security.md`, PR comment 6203468659) and the Reviewer's conditional APPROVE (`work/reports/review/TICKET-118-review.md`). Pulled to `849db6c` (= `f996d18` + event auto-commit).
+
+**Status:** fix committed and pushed, origin/main merged (a merge, not a rebase), targeted + full jest green, build OK, one full e2e run (2 socket-hang-up failures outside this diff, see below). Ready for the Cyber re-gate and a delta re-review.
+
+### What changed
+
+| Finding | Fix |
+|---|---|
+| **S1 HIGH** | `claimSession` (lib/host-auth.ts) verifies the claim and derives the session from **one** `getRoom` snapshot via `sessionForRoom(room)`. The claim route uses it, so a claim straddling a revoke gets an old-epoch value that is already dead. Also one read instead of two. |
+| **S2 MEDIUM** | `revokeRoomHostSessions` decides from the **pre-bump** read. It re-asserts the owner's hash on every rebind, whatever the in-loop list holds, and carries hashes already tagged with an epoch after the one it read (a concurrent code login). |
+| **S3 MEDIUM** (TM house default, **pending TL confirmation**) | Owner's device only: the request must present the live owner-pinned claim token. This is checked in the route (403 `{ownerOnly:true}`, never charged) and again, authoritatively, inside the helper on the same pre-bump snapshot it acts on. The owner pin is never removed (it is always rewritten to the owner hash). Per-room throttle of 3 per 10 min, charged atomically: the new additive `registerFailureCount` returns the INCR result from the existing Lua script, so a concurrent burst cannot all pass a check. The host code is not required. UI: the button is shown only when the server reports `owner: true`. The 403 and 429 responses get their own messages. |
+| **S4 LOW** | `bumpSessionEpoch` mirrors the record's real TTL: `pexpire` when it has one, `persist` when it has none (-1), whatever the config. The residual is noted in the ticket. |
+| **S5 LOW** | Fixed by S3's check: the presented token must be live in a list tagged with the current epoch. |
+| **S6 LOW** | Done/error copy corrected in en/es/pt-BR. The error now says this device may need the host code. A `signedOut` response shows the gate. A 401 re-probes the session (Reviewer N4). |
+
+When every rebind is clobbered, the route mints a fresh **owner** claim (`attachClaimCookie(..., {owner:true})`), so the pin survives that path too.
+
+### Auth hot path: still write-free, no extra round trip
+
+- `requireHost` and `verifySessionValue` are unchanged: one `getRoom` (one MGET), no write.
+- `POST /api/host/claim`: was 2 reads (`verifyClaim` + `issueSession`), now **1** (`claimSession`). Pinned by the test "the claim route makes ONE store read for a valid claim".
+- `GET /api/host/session` and `POST /api/host/login`: `verifyClaim` was swapped for `claimStatus`. That is the same single read, and it also returns `owner`. No added read, no write.
+- Every new read and write (owner pre-check, throttle INCR, rebind) is on `revoke-sessions` only, which no returning device calls.
+
+### Prove-your-test-can-fail
+
+**(a) Reverse-check.** The new test files run against the pre-fix implementation `27298b4`, in a throwaway detached worktree (the shared worktree was never mutated; it was removed afterwards). Result: **13 failed, 43 passed, 56 total**. Evidence: `work/evidence/TICKET-118/cyber-fix/13-reverse-check-vs-27298b4.txt`. S1's core assertion, verbatim:
+
+```
+  ● Cyber S1 — a claim verified before a revoke cannot mint a session that survives it › a claim request straddling the bump gets a session that is ALREADY dead
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+    > 927 |     expect(await verifySessionValue(v.room.id, minted)).toBe(false);
+```
+
+The other new tests that fail on `27298b4`:
+- S1 one-read
+- S2 lost-response re-claim
+- S3 staff refused
+- S3 stolen session refused
+- S3 throttle
+- S3 owner flag
+- helper staff refused
+- helper S5 dead-tag refused
+- helper invented token refused
+- concurrent-burst throttle
+- clobbered-rebind owner mint
+- S4 TTL flip (backend test)
+
+One new test passes on the old code by construction: "the owner pin is never removed". The old code kept the presented hash, and in that test the presented hash is the owner's. It is a regression guard, not a fix proof.
+
+**(a) Mutation kills** (`work/evidence/TICKET-118/cyber-fix/14-mutation-pass.txt`). The baseline was 56/56, and all 8 mutants were KILLED:
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| M1 | claim route derives from a second read | both S1 tests |
+| M2 | keep only if the hash is found in the in-loop list | S2 |
+| M3 | owner check weakened to "live" | helper staff test, S3 staff test |
+| M4 | throttle never refuses | burst test, throttle test |
+| M5 | `persist` removed | S4 flip test |
+| M6 | post-bump hashes not carried | S2 |
+| M7 | fallback mint not owner | clobbered-rebind test |
+| M8 | owner flag = live | 3 S3 tests |
+
+**(c) Hollowing-out.** A primitive beneath existing assertions changed: `revokeRoomHostSessions` is now owner-only. I re-examined every existing revoke test:
+- `venue()` now mints the **owner** token, as room creation does. Without that, those tests would have been refused, not passed vacuously, so none became true by construction.
+- The 12-way concurrent test now asserts exactly 3×200 + 9×429 and epoch 3, rather than 12.
+- The "no claim token, minted one" test no longer describes reachable behaviour (such a caller is now refused). It was replaced by the clobbered-rebind owner-mint test.
+- The helper "keeps ONLY the presented token" test now uses the owner token and also asserts the pin.
+- host-claim "Bar Multi" now uses an owner actor and asserts every non-owner token dies.
+
+**(d) Triggered mutation pass:** not triggered. There is no new parsing or normalisation function on a money, quantity or identity path. `roomClaimTokenStatus` is a refactor of the existing `verifyRoomClaimToken` comparison, and is covered by M8.
+
+### Merge of origin/main
+
+`git merge origin/main` (#90 client-ip/search, #94, d0b3301). The only conflict was the claim-route docblock: main's contract line 5 (client-ip wording) was kept, with my line 6 added after it. Merge commit `6f2d78b` has parents `1fac664` and `d0b3301`. `tsc` app/lib: 0 errors.
+
+### Verification (verbatim)
+
+- Targeted auth suites on the merged tree: these 9 suites all PASS, **`Tests: 182 passed, 182 total`**:
+  - rate-limit-counter
+  - host-auth
+  - room-session-epoch-backend
+  - client-ip
+  - advance-rate-limit
+  - queue-rate-limit
+  - host-claim
+  - host-session-revocation
+  - claim-token-owner-pin
+- Full jest, once: **`Test Suites: 73 passed, 73 total` / `Tests: 21 skipped, 1293 passed, 1314 total`** (`16-jest-full.txt`).
+- `npm run build`: OK. `bundle-es-target: OK — all 51 chunk(s) parse at ES2019`, `css-target: OK — the TV surface uses nothing newer than Chrome 68`.
+- **e2e, ONE full run** (workers 1, `PORT=3118`), log in `15-e2e-full-run.txt`. No other boraoke e2e was live; the only `next start` on the machine was a rachei worktree on 3917.
+  - Start `2026-10-15T22:50:09Z`, load `153.08 154.01 147.60`.
+  - End `23:05:47Z`, load `124.80 136.55 140.84`.
+  - Result: **canary 2/2 green, `134 passed`, `2 failed`.** All 12 `creator-reentry` tests pass, including the TICKET-118/112 ones and the new owner-only button assertion. The known `/default/tv` warm-up `load` timeout did **not** recur.
+  - Both failures were `socket hang up` from the server, on routes this diff does not touch:
+    - `moderation.spec.ts:97`, in its warm-up `POST /api/rooms`
+    - `tv.spec.ts:942`, in `drainQueue` `GET /api/queue`
+  - Both happened at load around 150. They look like the server being starved under machine load, not a product failure. Per the brief I did not re-run.
+
+### Residuals and TL items (also in the ticket and PR body)
+
+- **S3 is a TM house default pending TL confirmation.** The new limit it creates is that a room with no live owner pin cannot use the lever: legacy pre-TICKET-120 rooms, an owner who logged out on the owner device (logout clears the pin), or an owner list killed by the TICKET-127 residual. Options for the TL: a host-code step-up for pin-less rooms only, or re-pinning on a code login when no pin exists.
+- The S4 residual (retention flipped off with no later revoke) is parked in the ticket.
+- The TICKET-127 two-fault residual (a stale write after the rebind plus a lost response) is unchanged.
+
+### Friction
+
+- zsh again: an unquoted `$files` passed as one argument to `commit-and-push.sh` (it failed safely, nothing was staged). Use `("${(@f)…}")` arrays.
+- Cyber's S1 probe gated the *second* read. After the fix there is only one, so a verbatim port would hang. The regression test instead gates **after the first read returns**, which works on both the old code and the new.
