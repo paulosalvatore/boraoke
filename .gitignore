@@ -41,3 +41,6 @@ next-env.d.ts
 # Harvested karaoke index = YouTube API data (30-day retention): local only, never committed.
 /work/measurements/ticket-124/index-fixture.json.gz
 *.index.json.gz
+
+# TICKET-108 production search oracle = YouTube API data: local only, never committed (removed 2026-10-15).
+/work/measurements/ticket-108/production-search-results.json

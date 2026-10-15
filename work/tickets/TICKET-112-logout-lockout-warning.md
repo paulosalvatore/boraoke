@@ -42,3 +42,14 @@ Found by the Reviewer on PR #91 (TICKET-120). It is pre-existing and not caused 
 - After #91 there is a second consequence: once any logout has run, the room's owner pin is gone for good. #91 deliberately never re-pins on a later login, because that would need the client-readable `creatorUuid`. So the owner becomes an ordinary, evictable slot for the rest of the room's life.
 
 **Recommendation.** Handle it in TICKET-118 rather than with copy alone. 118's revoke already prunes everything except the **acting** device's token, and when the owner is the one acting, 118's spread of `...room` keeps the pin valid. Applying the same "keep, don't clear" idea to ordinary logout fixes most of this: a logout ends the acting device's own credential (and session), and wiping every device becomes an explicit "sign out all devices" (118's lever), not the default. If logout must keep revoking everything, this ticket's copy has to warn that it also signs the owner out. Either way the decision belongs to the TL, together with this ticket's existing copy question. Sequence it with TICKET-127: the whole-record write race can resurrect or lose these hashes.
+
+## TL decision 2026-10-15 — a normal logout signs out ONLY this device
+
+The Tech Lead decided the direction for this ticket:
+
+- A normal logout signs out **only the device it is tapped on**. It no longer revokes every device's claim token or the owner pin, so a staff logout at the end of a shift can no longer lock the owner out.
+- **"Sign out all devices"** (TICKET-118) is the explicit option for the case where every device must lose access.
+- This is patron/staff-facing UI, so the PR **needs a TL OK before merge**, on top of the normal gate chain.
+- **Sequencing:** queued after TICKET-125 and TICKET-126.
+
+The copy question above narrows accordingly: the confirm step for a normal logout only has to say this device is being signed out, and the lockout warning belongs on the explicit "sign out all devices" path.
