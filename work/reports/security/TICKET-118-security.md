@@ -102,3 +102,112 @@ owner revoke attempts refused 401: 20 / 20; attacker still valid: true
 ## Friction
 
 - Third time on this surface that a guarantee held for every **record writer** but not for a **read-then-derive** path. Proposed class-level check for auth reviews: list every place that verifies a credential with one store read and derives authority with another, and require a gated-interleaving probe for each. A candidate addition to the `prove-your-test-can-fail` skill's concurrency section.
+
+---
+
+## Re-gate, 2026-10-15, head `62279c3` — **Verdict: PASS-WITH-NOTES**
+
+Audited `62279c3` (= `origin/ticket/118-session-revocation`; fix `f83b3e6`, merge of main `6f2d78b` bringing #90 and #94). Read the dev report's "Cyber gate FAIL addressed" section and `work/evidence/TICKET-118/cyber-fix/`. Diff read locally: `git diff 27298b4 f83b3e6 -- lib app/api` plus `git diff origin/main -- lib app` for the whole PR.
+
+All S1 to S6 findings are closed. Nothing new rises to HIGH. One new MEDIUM (R-1) and one LOW (R-2) are both consequences of the S3 owner-only design meeting the known TICKET-127 residual. They are the reason the no-pin fallback matters, and they do not block.
+
+### Evidence
+
+- Probe source: `work/evidence/TICKET-118/security/regate-probes.test.ts.txt`. It ran as `__tests__/zz-cyber-regate.test.ts` and was then deleted. Verbatim output: `work/evidence/TICKET-118/security/regate-probes-output.txt`. **13/13** probes ran. `git diff --quiet -- lib app` passed before every run, and the shared worktree was left unmodified (only `?? node_modules`, never staged).
+- Targeted auth suites on `62279c3`: rate-limit-counter, host-auth, room-session-epoch-backend, client-ip, advance-rate-limit, queue-rate-limit, host-claim, host-session-revocation, claim-token-owner-pin. **9 suites, 182/182 passed.**
+- Redis semantics for S4, in a throwaway `redis:7-alpine` container (since stopped): a plain `SET` leaves the record's PTTL at -1. `INCR` keeps the counter's copied TTL (97669 ms). `PERSIST` then returns 1 and the counter's PTTL becomes -1. `PEXPIRE` with the record's PTTL copies it (48789 ms). PTTL on a missing record is -2, and then neither branch runs.
+- No e2e and no build were run, as briefed. boraoke has no `verify-green-local.sh`, so the targeted jest above is the green evidence for the touched suites, as it was in the first gate.
+
+### 1. S1 — CLOSED
+
+`claimSession` (`lib/host-auth.ts`) verifies the claim and derives the session from one `getRoom`. On Upstash that is one `MGET` of the record and the counter, which is atomic. Results:
+
+- **R1a, the original S1.** The claim's only read is gated after it returns and before the derivation, and the revoke lands in that gap. Output: `attacker claim 200 minted? true verifies: false moderation: 401 re-claim: 401`. The value was minted at the old epoch and was already dead.
+- **R1b.** The claim read lands between the bump and the rebind: 401. The list is tagged E and the epoch is E+1.
+- **R1c.** The claim read lands between the rebind write and its confirming re-read: 401.
+- **R1d.** 12 concurrent polls straddle a revoke: `surviving sessions: 0`.
+- **R1e.** The attacker's own logout reads before the bump and writes after the rebind (a stale writer). The stolen claim does not come back to life, because the restored list carries its old tag.
+- **Resurrection by construction.** The rebind carries a hash only if it sits in a list that is live at an epoch after the one the revoke read. `issueRoomClaimToken` appends only to a list that is live at the epoch it read, and tags the result with that epoch. So the first list at E+1 is either the rebind's `[owner]` or a code login's fresh `[new]`. A pre-revoke hash cannot enter it.
+- **Other credential-to-session exchanges.** `login` re-derives from the host code, which a revoke does not change. `GET /api/host/session` re-sends the value `requireHost` just verified and derives nothing. The revoke route derives from `result.room`, the snapshot the helper confirmed.
+
+### 2. S2 — CLOSED
+
+**R2.** A staff code login lands between the bump and the rebind, and the revoke response is lost. Output: `owner old claim live true re-claim 200 session verifies true concurrent staff claim kept true`. `keep` is now decided from the pre-bump read, the owner hash is re-asserted on every rebind, and the post-bump staff hash is carried. This also fixes my old residual 6.
+
+### 3. S3 — CLOSED (owner-only, never removes the pin, 3 per 10 min)
+
+- **R3a.** Each of these gets 403 and leaves the epoch unchanged:
+  - a staff session with a staff claim
+  - a stolen session with no claim
+  - a session that presents the stored owner-pin HASH as the cookie
+  - a junk claim
+  - forged owner hints: `?owner=true`, an `x-owner` header, a `boraoke_owner` cookie, a JSON body `{owner:true, ownerClaimTokenHash}`
+
+  The route reads no request body or flag. `owner` is computed server-side from `hashClaimToken(presented) === ownerClaimTokenHash`, inside a live list. After those 5 refusals the owner still had the full budget: `200,200,200,429`. Refusals are not charged.
+- **R3b, replaying the owner claim cookie.** A thief holding a copy of the owner's claim token IS the owner to the server. That is inherent: the token is a bearer credential, and nothing short of the host code tells the two holders apart. Two limits apply: the owner's device keeps its token, so it auto re-claims (200), and a thief can spend at most 3 revokes per 10 minutes. Once the owner logs out on the owner device, the replay gets 403.
+- **R3c, the pin changes mid-request.** The owner logs out between the route's pre-check and the helper's pre-bump read. The helper, which is the authoritative check, returns 403 and the epoch stays 0. That refused request was still charged, because the charge happens between the two checks. Only the owner's own request can reach that point, so this is INFO.
+- **R3d, throttle burst.** 20 concurrent owner revokes: `{"200":3,"429":17}`, epoch 3. The budget is charged before the check, using the INCR result returned by the existing Lua script (`registerFailureCount`).
+- **Throttle bypass.** The key is `hostrevoke:<roomId>`. `roomIdFromRequest` accepts only `ROOM_ID_RE` ids and maps them 1:1 to the record key, so there is no alias that splits the bucket. On a Redis error the throttle fails open (`null` → allowed), the same posture as the rest of `rate-limit-counter`. A caller still has to pass the owner check first, so this is INFO.
+
+### 4. Fallback for rooms with no live owner pin — recommend **(a)**, a host-code step-up for pin-less rooms only
+
+The lever is unavailable more often than it looks, and in two cases it is unavailable exactly when it is needed:
+
+- **R-1 — MEDIUM (new consequence of a known residual).** One stale whole-record write landing after the rebind costs the room its owner pin, and the owner cannot get it back. Such a write can come from an ordinary staff moderation toggle, or from the thief's own session spamming settings writes while it is still valid. In probe R1f, `setRoomModeration` reads before the bump and writes after the rebind. Output: `owner flag false owner re-claim 401 owner 2nd revoke 403 after code re-login pin (none)`. The list is restored with its pre-revoke tag, so it is dead. The owner's next code login then takes the `bound=false` branch of `issueRoomClaimToken`, and that drops the pin for good. The revoke itself still worked: the thief's session is dead. What is lost is the lever and the owner's no-typing path. The owner stays in only on the session cookie the revoke handed back. A lockout needs this race plus the owner losing that cookie and not having the code. R1e shows the same thing with a stale logout write. At `27298b4` the same race did not cost the lever, because any session could revoke. Fix classes: TICKET-127 (atomic or field-level room writes), plus the fallback below.
+- **R-2 — LOW.** If the owner's claim token is copied, the owner's only way to kill the copy is to log out on the owner device. That also removes the pin, and with it the lever. In R4, after logging out and logging back in with the code, the owner gets `owner flag false`, the revoke gets `403`, and `thief session still valid true`. The thief's session keeps rolling with no expiry, because nothing is left that can end it.
+
+Ruling:
+
+- **(a) Host-code step-up for pin-less rooms only. RECOMMENDED.**
+  - It grants nothing the code does not already grant. The code is a permanent master credential that cannot be rotated: any holder can log in at any time. Letting a holder also end other sessions keeps control symmetric between code holders, which is the posture main had before this PR, and the per-room 3/10-min throttle bounds it.
+  - A stolen session or a copied staff claim still cannot use the lever.
+  - It adds no write to the login path. The new check runs only on `revoke-sessions`.
+  - It recovers R-1, R-2 and legacy pre-TICKET-120 rooms.
+
+  Conditions:
+  1. "Pin-less" is judged from the helper's pre-bump snapshot, and means `ownerClaimTokenHash` is absent OR is not in a live list. Without the second half, the R-1 rooms would still be stuck.
+  2. The code is verified in constant time against `hostCodeHash`, inside the same request.
+  3. A wrong code is charged to the existing per-IP login failure throttle, and that throttle is checked first. Otherwise this route becomes an unthrottled guessing oracle for an 8-character code, which would be HIGH.
+  4. The step-up revoke does **not** auto-pin the acting device. If it did, the first code holder to act, who could be an ex-staff member, would take the pin. The real owner would then sit in a pinned room where they are not the owner, the lever would be closed to them, and the S3 asymmetry would be back in the attacker's favour. If the TL wants re-pinning, it should be an explicit owner action, decided separately.
+  5. The kept hash in step-up mode is the caller's presented live token, if there is one. Otherwise use the existing mint path (non-owner).
+- **(b) Re-pin on a code login when no pin exists. NOT recommended.**
+  - It puts a write on the login path, the surface where every earlier lockout on this ticket line came from.
+  - It hands ownership silently to whoever types the code first. In a legacy room that is arbitrary staff. After R-1 or R-2 it may be the attacker, who then holds the only lever, the asymmetric exclusive-control case S3 was meant to remove.
+  - Small correction to the brief: in the mint branch, setting `owner:true` would ride on the write `issueRoomClaimToken` already makes. A device that already holds a live non-owner token would need an extra write. Either way, the ownership-transfer problem is disqualifying on its own.
+- **(c) Leave it unavailable and document it. Acceptable only as a stopgap.** It leaves every legacy room, and every R-1 or R-2 room, with no way to end a copied session, which is the threat this ticket exists for. It is not worse than main, where no lever exists at all, so it does not block this PR.
+
+**Disposition:** non-blocking for #96. File (a) as a follow-up ticket with the five conditions above, and send it to the TL together with the S3 owner-only house default, which is still pending his confirmation.
+
+### 5. S4 / S6 / merge with #90
+
+- **S4 — CLOSED.** `bumpSessionEpoch` mirrors the record's real PTTL: `pexpire` when it is above 0, `persist` when it is -1, nothing when it is -2. The Redis semantics check is above, and the backend unit test is mutation-killed (M5). The residual is noted in the ticket: retention is switched off and no revoke follows, so the counter keeps its old TTL until the next bump.
+- **S6 — CLOSED.** en, es and pt-BR now say the others need the code to get back in. The error copy now warns that this device may need the code. The owner-only (403) and throttled (429) responses each have their own message. The button appears only on a server-reported `owner: true`, and the server enforces the check regardless. `signOutAllOwnerOnly` ("the device that created this room") matches the pin semantics.
+- **#90 client-ip — no new issue.** `clientIpFrom` is used unchanged by the claim and login failure budgets. The new revoke throttle is per room, not per IP, so the #90 header-trust rules do not reach it. The claim route still verifies before it touches the budget, so a shared venue IP cannot deny a valid claim. In the merge conflict on contract line 5, main's wording was kept and line 6 was added.
+
+### 6. Hot-path claim — CONFIRMED
+
+Store ops were counted by spying on `roomBackend` (R6), and `git diff origin/main` of the routes was checked against those counts:
+
+| Path | Store ops on this head | Compared with main |
+|---|---|---|
+| `requireHost` | `get=1 update=0` | `requireHost` and `verifySessionValue` are unchanged; the epoch comes in the same MGET |
+| `GET /api/host/session` | `get=3 update=0` | `verifyClaim` swapped 1:1 for `claimStatus` |
+| `POST /api/host/claim` | `get=1` | down from 2 |
+| `POST /api/host/login` with a live claim | `get=4 update=0` | `verifyClaim` swapped 1:1 for `claimStatus` |
+| `POST /api/host/login` minting a claim | `update=1` | the mint write that already existed on main |
+
+No `bumpSessionEpoch` or new write on any of them. Every new read and write (the owner pre-check, the throttle INCR, the rebind) is on `revoke-sessions` only.
+
+### Notes (non-blocking)
+
+| ID | Sev | Item |
+|---|---|---|
+| R-1 | MEDIUM | A stale whole-record write after the rebind costs the room its owner pin for good (R1f, R1e). Fix: TICKET-127 plus fallback (a). |
+| R-2 | LOW | When an owner's token is copied, the only way to kill the copy also removes the lever (R4). Fix: fallback (a). |
+| R-3 | INFO | A copy of the owner's claim token is the owner, which is inherent. Bounded by the throttle, and the owner's own device keeps access. |
+| R-4 | INFO | One charged 403 when the pin vanishes between the two owner checks (R3c). Only the owner can reach it. |
+| R-5 | INFO | The throttle fails open on a Redis error, consistent with the module, and sits behind the owner check. |
+
+### Friction
+
+The read-then-derive class from the first gate was fixed here by the snapshot pattern (`claimSession`, `sessionForRoom(result.room)`). The remaining risk on this surface is now entirely the **whole-record write** class (TICKET-127). The S3 owner-only design changed it from "a stale write costs a no-typing path" into "a stale write costs the room's recovery lever". Prioritise TICKET-127 ahead of further features on this surface.

@@ -1,0 +1,48 @@
+# Cyber re-gate probes, head 62279c3, 2026-10-15. Run from __tests__/zz-cyber-regate.test.ts (removed after). git diff --quiet -- lib app passed before each run.
+    [REGATE] R1a revoke 200 attacker claim 200 minted? true verifies: false moderation: 401 re-claim: 401
+    [REGATE] R1b revoke 200 mid-claim 401 minted? false verifies: false
+    [REGATE] R1c revoke 200 mid-claim 401
+    [REGATE] R1d statuses 200,200,200,200,200,200,200,200,200,200,200,200 surviving sessions: 0
+    [REGATE] R1e revoke 200 after stale logout write: stolen claim live false owner claim live false listTag undefined epoch 1 pin==owner? true
+    [REGATE] R2 revoke 200 owner old claim live true re-claim 200 session verifies true concurrent staff claim kept true
+    [REGATE] R3a staff+staffclaim=403 | stolen session, no claim=403 | session + stored pin HASH as cookie=403 | session + junk claim=403 | forged owner flags=403 epoch unchanged true owner session still valid true
+    [REGATE] R3a owner budget after refusals: 200,200,200,429
+    [REGATE] R3b thief with copied owner claim: revoke 200 owner device auto re-claims 200
+    [REGATE] R3b replay after owner logout: 403 pin (none)
+    [REGATE] R3c revoke after pin vanished mid-request: 403 epoch 0
+    [REGATE] R3d burst statuses {"200":3,"429":17} epoch 3
+    [REGATE] R4 after owner logout + code re-login: owner flag false revoke 403 thief session still valid true
+    [REGATE] R6 requireHost get=1 update=0 bump=0
+    [REGATE] R6 GET session (live claim) get=3 update=0 bump=0
+    [REGATE] R6 claim (valid) get=1 update=0 bump=0
+    [REGATE] R6 login (live claim) get=4 update=1 bump=0
+    [REGATE] R6 login (presents live claim) get=4 update=0 bump=0
+    [REGATE] R1f after stale write: epoch 1 listTag undefined pin set true
+    [REGATE] R1f revoke 200 stale moderation write 200 owner session ok true owner flag false owner re-claim 401 owner 2nd revoke 403 after code re-login pin (none)
+    ✓ R1a original S1: claim's read lands BEFORE the bump, its derivation after (74 ms)
+    ✓ R1b claim read lands BETWEEN bump and rebind (16 ms)
+    ✓ R1c claim read lands between the rebind WRITE and its confirming re-read (5 ms)
+    ✓ R1d a 12-way polling attacker across a revoke: no surviving session (10 ms)
+    ✓ R1e attacker logout (old session, pre-bump read) landing after the rebind cannot re-validate its hash (7 ms)
+    ✓ staff code login between bump and rebind, response lost: acting (owner) device re-claims (2 ms)
+    ✓ R3a staff, stolen session, junk/hash cookies, forged owner hints -> 403/401, nothing changes (11 ms)
+    ✓ R3b replay of the owner claim cookie: by a thief = owner (inherent); after owner logout = refused (5 ms)
+    ✓ R3c pin changes between the route pre-check and the helper's pre-bump read (4 ms)
+    ✓ R3d concurrent burst of 20 owner revokes: exactly 3 pass (19 ms)
+    ✓ owner token stolen: owner's only kill is logout, which also removes the lever (12 ms)
+    ✓ counts (4 ms)
+    ✓ costs the owner the pin for good (469 ms)
+Tests:       13 passed, 13 total
+
+# Targeted auth suites
+PASS __tests__/client-ip.test.ts
+PASS __tests__/rate-limit-counter.test.ts
+PASS __tests__/room-session-epoch-backend.test.ts
+PASS __tests__/host-auth.test.ts
+PASS __tests__/host-claim.test.ts
+PASS __tests__/advance-rate-limit.test.ts
+PASS __tests__/queue-rate-limit.test.ts (5.117 s)
+PASS __tests__/host-session-revocation.test.ts (8.662 s)
+PASS __tests__/claim-token-owner-pin.test.ts (8.596 s)
+Test Suites: 9 passed, 9 total
+Tests:       182 passed, 182 total
