@@ -260,7 +260,9 @@ const SEP_TOKEN = "\u0000";
 const TAG = "\u0001";
 
 /** Featuring tail: "Avicii ft. Aloe Blacc" -> "Avicii". */
-const FEAT_RE = /\s*[([]?\b(ft\.?|feat\.?|featuring|part\.|with)\s.+$/i;
+// "with" counts as featuring ("X with Y") but not in a band name of the form
+// "X with the Y" ("Hootie with the Blowfish").
+const FEAT_RE = /\s*[([]?\b(ft\.?|feat\.?|featuring|part\.|with(?!\s+the\s))\s.+$/i;
 const HAS_FEAT_RE = /\b(ft\.?|feat\.?|featuring)\s/i;
 
 function cleanSong(s: string): string | null {
@@ -338,8 +340,9 @@ function segment(title: string, channelTitle: string): Segments {
   t = t.replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u2600-\u27BF\u2B50\u266A-\u266F\uFE0F\u200D]+/gu, ` ${SEP_TOKEN} `);
 
   let cueArtist: string | null = null;
-  // "(In the Style of X)", "(Made Popular By X)" inside a bracket.
-  t = t.replace(/[([]\s*(?:in the style of|made popular by|as made famous by)\s+([^)\]]+)[)\]]/i, (_m, a: string) => {
+  // "(In the Style of X)", "(Made Popular By X)", "(by X)" inside a bracket.
+  // Only a bracket that STARTS with the cue: "(Produced by X)" is not a credit.
+  t = t.replace(/[([]\s*(?:in the style of|made popular by|as made famous by|by)\s+([^)\]]+)[)\]]/i, (_m, a: string) => {
     cueArtist = a;
     return " ";
   });
@@ -376,8 +379,10 @@ function segment(title: string, channelTitle: string): Segments {
 
   const raw = t.split(SEP_TOKEN);
   const core = channelCore(channelTitle);
-  const parts: string[] = [];
-  const taggedBeforeSep = new Set<number>();
+  // Number-only segments ("01 - Artist - Song") are dropped as track numbers,
+  // unless dropping them leaves fewer than two parts: then the number is the
+  // song ("Arctic Monkeys - 505").
+  const items: { s: string; numeric: boolean; tagged: boolean }[] = [];
   for (const r of raw) {
     const hadTag = r.includes(TAG);
     const s = r.split(TAG).join(" ").replace(/\s+/g, " ").trim();
@@ -385,18 +390,31 @@ function segment(title: string, channelTitle: string): Segments {
     const isNoise =
       f.length <= 1 ||
       s.split(/\s+/).every((w) => isModifier(w) || isCore(w)) ||
-      /^\d+$/.test(f) ||
       (core.length > 0 && f === core) ||
       /^(eurovision|eurovision song contest)( \d{4})?$/.test(f);
     // A tag right after a part ("<song> (Karaokê) - <artist>",
     // "<song> 'karaoke' <artist>") marks that part.
-    if (hadTag && parts.length > 0) taggedBeforeSep.add(parts.length - 1);
+    if (hadTag && items.length > 0) items[items.length - 1].tagged = true;
     if (isNoise) continue;
-    parts.push(s);
+    items.push({ s, numeric: /^\d+$/.test(f), tagged: false });
+  }
+  const keepNumeric = items.filter((it) => !it.numeric).length < 2;
+  const parts: string[] = [];
+  const taggedBeforeSep = new Set<number>();
+  for (const it of items) {
+    if (it.numeric && !keepNumeric) {
+      // a dropped number passes its tag to the part before it
+      if (it.tagged && parts.length > 0) taggedBeforeSep.add(parts.length - 1);
+      continue;
+    }
+    if (it.tagged) taggedBeforeSep.add(parts.length);
+    parts.push(it.s);
   }
 
-  // "X by Y" in a single segment.
-  if (!cueArtist && parts.length >= 1) {
+  // "X by Y" in a single segment, unless a short bracketed name already reads
+  // as the credit ("Stand by Me (Ben E. King) Karaoke").
+  const shortExtra = extras.length > 0 && extras[extras.length - 1].split(/\s+/).length <= 4;
+  if (!cueArtist && !shortExtra && parts.length >= 1) {
     const by = parts[0].match(/^(.+?)\s+by\s+(.+)$/i);
     if (by && parts.length === 1) {
       parts[0] = by[1];

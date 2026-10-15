@@ -3,13 +3,23 @@
  * lib/karaoke-index/title-parser.ts on the hand-labelled sample.
  *
  *   npm run measure:t143 [-- <other-labelled.json>]
+ *
+ * The default sample is local only (YouTube API data, gitignored). When it is
+ * absent the script exits 2 with a regenerate note.
  */
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 import { score, type LabelledRow } from "./score";
 
 const file = process.argv[2] ?? join(__dirname, "labelled-sample.json");
+if (!existsSync(file)) {
+  console.error(
+    `${file} not found. The labelled sample is YouTube API data and is never committed (.gitignore);\n` +
+      "regenerate it locally from a fresh production search capture and label it before measuring.",
+  );
+  process.exit(2);
+}
 const doc = JSON.parse(readFileSync(file, "utf8")) as { rows: LabelledRow[] };
 const s = score(doc.rows);
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;

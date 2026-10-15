@@ -2,15 +2,23 @@ TICKET-143 title parser — measurement, 2026-10-15
 
 Command: npm run measure:t143   (default: work/measurements/ticket-143/labelled-sample.json)
 
-=== ACCEPTANCE SAMPLE (300 rows, committed) ===
+=== ACCEPTANCE SAMPLE (300 rows, local only: YouTube API data, gitignored) ===
 rows: 300
 kind precision (strict, all rows): 300/300 = 100.0%
   predicted karaoke: 292/292 correct
   predicted playback: 8/8 correct
 song+artist exact: 240/289 = 83.0%  (song 245/289, artist 244/289; 11 rows marked skipSongArtist)
 
-Acceptance: kind precision >= 95%  -> MET (100.0%)
-            song+artist exact >= 85% -> NOT MET (83.0%)
+Acceptance: kind precision >= 95%  -> MET (100.0%). Weak on this sample: it is
+            karaoke-heavy (a constant `karaoke` classifier scores 292/300 =
+            97.3%); the informative kind number is the non-karaoke 78% below.
+            song+artist exact >= 85% -> moved to TICKET-145 (known-artists input),
+            TM decision 2026-10-15. Measured 83.0% here (a tuning-set figure)
+            and 77.1% on the holdout (an upper bound, see the review).
+
+Re-measured 2026-10-15 after the review fixes (by-bracket credit, "with the"
+band names, number-only segments, "X by Y" with a bracketed credit): unchanged,
+kind 300/300, song+artist 240/289.
 
 === HOLDOUT (100 rows, NOT committed: the 300-row retention cap) ===
 Drawn with a separate seed (random.Random(1430), <= 3 rows/channel) from the

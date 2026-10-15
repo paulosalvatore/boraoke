@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 import {
@@ -52,6 +52,11 @@ describe("classifyKind", () => {
   it("a Topic channel reads as original only when the title says nothing else", () => {
     expect(classifyKind("Bandoleros", "Don Omar - Topic")).toBe("original");
     expect(classifyKind("Bandoleros", "Don Omar")).toBe("unknown");
+  });
+
+  // KNOWN WRONG, tracked in TICKET-145: LIVE_RE matches the song word "Live".
+  test.failing("TICKET-145: 'Live' inside a song name does not make the title live", () => {
+    expect(classifyKind("Paul McCartney - Live and Let Die (Official Video)", "Some Channel")).toBe("original");
   });
 
   it("only returns members of TITLE_KINDS", () => {
@@ -152,6 +157,34 @@ describe("parseTitle: song and artist", () => {
     expect(p("Soda Stereo - Signos (Gira Me Verás Volver) - Karaoke")).toEqual(["Signos", "Soda Stereo"]);
   });
 
+  it("a bracket that starts with 'by' is the credit; one that only contains 'by' is noise", () => {
+    expect(p("Hello (by Adele) Karaoke")).toEqual(["Hello", "Adele"]);
+    expect(p("Hello (Produced by Greg Kurstin) Karaoke")).toEqual(["Hello", null]);
+  });
+
+  it("'with' cuts a featuring tail but not a 'with the' band name", () => {
+    expect(p("Hootie with the Blowfish - Hold My Hand (Karaoke)")).toEqual(["Hold My Hand", "Hootie with the Blowfish"]);
+    expect(p("Bebe Rexha with Florida Georgia Line - Meant to Be (Karaoke)")).toEqual(["Meant to Be", "Bebe Rexha"]);
+  });
+
+  it("a number-only segment is a track number, unless it is the only song left", () => {
+    expect(p("01 - Soda Stereo - Signos (Karaoke)")).toEqual(["Signos", "Soda Stereo"]);
+    expect(p("Arctic Monkeys - 505 (Karaoke)")).toEqual(["505", "Arctic Monkeys"]);
+  });
+
+  it("a single-segment 'X by Y' is not split when a short bracketed name is the credit", () => {
+    expect(p("Stand by Me (Ben E. King) Karaoke")).toEqual(["Stand by Me", "Ben E. King"]);
+  });
+
+  // KNOWN WRONG, tracked in TICKET-145: the duo-credit cue fires on the song
+  // "Live and Let Die" (capitalised words around "and"), so the pair is swapped.
+  test.failing("TICKET-145: a song named 'X and Y' is not read as a duo credit", () => {
+    expect(p("Paul McCartney - Live and Let Die (Official Video)", "Some Channel")).toEqual([
+      "Live and Let Die",
+      "Paul McCartney",
+    ]);
+  });
+
   it("returns nulls rather than throwing on junk", () => {
     expect(parseTitle("", "")).toEqual({ song: null, artist: null, kind: "unknown" });
     expect(parseTitle("Karaoke", "")).toEqual({ song: null, artist: null, kind: "karaoke" });
@@ -160,10 +193,14 @@ describe("parseTitle: song and artist", () => {
   });
 });
 
-describe("labelled sample (work/measurements/ticket-143/labelled-sample.json)", () => {
-  const doc = JSON.parse(
-    readFileSync(join(__dirname, "..", "work", "measurements", "ticket-143", "labelled-sample.json"), "utf8"),
-  ) as { rows: LabelledRow[] };
+// The labelled sample is YouTube API data: local only, never committed
+// (.gitignore). These checks run where it exists and skip elsewhere.
+const SAMPLE_PATH = join(__dirname, "..", "work", "measurements", "ticket-143", "labelled-sample.json");
+const HAS_SAMPLE = existsSync(SAMPLE_PATH);
+const describeSample = HAS_SAMPLE ? describe : describe.skip;
+
+describeSample("labelled sample (local only: work/measurements/ticket-143/labelled-sample.json)", () => {
+  const doc = (HAS_SAMPLE ? JSON.parse(readFileSync(SAMPLE_PATH, "utf8")) : { rows: [] }) as { rows: LabelledRow[] };
   const s = score(doc.rows);
 
   it("has the 300 labelled rows", () => {

@@ -88,3 +88,36 @@ Most misses are **order**: "<a> - <b>" with no cue for which side is the artist.
 ## Friction
 
 - No YouTube Data API key in the vault, so any agent that needs the harvest fixture has to pull production env from Vercel by hand. Suggest enrolling it (read-only use, playlistItems/videos.list only).
+
+## Review fixes (2026-10-15, picking up from the opus Reviewer's REQUEST-CHANGES at 0a79677)
+
+Picked up from `work/reports/review/TICKET-143-review.md` and PR comment 6201310862, head 758e78d.
+
+**Blocking item: sample off main.**
+- `/work/measurements/ticket-143/labelled-sample.json` added to the `.gitignore` YouTube block (next to #92's rule) and untracked with `git rm --cached`. The local file stays on disk.
+- The `labelled sample` describe block skips when the file is absent (`existsSync`, same pattern as `__tests__/search-prefix.test.ts`).
+- `measure.ts` exits 2 with a "regenerate locally" note when the file is absent.
+- The file remains in PR #93's own GitHub history (`refs/pull/93/head`) as an accepted leftover, recorded in TICKET-141 (its dated 2026-11-01 line in the main checkout).
+
+**Reviewer's surviving mutants: parser fixes + tests.**
+- R6 (bracket containing "by"): a bracket that STARTS with "by" is now an explicit credit cue (`Hello (by Adele) Karaoke` -> Hello / Adele). A bracket that only contains "by" (`(Produced by Greg Kurstin)`) stays noise; the test pins both.
+- R10 ("with" as featuring): `with` no longer cuts before "the" (`Hootie with the Blowfish` kept whole); `Bebe Rexha with Florida Georgia Line` still cuts to `Bebe Rexha`.
+- R11 (number-only segment): a number-only segment is dropped as a track number (`01 - Soda Stereo - Signos`), unless dropping it leaves fewer than two parts, when it is the song (`Arctic Monkeys - 505` -> 505 / Arctic Monkeys; before: song `Arctic Monkeys`, artist null). A tag after a dropped number still marks the part before it, as before.
+- `Stand by Me (Ben E. King) Karaoke`: fixed cheaply. The single-segment "X by Y" split is skipped when a short (<= 4 words) bracketed name is present, so it reads Stand by Me / Ben E. King.
+- `Paul McCartney - Live and Let Die (Official Video)`: not cheap (the duo-credit cue and `LIVE_RE` both fire on song words). Two `test.failing` cases pin the wrong order and the wrong kind, each with a note pointing to TICKET-145.
+
+**Evidence (verbatim).**
+- New tests on the PRE-review parser (`title-parser.ts` from 758e78d swapped in): `Tests: 4 failed, 38 passed, 42 total`, the four failures being the by-bracket, with-the, number-segment and Stand-by tests. The two `test.failing` cases pass there too (the behaviour is wrong on both versions).
+- Reviewer's mutants re-applied to the new parser, each `Tests: 1 failed, 41 passed, 42 total`: R6 (no "by" bracket noise), R10 (FEAT_RE without with), R11 (number segment never dropped), R11' (number never restored), R12 (`(by X)` cue removed), R13 (Stand-by guard removed). 6/6 KILLED.
+- Targeted jest, sample present: `Tests: 42 passed, 42 total`.
+- Targeted jest, sample moved aside: `Tests: 3 skipped, 39 passed, 42 total` (the 33 original unit tests + 4 new + 2 `test.failing`; the 36 in the earlier count included the 3 sample tests).
+- `npm run measure:t143`, sample absent: prints the regenerate note, `measure exit=2`.
+- `npm run measure:t143`, sample present: unchanged, `kind precision (strict, all rows): 300/300 = 100.0%`, `song+artist exact: 240/289 = 83.0%`.
+- `tsc --noEmit -p .`: no errors in `lib/karaoke-index/title-parser.ts` or `work/measurements/ticket-143/*`; the test file shows only the repo-wide jest-globals noise.
+
+**Correction to my earlier mutation claim.** "23 hand mutants over every rule" was overstated: the Reviewer's separate 11-mutant pass left 3 survivors. With the tests above, all 3 are now killed.
+
+**Copy.** TICKET-143 acceptance, `RESULTS.txt` and the PR body now read: kind >= 95% met (weak on a karaoke-heavy sample; non-karaoke kind is 78%); song+artist >= 85% moved to TICKET-145 (TM decision 2026-10-15), measured 83.0% tuning / 77.1% holdout.
+
+**Not run / owed.** No app code touched (the parser is imported only by its test, `score.ts` and `measure.ts`), so `next build` was not run. Full jest: see the line below.
+- Full jest suite: **still owed**. Host load at 17:25 was `load averages: 192.46 161.77 165.81`, far above the ~40 threshold; only the targeted file was run.
