@@ -13,6 +13,17 @@ import { SEARCH_PROTOCOL_VERSION } from "@/lib/live-search-gate";
 const DEBOUNCE_MS = 400;
 /** Upper bound on how long we honour the server's live-cooldown `retryAfterMs`. */
 const MAX_LIVE_RETRY_MS = 5000;
+
+/**
+ * Which limit copy a degraded search reason maps to: the platform's day is
+ * spent ("daily-limit"), or this device's / network's share of it is
+ * ("personal-limit", TICKET-126). null for every other degraded reason.
+ */
+function limitCopyFor(reason: unknown): "dailyLimit" | "personalLimit" | null {
+  if (reason === "daily-limit") return "dailyLimit";
+  if (reason === "personal-limit") return "personalLimit";
+  return null;
+}
 /**
  * TICKET-108: raised 3 → 4. A 3-character query was measured to be worth
  * nothing: production's real page for "esc" does not contain "Escurinho do
@@ -136,8 +147,14 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
    * honest message instead of a generic outage line. Every other degraded
    * reason keeps the pre-existing copy. Either way the paste-a-YouTube-link
    * input above stays fully functional (it costs no search call).
+   *
+   * TICKET-126 adds a second limit with its own copy: THIS device's or
+   * network's daily share of live searches is spent, while the platform still
+   * has budget. Karaoke-catalogue (index) and cached answers keep working for
+   * that patron, so the copy says so rather than calling search unavailable.
    */
-  const [dailyLimited, setDailyLimited] = useState(false);
+  type LimitCopy = "dailyLimit" | "personalLimit" | null;
+  const [limitCopy, setLimitCopy] = useState<LimitCopy>(null);
   /**
    * The text the free tiers could NOT answer: rendering shows a subtle "press
    * Enter to search YouTube" hint for it, and the idle search may fire for it.
@@ -146,13 +163,13 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
 
   /**
    * Leave the degraded state entirely (TICKET-87). Both flags must clear
-   * together — a stale `dailyLimited` would otherwise mislabel the NEXT
+   * together — a stale `limitCopy` would otherwise mislabel the NEXT
    * degraded response as "today's budget is spent". State setters are stable,
    * so this callback never changes identity.
    */
   const clearDegraded = useCallback(() => {
     setDegraded(false);
-    setDailyLimited(false);
+    setLimitCopy(null);
   }, []);
   const [rateLimitMsg, setRateLimitMsg] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -301,7 +318,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           setResultsMode(null);
           setResultsQuery("");
           clearHeld();
-          setDailyLimited(data.reason === "daily-limit");
+          setLimitCopy(limitCopyFor(data.reason));
           setDegraded(true);
           return;
         }
@@ -327,7 +344,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         setResultsMode(null);
         setResultsQuery("");
         clearHeld();
-        setDailyLimited(false);
+        setLimitCopy(null);
         setDegraded(true);
       } finally {
         if (seq === seqRef.current) setLoading(false);
@@ -403,9 +420,9 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
       // nothing happening. Keep the rows already on screen (they cost nothing),
       // retire the load-more button by dropping the cursor so there is nothing
       // left to tap, and say plainly why. The paste-a-link input is unaffected.
-      if (data.degraded && data.reason === "daily-limit") {
+      if (data.degraded && limitCopyFor(data.reason)) {
         setNextPageToken("");
-        setDailyLimited(true);
+        setLimitCopy(limitCopyFor(data.reason));
         setDegraded(true);
         return;
       }
@@ -764,7 +781,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           role="status"
           style={{ marginTop: "0.6rem", fontSize: "0.85rem", color: "var(--text-muted)" }}
         >
-          {dailyLimited ? t("dailyLimit") : t("degraded")}
+          {limitCopy ? t(limitCopy) : t("degraded")}
         </p>
       )}
 

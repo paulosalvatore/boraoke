@@ -391,10 +391,11 @@ function loginKey(ip: string): string {
 //
 // So this round takes both lessons at once, and the shape is what matters:
 //
-//   * The key is **server-derived** (the edge-set client IP), never a value the
-//     caller chose. Bucket cardinality is therefore bounded by real clients, the
-//     same bound `login:<ip>` has always had — a claim flood can no longer evict
-//     anything that a login flood could not already.
+//   * The key is the client IP from `clientIpFrom`: edge-written (not
+//     client-chosen) on Vercel or behind a declared trusted proxy, and the
+//     shared "unknown" bucket elsewhere. Bucket cardinality is therefore bounded
+//     by real clients, the same bound `login:<ip>` has always had — a claim
+//     flood can no longer evict anything that a login flood could not already.
 //   * A **valid credential is never denied by it.** The route verifies the claim
 //     token FIRST and only consults or charges this counter on a failure. That is
 //     what kills round 1's shared fate at the root rather than by re-keying: the
@@ -409,9 +410,11 @@ function loginKey(ip: string): string {
 const CLAIM_THROTTLE_OPTS: CounterOptions = LOGIN_THROTTLE_OPTS;
 
 /**
- * Namespaced counter key for a claim-failure bucket. The argument is the
- * SERVER-DERIVED client IP (see `clientIpFrom`) — never a client-chosen value,
- * which is what made round 2's keyspace unbounded.
+ * Namespaced counter key for a claim-failure bucket. The argument is the client
+ * IP from `clientIpFrom`, which is edge-written (not client-chosen) on Vercel or
+ * behind a declared trusted proxy, and the shared "unknown" bucket elsewhere —
+ * never a raw client-supplied value, which is what made round 2's keyspace
+ * unbounded.
  */
 function claimKey(ip: string): string {
   return `hostclaim:${ip}`;
@@ -437,34 +440,17 @@ export function resetClaimThrottle(ip: string): Promise<void> {
 }
 
 /**
- * Best-effort client IP used as a rate-limit bucket key.
+ * Client IP bucket key for the throttles above — re-exported from
+ * `lib/client-ip.ts`, the single derivation every rate limit uses.
  *
- * Trust boundary (TICKET-78): the first hop of `x-forwarded-for` is
- * client-suppliable — an attacker can set it directly and rotate the claimed
- * IP per request to spread a failed-login / submit flood across many buckets.
- * We therefore trust the edge-set `x-real-ip` FIRST: on Vercel that header is
- * written by the platform edge to the true client IP and overwrites any value
- * the client sends, so it is not client-controllable. `x-forwarded-for`'s first
- * hop is used only as a fallback for deploy targets / local dev that don't set
- * `x-real-ip`. For a non-Vercel deployment behind a different trusted proxy,
- * `TRUSTED_CLIENT_IP_HEADER` names the single header whose value the edge is
- * known to set, and it takes precedence over both.
+ * Trust boundary (TICKET-119, correcting TICKET-78's claim): the value is
+ * trustworthy ON VERCEL, because Vercel's edge overwrites the client IP headers
+ * (documented; `x-real-ip` verified against production), or where the operator names
+ * the header their own proxy sets in `TRUSTED_CLIENT_IP_HEADER`. Anywhere else
+ * no header is trusted and every request shares the "unknown" bucket. It is not
+ * "server-derived" in any stronger sense than that.
  */
-export function clientIpFrom(req: NextRequest): string {
-  const trustedHeader = process.env.TRUSTED_CLIENT_IP_HEADER?.trim().toLowerCase();
-  if (trustedHeader) {
-    const configured = req.headers.get(trustedHeader)?.trim();
-    if (configured) return configured;
-  }
-  const realIp = req.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return "unknown";
-}
+export { clientIpFrom } from "./client-ip";
 
 /** True when this IP has exhausted its failure budget for the current window. */
 export function isLoginThrottled(ip: string): Promise<boolean> {

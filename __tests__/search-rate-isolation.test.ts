@@ -82,3 +82,31 @@ describe("index-only lookups cannot evict the billed per-IP bucket", () => {
     expect(billed).toBeLessThanOrEqual(RATE_LIMIT.ipMax);
   }, 120_000);
 });
+
+describe("rejected billed requests cannot evict another IP's billed bucket", () => {
+  // The gate's probe (e), at unit level: IP B bills 40/s while IP A floods
+  // 2,100 billed-path requests/s under fresh uuids, for 30 simulated seconds
+  // (three RATE windows). When a rejected request still inserted its fresh
+  // uuid key, IP A's flood pushed `ip:B` out of the LRU every cycle and IP B
+  // billed 900 instead of 90.
+  it("probe (e): IP B stays at its per-IP ceiling while IP A floods fresh uuids", () => {
+    const ipA = "198.51.100.10";
+    const ipB = "198.51.100.20";
+    const SECONDS = 30;
+    let n = 0;
+    let allowedB = 0;
+    for (let tick = 0; tick < SECONDS; tick++) {
+      const now = T + tick * 1000;
+      for (let i = 0; i < 40; i++) if (rateLimitOk(uuidN(200000 + n++), ipB, now)) allowedB++;
+      for (let i = 0; i < 2100; i++) rateLimitOk(uuidN(300000 + n++), ipA, now);
+    }
+    expect(allowedB).toBeLessThanOrEqual((SECONDS * 1000 / RATE_LIMIT.windowMs) * RATE_LIMIT.ipMax);
+  });
+
+  it("a request rejected by the IP bucket adds no uuid key", () => {
+    const ip = "198.51.100.30";
+    for (let i = 0; i < 5000; i++) rateLimitOk(uuidN(700000 + i), ip, T);
+    // RATE_IP_MAX accepted (one uuid key each) + the one IP key; the rest added nothing.
+    expect(_rateBucketCount()).toBe(RATE_LIMIT.ipMax + 1);
+  });
+});

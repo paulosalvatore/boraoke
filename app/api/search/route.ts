@@ -15,7 +15,10 @@ import { getKaraokeIndex } from "@/lib/karaoke-index/store";
 import { decideTier, INDEX_MORE_TOKEN } from "@/lib/karaoke-index/tier";
 import { containsKaraoke } from "@/lib/search-query";
 import { getTranslations } from "next-intl/server";
-import { isLegacyClient, liveAllowed, liveCooldown } from "@/lib/live-search-gate";
+import { isLegacyClient, liveAllowed, liveCooldown, LIVE_COOLDOWN_MS } from "@/lib/live-search-gate";
+import { clientIpFrom, UNKNOWN_CLIENT_IP } from "@/lib/client-ip";
+import { IDENTITY_COOKIE, isValidUuid } from "@/lib/identity";
+import { acquireSearchFlight, waitForSearchFlight } from "@/lib/search-single-flight";
 
 /**
  * GET /api/search?q=<query>&uuid=<patronUuid>[&v=2[&live=1]][&pageToken=<token>&page=<n>]
@@ -29,6 +32,8 @@ import { isLegacyClient, liveAllowed, liveCooldown } from "@/lib/live-search-gat
  *   200 { results: [], liveRequired: true }            — v2 index-only request the free tiers can't answer
  *   200 { results: [], deferred: "live-cooldown", retryAfterMs } — v2 billed attempt inside the per-uuid cooldown
  *   (a legacy, non-v2 client inside the cooldown gets the 429 below instead)
+ *   200 { results: [], deferred: "single-flight", retryAfterMs } — an identical query's leader did not answer in time (v2 only; legacy clients get the 429)
+ *   200 { degraded: true, reason: "personal-limit", results: [] } — this device's or network's daily share is spent
  *   400 { error }                                      — bad query/uuid/pageToken, or page past the depth cap
  *   429 { error }                                      — per-uuid OR per-IP rate limit exceeded
  *
@@ -64,17 +69,25 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Caller IP for the rate-limit bucket (MEDIUM #1). On Vercel the first hop of
- * x-forwarded-for is the client IP (the platform sets/normalizes the header);
- * x-real-ip is the fallback. "" when neither is present (local unit tests).
+ * How long a single-flight waiter that gave up asks the client to wait. A
+ * waiter already passed the per-uuid live cooldown (which records the attempt),
+ * so its one retry must land AFTER that cooldown or it is deferred again as
+ * "live-cooldown" and the client, which retries once, gives up.
  */
-function clientIp(req: NextRequest): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return req.headers.get("x-real-ip")?.trim() ?? "";
+const FLIGHT_RETRY_MS = LIVE_COOLDOWN_MS;
+
+/**
+ * Who a billed search is charged to (TICKET-126). The device is the
+ * server-minted httpOnly identity cookie when present, else the validated uuid
+ * param, else the IP-scoped anonymous key. All three are client-replaceable,
+ * which is why the per-device cap is a fairness bound and the per-IP cap (keyed
+ * off the edge-written address, lib/client-ip.ts) is the anti-drain bound.
+ */
+function deviceKey(req: NextRequest, uuid: string, ip: string): string {
+  const cookie = req.cookies?.get(IDENTITY_COOKIE)?.value;
+  if (isValidUuid(cookie)) return `id:${cookie.toLowerCase()}`;
+  if (uuid !== "anon") return `u:${uuid.toLowerCase()}`;
+  return `anon@${ip}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -141,8 +154,13 @@ export async function GET(req: NextRequest) {
   // Index-only requests (free) and live-allowed ones (may bill) are rate-limited
   // in separate buckets: as-you-type lookups must not starve the patron's Enter.
   const mayBill = liveAllowed(params, pageToken);
-  const ip = clientIp(req);
-  if (!(mayBill ? rateLimitOk(uuid, ip) : indexRateLimitOk(uuid, ip))) {
+  // The edge-written client address (lib/client-ip.ts, TICKET-119). The
+  // velocity limiter treats "" as "no IP bucket", so the shared "unknown"
+  // bucket (no trusted address) maps to that, as before; the daily per-IP
+  // sub-budget below keeps "unknown" as one shared key (fail-closed).
+  const ip = clientIpFrom(req);
+  const velocityIp = ip === UNKNOWN_CLIENT_IP ? "" : ip;
+  if (!(mayBill ? rateLimitOk(uuid, velocityIp) : indexRateLimitOk(uuid, velocityIp))) {
     // i18n (TICKET-30): user-facing copy follows the request locale.
     const te = await getTranslations("Errors");
     return NextResponse.json(
@@ -256,11 +274,67 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const reservation = await reserveSearchCall();
+  // ── TICKET-126: single-flight ──────────────────────────────────────────
+  // Concurrent identical misses across instances produce ONE billed call: the
+  // first becomes the leader, the rest wait for its answer in the cache and are
+  // charged nothing (lib/search-single-flight.ts). A waiter whose leader
+  // vanished without an answer (denied a reservation, or died) gets one chance
+  // to lead; otherwise it defers rather than bills.
+  let flight = await acquireSearchFlight(ck);
+  for (let attempt = 0; flight.role === "waiter"; attempt++) {
+    const waited = await waitForSearchFlight(ck);
+    if (waited.kind === "page") {
+      void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: waited.page.results.length, source: "cache" } }); // fire-and-forget, fail-open
+      return NextResponse.json({
+        results: waited.page.results,
+        nextPageToken: waited.page.nextPageToken,
+        cached: true,
+      });
+    }
+    if (waited.kind === "failed") {
+      return NextResponse.json({ degraded: true, reason: "error", results: [] });
+    }
+    if (waited.kind === "timeout" || attempt >= 1) {
+      // Legacy clients don't know `deferred` (see the cooldown path above).
+      if (isLegacyClient(params)) {
+        const te = await getTranslations("Errors");
+        return NextResponse.json({ error: te("searchRateLimited") }, { status: 429 });
+      }
+      return NextResponse.json({
+        results: [],
+        deferred: "single-flight",
+        retryAfterMs: FLIGHT_RETRY_MS,
+      });
+    }
+    flight = await acquireSearchFlight(ck); // vacant: try once to lead
+  }
+  const release = flight.role === "leader" ? flight.release : async () => {};
+
+  // A previous leader may have filled the cache between our miss above and
+  // taking the lock; answering from it now costs nothing.
+  if (flight.role === "leader") {
+    const filled = await getCachedSearchPage(ck);
+    if (filled) {
+      await release("filled");
+      return NextResponse.json({ results: filled.results, nextPageToken: filled.nextPageToken, cached: true });
+    }
+  }
+
+  // ── TICKET-126: per-device and per-IP daily sub-budgets ─────────────────
+  // Charged in the SAME atomic step as the platform counter (all or none), so
+  // a denial charges nobody. Both personal denials share ONE reason, so the
+  // body cannot be used to learn which key is exhausted; remaining counts are
+  // server-log-only, as for the platform cap.
+  const reservation = await reserveSearchCall(undefined, {
+    device: deviceKey(req, uuid, ip),
+    ip,
+  });
   if (!reservation.ok) {
+    await release("abandoned");
+    const personal = reservation.reason === "ip" || reservation.reason === "device";
     return NextResponse.json({
       degraded: true,
-      reason: "daily-limit",
+      reason: personal ? "personal-limit" : "daily-limit",
       results: [],
     });
   }
@@ -270,9 +344,11 @@ export async function GET(req: NextRequest) {
     // Only SUCCESSFUL responses reach this line — errors threw above and are
     // never cached. Non-empty → 12h TTL; empty → 10min TTL (see search-cache).
     await setCachedSearchPage(ck, page);
+    await release("filled");
     void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: page.results.length, source: "live" } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({ results: page.results, nextPageToken: page.nextPageToken });
   } catch (err) {
+    await release("failed");
     if (err instanceof YouTubeQuotaError) {
       return NextResponse.json({ degraded: true, reason: "quota", results: [] });
     }

@@ -138,6 +138,11 @@ export default defineConfig({
       // limit is raised for the test process — the same effective posture the
       // dev server gave it, made explicit rather than implied.
       ROOM_CREATE_LIMIT: "100000",
+      // TICKET-119 — off Vercel no client IP header is trusted unless declared
+      // (lib/client-ip.ts). The suite drives per-IP buckets through
+      // x-forwarded-for, so it declares that header explicitly, which is the
+      // same posture a non-Vercel deployment behind a known proxy would take.
+      TRUSTED_CLIENT_IP_HEADER: "x-forwarded-for",
     },
   },
 });

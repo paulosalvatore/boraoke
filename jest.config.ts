@@ -29,6 +29,8 @@ const config: Config = {
   // impossible for existing and future spies alike, instead of relying on
   // each author remembering a `finally`.
   restoreMocks: true,
+  // TICKET-119: run routes under Vercel's IP-header trust (see jest.env.ts).
+  setupFiles: ["<rootDir>/jest.env.ts"],
   moduleNameMapper: {
     // `server-only` throws under plain node (by design — it guards Next.js
     // client bundles); stub it out for jest.

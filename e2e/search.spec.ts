@@ -455,6 +455,43 @@ test("daily search budget spent: honest copy + paste-link still queues a song", 
 });
 
 /**
+ * TICKET-126 — THIS device's or network's daily share of live searches is
+ * spent while the platform still has budget. It gets its own copy (the
+ * catalogue still works for this patron), never the generic outage line and
+ * never the platform's "today's limit" line, and paste-a-link still queues.
+ */
+test("personal search share spent: own copy + paste-link still queues a song", async ({ page }) => {
+  await page.route("**/api/search**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ degraded: true, reason: "personal-limit", results: [] }),
+    });
+  });
+
+  await joinAs(page, "PersonalCapUser");
+
+  const input = page.getByLabel(/Buscar música/i);
+  await input.fill("alguma musica");
+
+  const notice = page.getByTestId("search-degraded");
+  await expect(notice).toBeVisible({ timeout: 5000 });
+  await expect(notice).toContainText(/buscas ao vivo de hoje/i);
+  // True whichever cap bound: this device OR this network (the bar Wi-Fi).
+  await expect(notice).toContainText(/neste aparelho ou nesta rede/i);
+  await expect(notice).toContainText(/catálogo de karaokê/i);
+  await expect(notice).not.toContainText(/Busca indisponível/i);
+  await expect(notice).not.toContainText(/Chegamos ao limite/i);
+
+  await input.fill("https://youtu.be/dQw4w9WgXcQ");
+  await expect(page.getByText(/Selecionada: dQw4w9WgXcQ/)).toBeVisible({ timeout: 5000 });
+  const cta = page.getByRole("button", { name: /adicionar à fila/i });
+  await expect(cta).toBeEnabled();
+  await cta.click();
+  await expect(page.getByText(/música na fila/i)).toBeVisible({ timeout: 5000 });
+});
+
+/**
  * TICKET-87 — hitting the budget on "load more" must not be a silent no-op.
  * The rows already fetched stay (they cost nothing), the button retires so the
  * patron is not left tapping a dead control, and the reason is stated.
