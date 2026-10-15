@@ -141,3 +141,93 @@ Triggered mutation pass: not strictly triggered (YouTube titles, not money, quan
 - Cyber Security PASS: absent.
 - App Tester: no `app-tester-waived` row is recorded yet. The diff touches no UI. The PR body says "App Tester N/A: no UI".
 - `verify-green-local` and the full jest suite: not run (host load about 240). Only targeted jest was run.
+
+# Re-review r3 (D-022 opus), head `db7f98c`, 2026-10-15
+
+**Verdict:** REQUEST-CHANGES, tests only. Every round-2 item and Cyber M1 is fixed, and the code is right on every input I probed. My own mutation pass on the new `looksLikeName()` guard leaves 3 real-gap survivors: two at the "at most four words" boundary that the docstring states, and one on the punctuation-only-word clause. Under the `prove-your-test-can-fail` severity floor that is blocking. No code change is needed, only three test cases.
+
+Part of this is on me. In round 2 I asked for "a bracket of 5 or more words", and a 6-word case meets that wording without pinning the boundary.
+
+## TM decision recorded (not relitigated)
+
+83.0% song+artist is accepted for this PR. The 85% bar moves to TICKET-145.
+
+## What I checked (evidence)
+
+- `git pull`: up to date. HEAD is `db7f98c`, and the fix commit is `ebf7789`.
+- Baseline, sample present: targeted jest `Tests: 50 passed, 50 total`. `npm run measure:t143` gives `kind precision (strict, all rows): 300/300 = 100.0%` and `song+artist exact: 240/289 = 83.0%`. The 240 floor holds.
+- Reverse check, reproduced. I swapped in the `228205a` parser and got `Tests: 5 failed, 45 passed, 50 total`. The 5 failures are feat, descriptor, two-bracket, the channel-cap timing test (1497 ms) and the cap-behaviour test, which matches the dev report. I then restored the parser, and `git status` was clean.
+- The diff matches the dev report and the PR body. Round-2 item 3 (refresh the copy) is done.
+
+## Round-2 items and Cyber M1
+
+| Item | Status |
+|---|---|
+| 1. Kill N2 (dropped number hands its tag back) | **Done.** The `Signos - 01 (Karaoke) - Soda Stereo` test kills it. |
+| 2. Narrow the guard: feat no longer blocks the split | **Done.** `looksLikeName()` rejects `HAS_FEAT_RE`, and N6 is killed. |
+| 2. `(Acoustic)` / `(Acoustic Cover)` | **Done**, and fixed in code rather than pinned. N7 and N7b are killed. |
+| 2. Kill N4 (word cap 4 to 100) | **Done.** The 6-word case kills it. The boundary survives; see below. |
+| 2. Kill N5 (first extra instead of last) | **Done.** N5 and N5b ("any extra") are killed by the two-bracket test. |
+| 3. Refresh the copy | **Done.** The PR body and dev report list N2, N4 and N5 and the 10-mutant table. |
+| Cyber M1: cap the channel title before any regex | **Done.** Both inputs are capped at the top of `parseTitle`. C1 (cap removed) is killed by both new tests. C4 (title cap removed) and C5 (cap 200 to 100) are killed. |
+
+## Mutation table (mine, `db7f98c`, sample present, targeted jest + measure for every mutant)
+
+| Mutant | Jest | Measure (song+artist) | Result |
+|---|---|---|---|
+| N2 the dropped number's tag is not handed back | 1 failed | 240 | KILLED |
+| N4 word cap 4 to 100 | 1 failed | 240 | KILLED |
+| **N4b word cap 4 to 5** | 50 passed | 240 | **SURVIVED, real gap.** `Hello by Adele (Live At Madison Square Garden)`: real Hello / Adele, mutant `Hello by Adele` / null. |
+| **N4c word cap 4 to 3** (the `>` to `>=` flip) | 50 passed | 240 | **SURVIVED, real gap.** `Stand by Me (Florence And The Machine) Karaoke`: real `Stand by Me` / `Florence And The Machine`, mutant `Stand` / `Me`. The same happens with `(Earth Wind And Fire)`. |
+| N5 reads the first extra | 1 failed | 240 | KILLED |
+| N5b reads any extra | 1 failed | 240 | KILLED |
+| N6 featuring check removed | 1 failed | 240 | KILLED |
+| N7 descriptor words removed | 2 failed | 240 | KILLED |
+| N7b noise words removed from `looksLikeName` | 1 failed | 240 | KILLED |
+| N7c `every` to `some` | 2 failed | 240 | KILLED |
+| **N7d `!lw \|\|` clause dropped** | 50 passed | 240 | **SURVIVED, real gap.** `Hello by Adele (Acoustic - Piano)`: real Hello / Adele, mutant `Hello by Adele` / `Acoustic - Piano`. |
+| N8 guard removed (always split) | 2 failed | 240 | KILLED |
+| N8b guard always blocks | 4 failed | 240 | KILLED |
+| N9 `words.length === 0` check dropped | 50 passed | 240 | SURVIVED, equivalent. With zero words, `every` on `[]` is true, so the function returns false anyway. |
+| C1 channel cap removed | 2 failed | 240 | KILLED |
+| C2 trim back to `/[.\s]+$/`, cap kept | 50 passed | 240 | SURVIVED, equivalent (see below) |
+| C4 title cap removed in `parseTitle` | 1 failed | 240 | KILLED |
+| C5 MAX_CHANNEL 200 to 100 | 1 failed | 240 | KILLED |
+| C5b MAX_CHANNEL 200 to 205 | 50 passed | 240 | SURVIVED, equivalent in purpose. 200 is a safety bound with no product meaning: any cap above real channel lengths (about 100) and small enough to bound the work does the same job. Not a finding. |
+| C6 end scan ignores dots | 1 failed (floor) | **239** | KILLED by the sample floor |
+| C7 end scan ignores spaces | 1 failed (floor) | **239** | KILLED by the sample floor |
+| C8 end scan removed | 1 failed (floor) | **239** | KILLED by the sample floor |
+
+No mutant pushed `kind` off 300/300. Song+artist dropped below 240 only under the trim mutants C6 to C8, and the floor test caught each of them. The real code is at 240.
+
+### The C2 survivor: acceptable
+
+I accept it as SURVIVED-equivalent:
+
+- **The output is identical.** `channelKey` first runs `.replace(/\s+/g, " ")`, so the only whitespace left is `" "`. The regex and the end scan then both strip the same maximal trailing run of `.`/`" "`.
+- **The cost is bounded.** The 200-char cap runs first, so the regex's worst case is about 200²/2 steps, well under a millisecond.
+- **The real control is tested.** The cap is what fixes M1, and C1, the old code (my reverse check above, where the timing test fails at 1497 ms) and C5 kill it. The end scan is defence in depth. A test that told the two apart could only be a timing test on input the cap already forbids.
+
+## Items
+
+### Blocking (tests only, no code change)
+
+1. **Pin the upper word-count boundary (kills N4b).** Add a case with a bracket of exactly 5 words that splits: `Hello by Adele (Live At Madison Square Garden)` gives Hello / Adele.
+2. **Pin the lower word-count boundary (kills N4c).** Add a case with a 4-word name that blocks the split: `Stand by Me (Florence And The Machine) Karaoke` gives `Stand by Me` / `Florence And The Machine`. This is the case that matters more, because real 4-word band names are common.
+3. **Pin the punctuation-only word (kills N7d).** Add `Hello by Adele (Acoustic - Piano)`, which gives Hello / Adele.
+
+Then re-run those three mutants and show each one KILLED, and update the PR body's "0 real gaps" line.
+
+### Non-blocking (for TICKET-145)
+
+- `Hello by Adele (feat.Drake)`, with no space after the dot, gives `Hello by Adele` / `feat.Drake`. `HAS_FEAT_RE` needs whitespace after the marker. This regex already existed and `artistCues` uses it too, so it is not a regression.
+- `Hello (By Request) Karaoke` is correctly pinned as `test.failing`.
+- optional: on a heavily loaded runner, the `< 200 ms` timing test has headroom. The real code takes about 1 ms, and C1 failed at 396 ms even at a host load of about 165.
+
+Triggered mutation pass: not strictly triggered (YouTube titles, not money, quantity or identity). It was run anyway, and the table is above.
+
+## Gates still open (TM)
+
+- `verify-green-local.sh` and the full jest suite: not run. Host load was about 165, so I ran only targeted jest. Both are owed before merge.
+- App Tester: the diff touches no UI. The `app-tester-waived` row is still a TM item.
+- Cyber: PASS-WITH-NOTES. M1 is resolved, as verified above. M2 (the sample in branch history) stays a squash-merge-only condition for the TM.
