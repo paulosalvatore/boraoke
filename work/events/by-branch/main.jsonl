@@ -95,3 +95,4 @@
 {"v": "1", "ts": "2026-10-14T15:17:59Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-101", "pr": 79, "event": "merged", "payload": {"pr": 79, "tickets": ["TICKET-101"]}}
 {"v": "1", "ts": "2026-10-14T15:18:00Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-101", "pr": 79, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 79}}
 {"v": "1", "ts": "2026-10-14T15:18:44Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "e67d431", "message_slug": "docs(status): PR #79 merged, live-verified"}}
+{"v": "1", "ts": "2026-10-15T01:38:18Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-120", "pr": 91, "event": "pr_opened", "payload": {"pr_number": 91, "title": "TICKET-120: claim-token cap counts devices on login and never evicts the owner", "draft": true}}

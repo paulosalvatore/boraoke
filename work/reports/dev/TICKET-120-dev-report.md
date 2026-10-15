@@ -6,6 +6,7 @@ Implemented and self-verified (jest, build, full e2e 127/127). Draft PR, no gate
 ## Context
 - Ticket: `work/tickets/TICKET-120-claim-token-cap-evicts-the-owner.md`, folded into TICKET-126 as its own PR. TICKET-126's ticket and plan live on PR A's branch (`ticket/126-search-limits`, PR #90): `work/tickets/TICKET-126-per-person-search-limit-and-single-flight.md`, `work/plans/TICKET-126-plan.md` §4.
 - Worktree: `/Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t120-claim-token-owner-pin`
+- PR: #91 https://github.com/paulosalvatore/boraoke/pull/91 (draft, base `main`).
 - Branch: `ticket/120-claim-token-owner-pin`, cut from `origin/main` @ `af080ca`. App/e2e port 3120.
 - Read first: the MANAGER-LOG auth-surface warnings (TICKET-104: every mechanism that wrote on this path recreated the lockout, three times; concurrency probe required).
 
