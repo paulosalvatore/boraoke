@@ -350,3 +350,51 @@ Tests:       13 skipped, 276 passed, 289 total
 (The 13 skips are the real-Redis suites without `REDIS_TEST_URL`. They passed 13/13 against real Redis above.) `npx tsc --noEmit -p .` exits 0.
 
 **Flake note, not reproduced.** The very first run of the 14-suite set, while another lane was loading the machine, showed `search-single-flight` with 2 failed (`Tests: 2 failed, 5 skipped, 243 passed`). The output was not kept, so the failing tests are unknown. After that, 6 sequential reruns, 2 cold-cache reruns, 4 concurrent ×5-suite runs and 10 concurrent single-suite runs all passed: about 22 runs, 0 failures. The likeliest candidate is the existing cross-instance probes under heavy CPU: a request that arrives after the leader has finished becomes a second leader and bills again. That exposure existed before this change. Flagged for the full-suite lane to watch.
+
+## 2026-10-15 — merge main (#89 squash), re-review blocking item, final-head verification
+
+**Status:** re-review blocking item fixed; full verification green on `4761cd4` (code head `ac0f0f1`). Waiting on Reviewer re-check and App Tester.
+
+### Merge of main (`5d95dd2`)
+#89 was squash-merged as `4d1940e`; this branch carried #89's commits unsquashed (last merged-in #89 tip `638d427`). Merged `origin/main` with no rebase or force-push. Resolution: index and tree set to main's exact tree, then the net TICKET-126 diff (`638d427..51ea5b3`) re-applied with a 3-way apply. One hunk conflicted: the response-shape doc comment in `app/api/search/route.ts`, where main added the legacy-cooldown line (#89 nit) and this branch added the `single-flight` and `personal-limit` lines. Kept all three. Check: `git diff --numstat 638d427 51ea5b3` and `git diff --numstat origin/main <merge>` are byte-identical (37 files, TICKET-126 only).
+
+### Reviewer blocking 1 (PR comment 6192701774): probe timeouts (`ac0f0f1`)
+- Every cross-instance `fire()` probe has an explicit `PROBE_TIMEOUT_MS = 30_000` (the 20-request, negative-control, upstream-failure and distinct-queries probes).
+- The 8-seed probe is now `it.each([1..8])`, one test per seed, so a timeout strands at most one probe's requests.
+- Optional nit taken: the in-process waiter clears its 6 s deadline timer once the leader settles.
+
+Before (head `4761cd4`'s parent tree, i.e. `5d95dd2`), `npx jest __tests__/search-single-flight.test.ts --testTimeout=1000`, load 103.93:
+```
+    ✓ 20 requests on 4 instances produce ONE billed call (350 ms)
+    ✕ holds across 8 different interleavings (seeds), not one lucky schedule (1028 ms)
+    ✕ NEGATIVE CONTROL: with the lock disabled the same probe bills every request (80 ms)
+    ✓ an upstream failure costs ONE call and every waiter degrades instead of retrying (185 ms)
+    ✓ different queries are not serialised behind each other (74 ms)
+    ...
+    thrown: "Exceeded timeout of 1000 ms for a test.
+    Expected: 20
+    Received: 21
+Tests:       2 failed, 16 passed, 18 total
+```
+After (`ac0f0f1`), same command, load 120.84, run twice, both:
+```
+    ✓ 20 requests on 4 instances produce ONE billed call (778 ms)
+    ✓ holds across different interleavings: seed 1 bills ONE call (253 ms)
+    ... seeds 2-8 ✓ ...
+    ✓ NEGATIVE CONTROL: with the lock disabled the same probe bills every request (231 ms)
+    ✓ an upstream failure costs ONE call and every waiter degrades instead of retrying (244 ms)
+    ✓ different queries are not serialised behind each other (272 ms)
+Tests:       25 passed, 25 total
+```
+(c) no primitive beneath existing assertions changed (the timer clear does not change what `waitForSearchFlight` returns; its timeout path is still covered by "a waiter whose leader never answers times out").
+(d) `triggered mutation pass: not triggered — no new parsing/normalisation function on a money/quantity/identity path`.
+
+### Final-head verification (`4761cd4`)
+The machine was not quiet (other tabs keep load at 100-250 on 10 cores); per the TM, ran once no other boraoke jest/playwright/next run was live, load recorded per run.
+- **Full jest** (load 149.00 → 145.06): `Test Suites: 70 passed, 70 total` / `Tests: 18 skipped, 1182 passed, 1200 total`.
+- **Real Redis** (own `redis:7-alpine` on :6446, `REDIS_TEST_URL=redis://127.0.0.1:6446 npx jest principal-lua search-budget-lua`, load 144.41 → 150.79): `Test Suites: 2 passed, 2 total` / `Tests: 13 passed, 13 total`. Container stopped after (0 left running).
+- **`npm run build`** (load 152.06 → 148.04): exit 0, `✓ Compiled successfully`, `bundle-es-target: OK — all 50 chunk(s) parse at ES2019.`, `css-target: OK — the TV surface uses nothing newer than Chrome 68`.
+- **e2e, one full run**, `PORT=3126 npx playwright test --workers=1` (load 139.54 → 102.11): canary 2/2 green, `134 passed (7.4m)`, 0 failed, 0 flaky. Includes the new `/neste aparelho ou nesta rede/` assertion.
+
+### Correction
+Earlier sections say `npx tsc --noEmit -p .` exits 0. In this worktree it does not: `@types/jest` is not a declared dependency (never in `package.json` history), so every `__tests__/` and `e2e/` file reports `Cannot find name 'jest'/'expect'` (3,908 errors). Zero errors are outside `__tests__/` and `e2e/`, and `next build` type-checks the app clean. Pre-existing and not from this diff (`package.json` is untouched here); worth a small ticket if the TM wants `tsc` over tests.
