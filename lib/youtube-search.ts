@@ -49,6 +49,8 @@ export class YouTubeSearchError extends Error {
   }
 }
 
+import { foldSearchKey } from "@/lib/search-prefix";
+
 const SEARCH_ENDPOINT = "https://www.googleapis.com/youtube/v3/search";
 const VIDEOS_ENDPOINT = "https://www.googleapis.com/youtube/v3/videos";
 
@@ -309,20 +311,39 @@ interface CacheEntry {
 }
 
 const CACHE_MAX = 100;
-const CACHE_TTL_MS = 60_000;
+/** L1 lifetime. Exported for the retention guard test (TICKET-136). */
+export const MEMORY_CACHE_TTL_MS = 60_000;
 const queryCache = new Map<string, CacheEntry>();
 
 /**
- * Normalized, region-scoped cache key: trim + lowercase + collapse internal
- * whitespace runs to a single space (TICKET-55 — "foo  bar" and "foo bar" are
- * the same search, so they must share one cross-instance cache entry).
+ * Normalized, region-scoped cache key.
+ *
+ * TICKET-135: the query part is `foldSearchKey()` (lib/search-prefix.ts), the
+ * same fold the karaoke index uses for matching: case, whitespace, accents,
+ * punctuation and NFC/NFD are folded, and a `karaoke`/`karaokê` token is moved
+ * to the end. So `maná` / `mana`, `Cerol na Mão` / `cerol na mao` and
+ * `karaoke evidencias` / `evidencias karaoke` / `evidências karaokê` each share
+ * one entry. Only the KEY is folded: Google still receives the patron's
+ * original `q`, so whichever variant misses first decides the page every
+ * variant is served for the TTL. That is only safe while every variant means
+ * the same thing to Google, which is why the search operators `-word`, `|` and
+ * `"` are kept in the fold rather than stripped as punctuation:
+ * `evidencias -karaoke` must not share `evidencias karaoke`'s page.
+ * Old keys are not migrated; they age out.
+ *
+ * A query with no letter, mark, digit, `|` or `"` at all (e.g. "???") folds to
+ * "", and would then share one key with every other such query. It keeps the
+ * pre-135 form (trim + lowercase + collapse whitespace) instead. The fallback
+ * is only used when the fold is empty, so a fallback string contains none of
+ * those characters, while every non-empty fold contains at least one of them.
+ * The two can therefore never produce the same key.
  *
  * THE MODE IS ALREADY IN THIS KEY, transitively, and must not be added again:
  * `augmentQuery()` (lib/search-query.ts) appends "karaoke" for sing mode
  * CLIENT-SIDE, BEFORE the request, so sing and vibe send different `q` and land
  * on different keys. The one case where they converge — a raw query that already
- * contains "karaoke" — is one where both modes send Google a byte-identical
- * query, so sharing the entry is correct and a separate mode component would
+ * contains "karaoke" — is one where both modes send Google the same words,
+ * so sharing the entry is correct and a separate mode component would
  * spend a second of the day's 100 searches re-answering the same question.
  * INVARIANT: this holds only while augmentation stays client-side and
  * pre-request. If it ever moves server-side, `q` stops encoding the mode and
@@ -330,20 +351,26 @@ const queryCache = new Map<string, CacheEntry>();
  *
  * TICKET-83: a `pageToken` is folded in so each Google page of the SAME query
  * gets its own entry — paging forward then back is served from cache and burns
- * ZERO quota. The first page (no token) produces the byte-identical key it did
- * before this ticket, so pre-existing cache entries are not orphaned.
+ * ZERO quota.
+ *
+ * Single-flight (lib/search-single-flight.ts) keys its lock and error marker
+ * on this key, so variants that share an entry also share one flight.
  */
 export function cacheKey(q: string, regionCode: string, pageToken = ""): string {
-  const normalized = q.trim().toLowerCase().replace(/\s+/g, " ");
-  // The page marker is UPPERCASE on purpose. `normalized` is lowercased, so an
-  // uppercase marker is unforgeable from the query side: a patron searching the
-  // literal text "P:CURSOR::evidencias" normalizes to "p:cursor::evidencias"
-  // and can never collide with a real deep-page key.
+  const folded = foldSearchKey(q);
+  const normalized = folded || q.trim().toLowerCase().replace(/\s+/g, " ");
+  // The page marker is UPPERCASE and sits OUTSIDE the folded part on purpose.
+  // `normalized` is lowercased and, since TICKET-135, contains no ":" at all
+  // (the fold turns punctuation into spaces; the no-letter fallback has no
+  // "P"), so the marker is unforgeable from the query side: a patron searching
+  // the literal text "P:CURSOR::evidencias" folds to "p cursor evidencias" and
+  // can never collide with a real deep-page key.
   //
-  // A lowercase `p:` marker WOULD collide — and exploitably so, since
-  // nextPageToken is handed to every client: a crafted first-page query could
-  // occupy the page-2 entry for a popular search and serve attacker-chosen
-  // videos to every venue for the 12h TTL. Do not "simplify" this to `p:`.
+  // A lowercase `p:` marker inside the folded text WOULD collide on the
+  // pre-135 key, and exploitably so, since nextPageToken is handed to every
+  // client: a crafted first-page query could occupy the page-2 entry for a
+  // popular search and serve attacker-chosen videos to every venue for the
+  // cache TTL. Do not "simplify" this to `p:`, and do not fold the marker.
   const page = pageToken ? `P:${pageToken}::` : "";
   return `${regionCode}::${page}${normalized}`;
 }
@@ -364,7 +391,7 @@ export function getCachedPage(key: string, now = Date.now()): SearchPage | null 
 
 /** Write a PAGE into the per-instance LRU. */
 export function setCachedPage(key: string, page: SearchPage, now = Date.now()): void {
-  queryCache.set(key, { page, expires: now + CACHE_TTL_MS });
+  queryCache.set(key, { page, expires: now + MEMORY_CACHE_TTL_MS });
   evictCacheOverflow();
 }
 

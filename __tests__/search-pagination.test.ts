@@ -156,7 +156,7 @@ describe("cacheKey is page-scoped (paging back is free)", () => {
     // nextPageToken is handed to every client, so an attacker knows the real
     // cursor. If the page marker were lowercase, searching the literal text
     // "p:<token>::<query>" would land on page 2's entry for a popular search and
-    // serve attacker-chosen videos to every venue for the 12h TTL. The marker is
+    // serve attacker-chosen videos to every venue for the cache TTL. The marker is
     // uppercase and the query is lowercased, so the two namespaces cannot meet.
     const realDeepKey = cacheKey("evidencias", "BR", "cursor2");
     const forged = cacheKey("P:cursor2::evidencias", "BR");

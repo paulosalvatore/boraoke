@@ -5,7 +5,7 @@
  * tests. The memory block proves the no-Upstash fallback is the pre-existing
  * in-memory LRU (60s TTL) and that Redis is never touched. The Redis block
  * mocks `@upstash/redis` so `Redis.fromEnv()` yields a fake with spyable
- * get/set, and asserts: prefixed keys, the 12h non-empty vs 10min empty TTLs,
+ * get/set, and asserts: prefixed keys, the 7-day non-empty vs 10min empty TTLs,
  * L1-before-Redis ordering, L1 warming on a Redis hit, corrupt-payload
  * rejection, and fail-open on every thrown Redis error.
  */
@@ -129,7 +129,7 @@ describe("search-cache (redis path)", () => {
     expect(getMock).toHaveBeenCalledWith("sc:BR::evidencias");
   });
 
-  it("set (non-empty): SET with the sc: key and the 12h px TTL", async () => {
+  it("set (non-empty): SET with the sc: key and the 7-day px TTL (TICKET-136)", async () => {
     const { sc, ys } = await freshModules();
     await sc.setCachedSearch(ys.cacheKey("evidencias", "BR"), RESULTS);
     expect(setMock).toHaveBeenCalledTimes(1);
@@ -140,7 +140,7 @@ describe("search-cache (redis path)", () => {
       { results: RESULTS },
       { px: SEARCH_CACHE_TTL_MS },
     );
-    expect(SEARCH_CACHE_TTL_MS).toBe(12 * 60 * 60 * 1000);
+    expect(SEARCH_CACHE_TTL_MS).toBe(7 * 24 * 60 * 60 * 1000);
   });
 
   it("set (empty): cached with the short 10min px TTL", async () => {
