@@ -1,0 +1,23 @@
+PASS __tests__/room-session-epoch-backend.test.ts
+PASS __tests__/room-cas-lua.integration.test.ts
+PASS __tests__/room-write-race.test.ts
+PASS __tests__/room-write-cas.test.ts
+PASS __tests__/rooms.test.ts
+PASS __tests__/api-rooms.test.ts
+PASS __tests__/host-api.test.ts
+PASS __tests__/host-auth.test.ts
+PASS __tests__/api-queue-rooms.test.ts
+PASS __tests__/room-create-throttle.test.ts
+PASS __tests__/host-stats.test.ts
+PASS __tests__/host-claim.test.ts
+PASS __tests__/room-memory.test.ts
+PASS __tests__/room-language.test.ts
+PASS __tests__/room-moderation.test.ts
+PASS __tests__/host-session-revocation.test.ts
+PASS __tests__/claim-token-owner-pin.test.ts
+
+Test Suites: 17 passed, 17 total
+Tests:       68 skipped, 328 passed, 396 total
+Snapshots:   0 total
+Time:        3.501 s
+Ran all test suites matching /__tests__\/api-queue-rooms.test.ts|__tests__\/api-rooms.test.ts|__tests__\/claim-token-owner-pin.test.ts|__tests__\/host-api.test.ts|__tests__\/host-auth.test.ts|__tests__\/host-claim.test.ts|__tests__\/host-session-revocation.test.ts|__tests__\/host-stats.test.ts|__tests__\/room-cas-lua.integration.test.ts|__tests__\/room-create-throttle.test.ts|__tests__\/room-language.test.ts|__tests__\/room-memory.test.ts|__tests__\/room-moderation.test.ts|__tests__\/room-session-epoch-backend.test.ts|__tests__\/room-write-cas.test.ts|__tests__\/room-write-race.test.ts|__tests__\/rooms.test.ts/i.
