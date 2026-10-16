@@ -497,8 +497,11 @@ export async function getRoomSessionEpoch(roomId: string): Promise<number> {
  *     drop the owner pin (Cyber R-1) once this returns.
  *   - Sustained contention can stop the rebind committing at all within
  *     `ROOM_WRITE_ATTEMPTS`. Then the sessions are still ended, the list keeps its
- *     old tag (dead, fail-closed), and the route mints the owner a fresh pinned
- *     claim token.
+ *     old tag (dead, fail-closed), and the route attempts to mint the owner a
+ *     fresh pinned claim token. That mint is best-effort: it is another room write
+ *     racing the same contention, and under a host-code login flood it can fail to
+ *     commit too. Then the device keeps only its session cookie and the room may
+ *     lose its owner pin (TICKET-158).
  *   - A concurrent login by someone who TYPED THE HOST CODE gets in, as it would a
  *     second later. This lever ends copied sessions and claim tokens; it does not
  *     change the host code (option C, rejected in the plan).
@@ -567,7 +570,10 @@ export async function revokeRoomHostSessions(
   }
   // The rebind never committed. The sessions ARE ended (the bump is atomic); the
   // claim list is still tagged with an older epoch, so it grants nothing. The route
-  // mints the caller a fresh OWNER claim token, so the pin survives this path too.
+  // attempts to mint the caller a fresh OWNER claim token. That is best-effort: it
+  // races the same contention, and under a host-code login flood it can fail to
+  // commit, leaving the device with only its session cookie and the room without
+  // its pin (TICKET-158).
   const last = (await getRoom(roomId)) ?? before;
   const epoch = Math.max(bumped, normaliseSessionEpoch(last.sessionEpoch));
   return { ok: true, epoch, keptClaimToken: false, room: { ...last, sessionEpoch: epoch } };
