@@ -1,0 +1,8 @@
+B searches: [{"q":"Imagination karaoke","live":false,"status":200,"body":"{\"results\":[{\"videoId\":\"RqhfKVI6g_g\",\"title\":\"Imagination   Just An Illusion\",\"channelTitle\":\"Atilaplaybacks\",\"duration\""}]
+B fakeLinkRow=0 selected=0
+C selected=1 pickerHasRick=true
+A picker realTitle=true placeholderRow=0 selected=1
+A queue entries for dQw4w9WgXcQ: [{"title":"Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)","channelTitle":"Rick Astley","duration":"3:34","nickname":"ProdVerify140"}]
+A patron view realTitle=true fallbackLabel=false
+OTHER responses: [{"path":"/api/video-meta","q":null,"live":false,"status":200,"body":"{\"title\":\"Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)\",\"channelTitle\":\"Rick Astley\"}"},{"path":"/api/video-meta","q":null,"live":false,"status":200,"body":"{\"title\":\"Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)\",\"channelTitle\":\"Rick Astley\"}"}]
+TOTAL live search calls: 0 (route-seen 0)

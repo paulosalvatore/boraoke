@@ -1,0 +1,9 @@
+room id: t118-prod-verify-throwaway-2
+B logged in with code: true
+moderation flag before: false
+A revoke toast: "Pronto. Os outros dispositivos foram desconectados e vão precisar do código do host para entrar de novo. Este continua conectado."
+CHECK2 B host action (moderation toggle) status: 401 (want 401)
+moderation flag after (fresh read): false (want false, unchanged)
+CHECK2 B reload: codeGate=1 dashboard=0
+CHECK3 A: session 200, dashboard=1, gate=0, revoke button=1
+search requests: 0

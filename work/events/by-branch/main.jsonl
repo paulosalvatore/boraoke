@@ -116,3 +116,9 @@
 {"v": "1", "ts": "2026-10-15T22:28:29Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-119", "pr": 90, "event": "merged", "payload": {"pr": 90, "tickets": ["TICKET-119"]}}
 {"v": "1", "ts": "2026-10-15T22:28:30Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-119", "pr": 90, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 90}}
 {"v": "1", "ts": "2026-10-15T22:30:44Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "fbf07b0", "message_slug": "chore(events): record TICKET-126/TICKET-119 merge (#90) and t126 worktre"}}
+{"v": "1", "ts": "2026-10-16T06:13:51Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-140", "pr": 95, "event": "merged", "payload": {"pr": 95, "tickets": ["TICKET-140"]}}
+{"v": "1", "ts": "2026-10-16T06:13:51Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-140", "pr": 95, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 95}}
+{"v": "1", "ts": "2026-10-16T06:25:34Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-118", "pr": 96, "event": "merged", "payload": {"pr": 96, "tickets": ["TICKET-118"]}}
+{"v": "1", "ts": "2026-10-16T06:25:34Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-118", "pr": 96, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 96}}
+{"v": "1", "ts": "2026-10-16T06:25:34Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-112", "pr": 96, "event": "merged", "payload": {"pr": 96, "tickets": ["TICKET-112"]}}
+{"v": "1", "ts": "2026-10-16T06:25:35Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-112", "pr": 96, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 96}}
