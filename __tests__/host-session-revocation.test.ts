@@ -52,6 +52,7 @@ import {
   setRoomMode,
   setRoomModeration,
   verifyRoomClaimToken,
+  ROOM_WRITE_ATTEMPTS,
 } from "@/lib/rooms";
 
 const VENUE_IP = "203.0.113.118";
@@ -252,14 +253,15 @@ describe("the acting device is never locked out by its own successful use of the
     expect(await verifySessionValue(v.room.id, issued)).toBe(true);
   });
 
-  it("when every rebind is clobbered, the owner is minted a fresh OWNER claim, so the pin survives", async () => {
+  it("when the rebind never commits, the owner is minted a fresh OWNER claim, so the pin survives", async () => {
     const v = await venue("Bar Rebind Perdido");
-    // Every rebind write (4 attempts) is silently lost: a stale writer wins each
-    // time. Later writes (the route's fresh mint) go through.
+    // Every rebind attempt loses its compare-and-set (TICKET-127: another write
+    // committed in each window), so the rebind gives up after ROOM_WRITE_ATTEMPTS.
+    // Later writes (the route's fresh mint) go through.
     const original = roomBackend.update.bind(roomBackend);
     let lost = 0;
     const spy = jest.spyOn(roomBackend, "update").mockImplementation(async (rec) => {
-      if (lost++ < 4) return;
+      if (lost++ < ROOM_WRITE_ATTEMPTS) return "conflict";
       return original(rec);
     });
     let res: Response;
@@ -268,6 +270,8 @@ describe("the acting device is never locked out by its own successful use of the
     } finally {
       spy.mockRestore();
     }
+    // All attempts were spent on the rebind, then exactly one write: the mint.
+    expect(lost).toBe(ROOM_WRITE_ATTEMPTS + 1);
     expect(res.status).toBe(200);
     const mintedClaim = setCookie(res, claimCookieName(v.room.id))!;
     const mintedSession = setCookie(res, hostCookieName(v.room.id))!;
@@ -482,8 +486,10 @@ describe("epoch 0 is the LEGACY derivation, so shipping this logs nobody out", (
     const rec = (await getRoom(room.id))!;
     expect(rec.sessionEpoch).toBeUndefined();
     expect(rec.claimTokenEpoch).toBeUndefined();
+    // `rev` is TICKET-127's compare-and-set revision, the one field a write adds;
+    // no epoch field is written, so the record keeps its pre-TICKET-118 shape.
     expect(Object.keys(rec).sort()).toEqual(
-      ["claimTokenHashes", "createdAt", "hostCodeHash", "id", "name", "settings"].sort(),
+      ["claimTokenHashes", "createdAt", "hostCodeHash", "id", "name", "rev", "settings"].sort(),
     );
   });
 
@@ -493,8 +499,14 @@ describe("epoch 0 is the LEGACY derivation, so shipping this logs nobody out", (
     const listAtEpoch0 = (await getRoom(room.id))!;
     await revokeRoomHostSessions(room.id, { presentedClaimToken: token });
     expect(await verifyRoomClaimToken(room.id, token)).toBe(true); // kept, rebound to epoch 1
-    // A stale writer puts the epoch-0 list back, tag and all.
-    await roomBackend.update(listAtEpoch0);
+    // A writer puts the epoch-0 list back, tag and all. Since TICKET-127 a stale
+    // snapshot is refused by compare-and-set (proven in room-write-race.test.ts), so
+    // this plants it with the CURRENT revision: the shape an old-code plain SET could
+    // still produce during a deploy. The epoch tag is the defence in depth for it.
+    expect(await roomBackend.update(listAtEpoch0)).toBe("conflict");
+    expect(
+      await roomBackend.update({ ...listAtEpoch0, rev: (await getRoom(room.id))!.rev }),
+    ).toBe("ok");
     expect(await getRoomSessionEpoch(room.id)).toBe(1); // the counter held
     expect(await verifyRoomClaimToken(room.id, token)).toBe(false); // the list is dead
     // ...and the next mint starts a fresh list at the live epoch rather than reviving it.
@@ -672,7 +684,7 @@ async function withStaleWriter<T>(
   const spy = jest.spyOn(roomBackend, "update").mockImplementationOnce(async (rec) => {
     reachedWrite(); // the writer has READ the record and is about to write it back
     await gate;
-    return original(rec);
+    return original(rec); // since TICKET-127 refused as a conflict; the writer's retry passes
   });
   try {
     const pending = writer();
@@ -756,7 +768,13 @@ describe("a stale write that lands AFTER the revoke cannot undo it (TICKET-127)"
  *      back works on a real host route.
  *   5. Nothing is wedged: a later host-code login works and its claim token is live.
  */
-const staleCtx = new AsyncLocalStorage<true>();
+/**
+ * Marks a stale writer. Only its FIRST write is held (the one computed from the
+ * pre-revoke read): since TICKET-127 that write is refused as a conflict and the
+ * writer retries from a fresh read, and the retry must go straight through or the
+ * harness would hold it forever.
+ */
+const staleCtx = new AsyncLocalStorage<{ firstWrite: boolean }>();
 
 function seeded(seed: number) {
   let a = seed >>> 0;
@@ -786,9 +804,13 @@ async function revokeAmidStaleWriters(
   const bump = roomBackend.bumpSessionEpoch.bind(roomBackend);
   const held: Array<() => void> = [];
   const running: Promise<unknown>[] = [];
-  const start = (w: Writer) => running.push(staleCtx.run(true, w));
+  const start = (w: Writer) => running.push(staleCtx.run({ firstWrite: true }, w));
   const updSpy = jest.spyOn(roomBackend, "update").mockImplementation(async (rec) => {
-    if (staleCtx.getStore()) await new Promise<void>((go) => held.push(go));
+    const stale = staleCtx.getStore();
+    if (stale?.firstWrite) {
+      stale.firstWrite = false;
+      await new Promise<void>((go) => held.push(go));
+    }
     return update(rec);
   });
   const bumpSpy = jest.spyOn(roomBackend, "bumpSessionEpoch").mockImplementation(async (id, floor) => {
