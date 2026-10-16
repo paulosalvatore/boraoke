@@ -123,3 +123,5 @@
 {"v": "1", "ts": "2026-10-16T06:25:34Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-112", "pr": 96, "event": "merged", "payload": {"pr": 96, "tickets": ["TICKET-112"]}}
 {"v": "1", "ts": "2026-10-16T06:25:35Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-112", "pr": 96, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 96}}
 {"v": "1", "ts": "2026-10-16T06:27:54Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "f8b90b8", "message_slug": "docs(status): #95/#96 merged and live-verified; prod-verify evidence; ev"}}
+{"v": "1", "ts": "2026-10-16T07:42:30Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-127", "pr": 98, "event": "merged", "payload": {"pr": 98, "tickets": ["TICKET-127"]}}
+{"v": "1", "ts": "2026-10-16T07:42:30Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-127", "pr": 98, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 98}}
