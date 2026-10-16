@@ -502,9 +502,23 @@ test.describe("sign out other devices (TICKET-118) and this-device logout (TICKE
       await expect(staffPage.getByTestId("admin-revoke-button")).toHaveCount(0);
       await expect(page.getByTestId("admin-revoke-button")).toBeVisible();
 
+      // U1: the OWNER device's logout confirm warns that signing out here loses
+      // the "sign out other devices" option; a staff device's confirm does not,
+      // because it never had that option.
+      await page.getByTestId("admin-logout-button").click();
+      const ownerConfirm = page.getByTestId("admin-logout-confirm");
+      await expect(ownerConfirm).toContainText("Sair deste dispositivo?");
+      await expect(page.getByTestId("admin-logout-owner-warning")).toHaveText(
+        "Este é o dispositivo que criou a sala. Se você sair aqui, perde a opção de desconectar outros dispositivos, mesmo depois de entrar de novo com o código do host.",
+      );
+      await ownerConfirm.getByRole("button", { name: /^cancelar$/i }).click();
+      await expect(ownerConfirm).toHaveCount(0);
+
       await staffPage.getByTestId("admin-logout-button").click();
       const confirm = staffPage.getByTestId("admin-logout-confirm");
       await expect(confirm).toContainText("Sair deste dispositivo?");
+      await expect(staffPage.getByTestId("admin-logout-owner-warning")).toHaveCount(0);
+      await expect(confirm).not.toContainText("criou a sala");
       await confirm.getByRole("button", { name: /^confirmar$/i }).click();
       await expect(gateCodeInput(staffPage)).toBeVisible();
       // The staff device really is out, and a reload does not auto-claim it back.

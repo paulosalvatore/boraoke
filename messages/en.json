@@ -167,6 +167,7 @@
     "cancel": "Cancel",
     "signOut": "Sign out",
     "signOutQuestion": "Sign out of this device? Other devices stay signed in. To get back in on this device, you'll need the host code.",
+    "signOutOwnerWarning": "This is the device that created the room. If you sign out here, you lose the option to sign out other devices, even after you get back in with the host code.",
     "signOutAll": "Sign out other devices",
     "signOutAllWarning": "This signs out every other phone, tablet or computer signed in to this room's host panel, including any you don't recognise. This device stays signed in. The others will need the host code to get back in.",
     "signOutAllConfirm": "Sign them out",

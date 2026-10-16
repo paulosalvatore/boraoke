@@ -167,6 +167,7 @@
     "cancel": "Cancelar",
     "signOut": "Sair",
     "signOutQuestion": "Sair deste dispositivo? Os outros dispositivos continuam conectados. Para entrar de novo neste dispositivo, você vai precisar do código do host.",
+    "signOutOwnerWarning": "Este é o dispositivo que criou a sala. Se você sair aqui, perde a opção de desconectar outros dispositivos, mesmo depois de entrar de novo com o código do host.",
     "signOutAll": "Desconectar outros dispositivos",
     "signOutAllWarning": "Isso desconecta todos os outros celulares, tablets ou computadores conectados ao painel desta sala, inclusive algum que você não reconheça. Este dispositivo continua conectado. Os outros vão precisar do código do host para entrar de novo.",
     "signOutAllConfirm": "Desconectar",

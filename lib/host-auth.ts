@@ -394,10 +394,12 @@ export async function attachClaimCookie(
  * re-sending that same value with a fresh `Max-Age`. No new token, no store
  * write.
  *
- * PRECONDITION: callers must have verified the presented token first. Both call
- * sites do (`POST /api/host/claim` after `verifyClaim`, and `GET /api/host/session`
- * inside an `if (await verifyClaim(...))`), so this re-sends a known-good value
- * and can never mint authority for a caller that did not prove it.
+ * PRECONDITION: callers must have verified the presented token first. Every call
+ * site does: `POST /api/host/claim` after `claimSession` found the token live,
+ * and `GET /api/host/session`, `POST /api/host/login` and
+ * `POST /api/host/revoke-sessions` after `claimStatus` reported it live. So this
+ * re-sends a known-good value and can never mint authority for a caller that
+ * did not prove it.
  *
  * This is deliberately the SAME shape as the TICKET-76 rolling host session
  * above, which likewise re-sets the very cookie it just verified rather than

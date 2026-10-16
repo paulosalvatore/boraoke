@@ -570,7 +570,18 @@ export default function AdminRoom({
 
       {confirmingLogout && (
         <div className={styles.revokePanel} data-testid="admin-logout-confirm" role="alert">
-          <p className={styles.revokeWarning}>{t("signOutQuestion")}</p>
+          <p className={styles.revokeWarning}>
+            {t("signOutQuestion")}
+            {/* Owner's device only: signing out here drops the owner pin, and
+                with it the "sign out other devices" option. A code login does
+                not bring it back, so the owner must hear it before confirming. */}
+            {isOwner && (
+              <>
+                {" "}
+                <strong data-testid="admin-logout-owner-warning">{t("signOutOwnerWarning")}</strong>
+              </>
+            )}
+          </p>
           <span className={styles.confirm}>
             <button
               type="button"
