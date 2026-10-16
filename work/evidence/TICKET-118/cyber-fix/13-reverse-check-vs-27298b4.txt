@@ -1,0 +1,283 @@
+# Reverse-check: the NEW test files run against the PRE-FIX implementation 27298b4 (throwaway detached worktree)
+# 2026-10-15T22:43:33Z
+FAIL __tests__/room-session-epoch-backend.test.ts
+  ● UpstashRoomBackend session epoch › a retention ON->OFF flip: the next bump makes the counter permanent like its record
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      167 |     fake.ttl.delete(roomKey("bar")); // a plain SET dropped the record's TTL (measured -1 in Redis)
+      168 |     await be.bumpSessionEpoch("bar", 1);
+    > 169 |     expect(fake.ttl.has(roomSessionEpochKey("bar"))).toBe(false);
+          |                                                      ^
+      170 |   });
+      171 | });
+      172 |
+
+      at Object.<anonymous> (__tests__/room-session-epoch-backend.test.ts:169:54)
+
+FAIL __tests__/host-session-revocation.test.ts
+  ● the acting device is never locked out by its own successful use of the lever › when every rebind is clobbered, the owner is minted a fresh OWNER claim, so the pin survives
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "8d85f5824a1fe9749ab5b4ceb6733a69643c1e3c77d969ea3e585d516fc8b87b"
+    Received: undefined
+
+      277 |     // The fresh token is the owner's, so this device can still use the lever.
+      278 |     const room = (await getRoom(v.room.id))!;
+    > 279 |     expect(room.ownerClaimTokenHash).toBe(
+          |                                      ^
+      280 |       createHmac("sha256", "boraoke-claim-token-v1").update(mintedClaim).digest("hex"),
+      281 |     );
+      282 |   });
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:279:38)
+
+  ● the acting device is never locked out by its own successful use of the lever › CONCURRENT revokes from the acting device never leave it without a credential
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 9
+    + Received  + 9
+
+      Array [
+        200,
+        200,
+        200,
+    -   429,
+    -   429,
+    -   429,
+    -   429,
+    -   429,
+    -   429,
+    -   429,
+    -   429,
+    -   429,
+    +   200,
+    +   200,
+    +   200,
+    +   200,
+    +   200,
+    +   200,
+    +   200,
+    +   200,
+    +   200,
+      ]
+
+      314 |     // 429 with no bump. A 200 still means its atomic bump happened.
+      315 |     const statuses = results.map((r) => r.status).sort();
+    > 316 |     expect(statuses).toEqual([200, 200, 200, ...Array(9).fill(429)]);
+          |                      ^
+      317 |     expect(await getRoomSessionEpoch(v.room.id)).toBe(3);
+      318 |
+      319 |     // The device is still in, and the pre-revoke session is still dead.
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:316:22)
+
+  ● revokeRoomHostSessions — the helper's own contract › an INVENTED token is refused and nothing changes (not written into the record on its own say-so)
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 3
+
+      Object {
+    -   "ok": false,
+    -   "reason": "not-owner",
+    +   "epoch": 1,
+    +   "keptClaimToken": false,
+    +   "ok": true,
+      }
+
+      603 |     const before = await getRoom(room.id);
+      604 |     const res = await revokeRoomHostSessions(room.id, { presentedClaimToken: "nunca-foi-emitido" });
+    > 605 |     expect(res).toEqual({ ok: false, reason: "not-owner" });
+          |                 ^
+      606 |     expect(await getRoom(room.id)).toEqual(before);
+      607 |     expect(await verifyRoomClaimToken(room.id, "nunca-foi-emitido")).toBe(false);
+      608 |   });
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:605:17)
+
+  ● revokeRoomHostSessions — the helper's own contract › a LIVE but non-owner (staff) token is refused: no bump, nobody signed out (S3)
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 3
+
+      Object {
+    -   "ok": false,
+    -   "reason": "not-owner",
+    +   "epoch": 1,
+    +   "keptClaimToken": true,
+    +   "ok": true,
+      }
+
+      612 |     const owner = (await issueRoomClaimToken(room.id, { owner: true }))!;
+      613 |     const staff = (await issueRoomClaimToken(room.id))!;
+    > 614 |     expect(await revokeRoomHostSessions(room.id, { presentedClaimToken: staff })).toEqual({
+          |                                                                                   ^
+      615 |       ok: false,
+      616 |       reason: "not-owner",
+      617 |     });
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:614:83)
+
+  ● revokeRoomHostSessions — the helper's own contract › an owner token in a list whose epoch tag is DEAD is refused (S5)
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 3
+
+      Object {
+    -   "ok": false,
+    -   "reason": "not-owner",
+    +   "epoch": 2,
+    +   "keptClaimToken": true,
+    +   "ok": true,
+      }
+
+      628 |     await roomBackend.bumpSessionEpoch(room.id, 0);
+      629 |     expect(await verifyRoomClaimToken(room.id, owner)).toBe(false);
+    > 630 |     expect(await revokeRoomHostSessions(room.id, { presentedClaimToken: owner })).toEqual({
+          |                                                                                   ^
+      631 |       ok: false,
+      632 |       reason: "not-owner",
+      633 |     });
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:630:83)
+
+  ● Cyber S1 — a claim verified before a revoke cannot mint a session that survives it › a claim request straddling the bump gets a session that is ALREADY dead
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      925 |     // THE PROPERTY: whatever the straddling claim was handed, it does not verify
+      926 |     // and cannot act. (Pre-fix: verifies true, moderation 200.)
+    > 927 |     expect(await verifySessionValue(v.room.id, minted)).toBe(false);
+          |                                                         ^
+      928 |     expect((await moderationRoute(moderationReq(v.room.id, minted))).status).toBe(401);
+      929 |     // ...so it cannot counter-revoke either, and the owner stays in.
+      930 |     expect((await revokeRoute(revokeReq(v.room.id, { session: minted }))).status).toBe(401);
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:927:57)
+
+  ● Cyber S1 — a claim verified before a revoke cannot mint a session that survives it › the claim route makes ONE store read for a valid claim (verify and derive share it)
+
+    expect(jest.fn()).toHaveBeenCalledTimes(expected)
+
+    Expected number of calls: 1
+    Received number of calls: 2
+
+      941 |       const res = await claimRoute(claimReq(v.room.id, v.token));
+      942 |       expect(res.status).toBe(200);
+    > 943 |       expect(spy).toHaveBeenCalledTimes(1);
+          |                   ^
+      944 |     } finally {
+      945 |       spy.mockRestore();
+      946 |     }
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:943:19)
+
+  ● Cyber S2 — a concurrent login between bump and rebind costs nobody their credential › the acting device can still re-claim after a LOST response, and the concurrent login stays in
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      978 |     // The response is LOST: the device holds only its pre-revoke cookies.
+      979 |     expect(await verifySessionValue(v.room.id, v.session)).toBe(false); // old session is dead
+    > 980 |     expect(await verifyRoomClaimToken(v.room.id, v.token)).toBe(true); // pre-fix: false
+          |                                                            ^
+      981 |     const reclaim = await claimRoute(claimReq(v.room.id, v.token));
+      982 |     expect(reclaim.status).toBe(200); // pre-fix: 401, locked out
+      983 |     expect(
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:980:60)
+
+  ● Cyber S3 — only the owner's device can sign out other devices › a STAFF device (session + its own live claim) is refused: nothing changes, the owner stays in
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 403
+    Received: 200
+
+      1010 |     const staffClaim = setCookie(staff, claimCookieName(v.room.id))!;
+      1011 |     const res = await revokeRoute(revokeReq(v.room.id, { session: staffSession, claimToken: staffClaim }));
+    > 1012 |     expect(res.status).toBe(403);
+           |                        ^
+      1013 |     expect(await res.json()).toMatchObject({ ownerOnly: true });
+      1014 |     expect(res.headers.getSetCookie?.() ?? []).toEqual([]);
+      1015 |     expect(await getRoomSessionEpoch(v.room.id)).toBe(0);
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:1012:24)
+
+  ● Cyber S3 — only the owner's device can sign out other devices › a STOLEN session alone can no longer sign the owner out, and cannot loop it
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 403
+    Received: 200
+
+      1023 |     const stolen = v.session; // a copy of the owner's own session value, no claim cookie
+      1024 |     for (let i = 0; i < 5; i++) {
+    > 1025 |       expect((await revokeRoute(revokeReq(v.room.id, { session: stolen }))).status).toBe(403);
+           |                                                                                     ^
+      1026 |     }
+      1027 |     expect(await getRoomSessionEpoch(v.room.id)).toBe(0);
+      1028 |     // Refusals were never charged to the throttle: the owner's own use still works,
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:1025:85)
+
+  ● Cyber S3 — only the owner's device can sign out other devices › is throttled per room: the 4th use inside 10 minutes is a 429 that bumps nothing
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 429
+    Received: 200
+
+      1050 |     }
+      1051 |     const fourth = await revokeRoute(revokeReq(v.room.id, { session, claimToken: v.token }));
+    > 1052 |     expect(fourth.status).toBe(429);
+           |                           ^
+      1053 |     expect(await fourth.json()).toMatchObject({ throttled: true });
+      1054 |     expect(await getRoomSessionEpoch(v.room.id)).toBe(3);
+      1055 |     expect(await verifySessionValue(v.room.id, session)).toBe(true); // still signed in
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:1052:27)
+
+  ● Cyber S3 — only the owner's device can sign out other devices › the server tells the admin page which device is the owner's (session probe, claim, login)
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 0
+
+      Object {
+        "authed": true,
+    -   "owner": true,
+      }
+
+      1062 |     const v = await venue("Bar Dono 118");
+      1063 |     const staffClaim = (await issueRoomClaimToken(v.room.id))!;
+    > 1064 |     expect(await (await sessionProbe(probeReq(v.room.id, v.session, v.token))).json()).toMatchObject({
+           |                                                                                        ^
+      1065 |       authed: true,
+      1066 |       owner: true,
+      1067 |     });
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:1064:88)
+
+Test Suites: 2 failed, 2 total
+Tests:       13 failed, 43 passed, 56 total
+Snapshots:   0 total
+Time:        6.127 s, estimated 8 s
+Ran all test suites matching /__tests__\/host-session-revocation.test.ts|__tests__\/room-session-epoch-backend.test.ts/i.

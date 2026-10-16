@@ -1,0 +1,33 @@
+MUTATION: RC3 logout clears every device (pre-TICKET-112)
+FILE: lib/rooms.ts
+--- replaced:
+  const rest = room.claimTokenHashes.filter((h) => h !== hash);
+--- with:
+  const rest: string[] = []; // RC3: pre-TICKET-112 logout clears every device
+--- jest __tests__/host-session-revocation.test.ts __tests__/host-claim.test.ts __tests__/claim-token-owner-pin.test.ts __tests__/room-session-epoch-backend.test.ts (exit 1)
+Test Suites: 2 failed, 2 passed, 4 total
+Tests:       3 failed, 88 passed, 91 total
+--- failing tests:
+● the revoke route is AUTHENTICATED — the same two refusals as logout › a plain LOGOUT signs out only this device: no epoch bump, the others stay in (TICKET-112)
+● the owner pointer is bookkeeping, never a credential › the OWNER's own logout clears its hash AND the pointer; the next login is not re-pinned
+● a STAFF logout signs out only the staff device (TICKET-112) › the owner's credential and the pin survive
+
+--- first failure, verbatim:
+  ● the revoke route is AUTHENTICATED — the same two refusals as logout › a plain LOGOUT signs out only this device: no epoch bump, the others stay in (TICKET-112)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      435 |     expect(await getRoomSessionEpoch(v.room.id)).toBe(0);
+      436 |     expect(await verifySessionValue(v.room.id, phone)).toBe(true);
+    > 437 |     expect(await verifyRoomClaimToken(v.room.id, ownersClaim)).toBe(true);
+          |                                                                ^
+      438 |   });
+      439 | });
+      440 |
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:437:64)
+
+FAIL __tests__/claim-token-owner-pin.test.ts

@@ -1,0 +1,36 @@
+MUTATION: RC5 claim-list epoch tag ignored
+FILE: lib/rooms.ts
+--- replaced:
+  return normaliseSessionEpoch(room.claimTokenEpoch) === normaliseSessionEpoch(room.sessionEpoch);
+
+--- with:
+  return true || normaliseSessionEpoch(room.claimTokenEpoch) === normaliseSessionEpoch(room.sessionEpoch); // RC5
+
+--- jest __tests__/host-session-revocation.test.ts __tests__/host-claim.test.ts __tests__/claim-token-owner-pin.test.ts __tests__/room-session-epoch-backend.test.ts (exit 1)
+Test Suites: 1 failed, 3 passed, 4 total
+Tests:       4 failed, 87 passed, 91 total
+--- failing tests:
+● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule)
+● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent LOGIN that read before the revoke and wrote after it
+● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent SETTINGS change (staff flips the mode) that read before the revoke
+● randomized stale-writer probe around a revoke (TICKET-127 x TICKET-118) › holds every invariant across 120 seeded interleavings
+
+--- first failure, verbatim:
+  ● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      474 |     await roomBackend.update(listAtEpoch0);
+      475 |     expect(await getRoomSessionEpoch(room.id)).toBe(1); // the counter held
+    > 476 |     expect(await verifyRoomClaimToken(room.id, token)).toBe(false); // the list is dead
+          |                                                        ^
+      477 |     // ...and the next mint starts a fresh list at the live epoch rather than reviving it.
+      478 |     const fresh = (await issueRoomClaimToken(room.id))!;
+      479 |     expect(await verifyRoomClaimToken(room.id, fresh)).toBe(true);
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:476:56)
+
+  ● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent LOGIN that read before the revoke and wrote after it

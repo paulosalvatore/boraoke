@@ -203,6 +203,32 @@ export async function registerFailure(
   }
 }
 
+/**
+ * `registerFailure` that also returns the post-increment count, from the same
+ * atomic step (the Redis script already returns it; the memory path is
+ * synchronous). For a caller that must decide on ITS OWN increment, so a burst of
+ * concurrent requests cannot all pass a separate check before any is counted.
+ * Returns null when the count is unknown (Redis error): fail-open, like the rest
+ * of this module.
+ */
+export async function registerFailureCount(
+  key: string,
+  opts: CounterOptions,
+): Promise<number | null> {
+  const redis = getRedis();
+  if (!redis) {
+    memRegisterFailure(key, opts);
+    return buckets.get(key)?.count ?? null;
+  }
+  try {
+    const ttlMs = Math.max(1, Math.round(opts.windowMs));
+    const n = Number(await redis.eval(REGISTER_FAILURE_SCRIPT, [redisKey(key)], [ttlMs]));
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Clear the counter for `key` (e.g. a successful login). */
 export async function resetKey(key: string): Promise<void> {
   const redis = getRedis();

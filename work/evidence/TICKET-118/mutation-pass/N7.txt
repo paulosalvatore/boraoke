@@ -1,0 +1,86 @@
+MUTATION: N7 normaliseSessionEpoch
+FILE: lib/rooms.ts
+--- replaced:
+  if (!Number.isInteger(n)) return 0;
+--- with:
+
+--- jest __tests__/host-session-revocation.test.ts (exit 1)
+    ✕ the OLD session value is dead — on a real host route, not just a helper (12 ms)
+    ✕ the old session can no longer ROLL ITSELF a fresh cookie — the re-gate's exact finding (5 ms)
+    ✕ a session copied by a SECOND device dies while the acting device keeps working (3 ms)
+    ✕ a stolen CLAIM token cannot mint a replacement session either
+    ✕ successive revokes keep killing — epoch N, N+1 and N+2 sessions are all dead at N+3 (1 ms)
+    ✕ its claim token SURVIVES, so it needs nothing from the response to get back in (1 ms)
+    ✕ a device holding a session but NO claim token is minted one, so it is not left worse off (6 ms)
+    ✕ re-entering the host code after a revoke still works — the other devices' way back (193 ms)
+    ✕ CONCURRENT revokes from the acting device never leave it without a credential (8 ms)
+    ✕ a revoke racing an unrelated room write still leaves the device with a working credential (1 ms)
+    ✕ CONCURRENT authenticated probes during a revoke never lock the device out (17 ms)
+    ✕ a cookie-less POST changes NOTHING — no bump, no revocation, no cookie (4 ms)
+    ✕ a WRONG session value cannot revoke (2 ms)
+    ✕ a valid session presented from ANOTHER SITE cannot revoke (1 ms)
+    ✕ a valid session with a FOREIGN Origin cannot revoke either (4 ms)
+    ✕ another room's valid session cannot revoke THIS room (1 ms)
+    ✕ a plain LOGOUT signs out only this device: no epoch bump, the others stay in (TICKET-112) (4 ms)
+    ✕ a record with no sessionEpoch derives the byte-identical pre-TICKET-118 value (1 ms)
+    ✕ a login on an untouched room writes no new field — the record keeps its pre-TICKET-118 shape
+    ✕ a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule) (1 ms)
+    ✕ a hand-written record at a later epoch invalidates every epoch-0 value
+    ✕ reads absent and un-interpretable input as 0 — the legacy derivation
+    ✕ bumps by exactly one and reports the new epoch (4 ms)
+    ✕ keeps ONLY the presented token, and only when it is genuinely live (16 ms)
+    ✕ an INVENTED token is not written into the record on its own say-so (24 ms)
+    ✕ a concurrent LOGIN that read before the revoke and wrote after it (9 ms)
+    ✕ a concurrent SETTINGS change (staff flips the mode) that read before the revoke (8 ms)
+    ✕ holds every invariant across 120 seeded interleavings (131 ms)
+Test Suites: 1 failed, 1 total
+Tests:       28 failed, 9 passed, 37 total
+--- failing tests:
+● an ALREADY-MINTED session stops working after the owner signs out all devices › the OLD session value is dead — on a real host route, not just a helper
+● an ALREADY-MINTED session stops working after the owner signs out all devices › the old session can no longer ROLL ITSELF a fresh cookie — the re-gate's exact finding
+● an ALREADY-MINTED session stops working after the owner signs out all devices › a session copied by a SECOND device dies while the acting device keeps working
+● an ALREADY-MINTED session stops working after the owner signs out all devices › a stolen CLAIM token cannot mint a replacement session either
+● an ALREADY-MINTED session stops working after the owner signs out all devices › successive revokes keep killing — epoch N, N+1 and N+2 sessions are all dead at N+3
+● the acting device is never locked out by its own successful use of the lever › its claim token SURVIVES, so it needs nothing from the response to get back in
+● the acting device is never locked out by its own successful use of the lever › a device holding a session but NO claim token is minted one, so it is not left worse off
+● the acting device is never locked out by its own successful use of the lever › re-entering the host code after a revoke still works — the other devices' way back
+● the acting device is never locked out by its own successful use of the lever › CONCURRENT revokes from the acting device never leave it without a credential
+● the acting device is never locked out by its own successful use of the lever › a revoke racing an unrelated room write still leaves the device with a working credential
+● the acting device is never locked out by its own successful use of the lever › CONCURRENT authenticated probes during a revoke never lock the device out
+● the revoke route is AUTHENTICATED — the same two refusals as logout › a cookie-less POST changes NOTHING — no bump, no revocation, no cookie
+● the revoke route is AUTHENTICATED — the same two refusals as logout › a WRONG session value cannot revoke
+● the revoke route is AUTHENTICATED — the same two refusals as logout › a valid session presented from ANOTHER SITE cannot revoke
+● the revoke route is AUTHENTICATED — the same two refusals as logout › a valid session with a FOREIGN Origin cannot revoke either
+● the revoke route is AUTHENTICATED — the same two refusals as logout › another room's valid session cannot revoke THIS room
+● the revoke route is AUTHENTICATED — the same two refusals as logout › a plain LOGOUT signs out only this device: no epoch bump, the others stay in (TICKET-112)
+● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a record with no sessionEpoch derives the byte-identical pre-TICKET-118 value
+● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a login on an untouched room writes no new field — the record keeps its pre-TICKET-118 shape
+● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a claim list written for an EARLIER epoch grants nothing (the stale-list fail-closed rule)
+● epoch 0 is the LEGACY derivation, so shipping this logs nobody out › a hand-written record at a later epoch invalidates every epoch-0 value
+● normaliseSessionEpoch › reads absent and un-interpretable input as 0 — the legacy derivation
+● revokeRoomHostSessions — the helper's own contract › bumps by exactly one and reports the new epoch
+● revokeRoomHostSessions — the helper's own contract › keeps ONLY the presented token, and only when it is genuinely live
+● revokeRoomHostSessions — the helper's own contract › an INVENTED token is not written into the record on its own say-so
+● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent LOGIN that read before the revoke and wrote after it
+● a stale write that lands AFTER the revoke cannot undo it (TICKET-127) › a concurrent SETTINGS change (staff flips the mode) that read before the revoke
+● randomized stale-writer probe around a revoke (TICKET-127 x TICKET-118) › holds every invariant across 120 seeded interleavings
+
+--- first failure, verbatim:
+  ● an ALREADY-MINTED session stops working after the owner signs out all devices › the OLD session value is dead — on a real host route, not just a helper
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      151 |
+      152 |     // THE ASSERTION THIS TICKET EXISTS FOR.
+    > 153 |     expect(await verifySessionValue(v.room.id, stolen)).toBe(false);
+          |                                                         ^
+      154 |     expect((await moderationRoute(moderationReq(v.room.id, stolen))).status).toBe(401);
+      155 |   });
+      156 |
+
+      at Object.<anonymous> (__tests__/host-session-revocation.test.ts:153:57)
+
+  ● an ALREADY-MINTED session stops working after the owner signs out all devices › the old session can no longer ROLL ITSELF a fresh cookie — the re-gate's exact finding

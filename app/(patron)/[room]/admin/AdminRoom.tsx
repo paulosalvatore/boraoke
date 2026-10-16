@@ -92,6 +92,23 @@ export default function AdminRoom({
   // tablet has a way to end a session deliberately.
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  // TICKET-118 (sign out other devices). A SEPARATE action from the logout
+  // above, and deliberately so: logout signs out only this device (TICKET-112),
+  // while this ends every other device's access, including a session somebody
+  // copied off a device. Until now no such action existed: a session, once
+  // minted, could never be revoked. This device STAYS signed in, which is what
+  // makes it safe to use mid-service.
+  const [confirmingRevoke, setConfirmingRevoke] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [revokeMsg, setRevokeMsg] = useState<
+    "done" | "error" | "ownerOnly" | "throttled" | null
+  >(null);
+  // Owner-only (TICKET-118 S3): the route refuses "sign out other devices" for any
+  // device that is not the room owner's, so the button is shown only where it
+  // works. Reported by the server on every auth success (session probe, claim,
+  // login) from the claim cookie this device holds; it is a display hint, never a
+  // credential — the route re-checks it against the store.
+  const [isOwner, setIsOwner] = useState(false);
 
   const roomQuery = `?room=${encodeURIComponent(roomId)}`;
 
@@ -118,13 +135,19 @@ export default function AdminRoom({
       const data = await res.json().catch(() => ({}));
       setConfigured(data.configured !== false);
       if (res.ok && data.authed) {
+        setIsOwner(data.owner === true);
         setAuth("authed");
         return;
       }
       const claim = await fetch(`/api/host/claim${roomQuery}`, { method: "POST" })
-        .then((r) => ({ ok: r.ok, status: r.status }))
-        .catch(() => ({ ok: false, status: 0 }));
+        .then(async (r) => ({
+          ok: r.ok,
+          status: r.status,
+          owner: r.ok ? (await r.json().catch(() => ({}))).owner === true : false,
+        }))
+        .catch(() => ({ ok: false, status: 0, owner: false }));
       setClaimThrottled(claim.status === 429);
+      setIsOwner(claim.owner);
       setAuth(claim.ok ? "authed" : "gate");
     } catch {
       setAuth("gate");
@@ -211,6 +234,8 @@ export default function AdminRoom({
         body: JSON.stringify({ token }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setIsOwner(data.owner === true);
         setToken("");
         setAuth("authed");
       } else if (res.status === 503) {
@@ -242,6 +267,54 @@ export default function AdminRoom({
     } finally {
       setLoggingOut(false);
       setConfirmingLogout(false);
+    }
+  }
+
+  /**
+   * TICKET-118: end every outstanding host session for this room, and every
+   * admin-claim credential except this device's.
+   *
+   * This device stays signed in on purpose — the route keeps the claim token this
+   * request presents and re-issues a session cookie derived from the new epoch,
+   * so `auth` is deliberately NOT flipped to "gate". Signing the owner out as a
+   * side effect of a security action would drop them onto the shown-once host
+   * code, which is the dead end TICKET-104 exists to remove and exactly the
+   * lockout this surface has recreated three times.
+   *
+   * On a non-200 (or no response) we say so rather than reporting success:
+   * telling a venue owner the other devices are out when they may not be is the
+   * worst failure this screen can have. A 200 means the epoch bump happened, and
+   * that cannot be undone by a concurrent write (see `revokeRoomHostSessions`).
+   */
+  async function handleRevokeSessions() {
+    setRevoking(true);
+    setRevokeMsg(null);
+    try {
+      const res = await fetch(`/api/host/revoke-sessions${roomQuery}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.signedOut) {
+        // The revoke landed but this device could not be kept in (host controls
+        // locked). Say so by showing the gate rather than "still signed in".
+        setAuth("gate");
+      } else if (res.ok) {
+        setRevokeMsg("done");
+      } else if (res.status === 403) {
+        // Not the owner's device after all (the hint was stale): hide the button.
+        setIsOwner(false);
+        setRevokeMsg("ownerOnly");
+      } else if (res.status === 429) {
+        setRevokeMsg("throttled");
+      } else {
+        setRevokeMsg("error");
+        // A 401 means this device's own session ended (another device acted):
+        // re-probe so the screen reflects that instead of a stale dashboard.
+        if (res.status === 401) checkSession();
+      }
+    } catch {
+      setRevokeMsg("error");
+    } finally {
+      setRevoking(false);
+      setConfirmingRevoke(false);
     }
   }
 
@@ -456,16 +529,61 @@ export default function AdminRoom({
           </a>
         )}
         {/* TICKET-77: host logout. Visually secondary (muted text button, not
-            a filled pill like the links above) — this is a meta-action, not
-            something a host should fat-finger mid-service. Confirm-before-act
-            (same two-step pattern as "Remover" on a queue row, styles.confirm)
-            because ending the session is disruptive on a shared venue tablet:
-            the host would need to re-enter their code to get back in. "Sair"
-            is deliberately NOT localised — same constraint as Analytics above
-            (a sibling agent owns messages/*.json this cycle), and "Sair" is
-            the plain pt-BR word regardless of the room-language selector. */}
-        {confirmingLogout ? (
-          <span className={styles.confirm} data-testid="admin-logout-confirm">
+            a filled pill like the links above): this is a meta-action, not
+            something a host should fat-finger mid-service, so it is confirm-
+            gated. TICKET-112: it signs out ONLY this device (Tech Lead decision
+            2026-10-15), and the confirm says so, plus the one thing the person
+            tapping it needs to know: getting back in here takes the host code.
+            Both confirms open BELOW the header, because a sentence cannot share
+            a 390px row with the other header controls. */}
+        <button
+          type="button"
+          className={styles.logoutBtn}
+          data-testid="admin-logout-button"
+          disabled={loggingOut}
+          onClick={() => {
+            setConfirmingRevoke(false);
+            setConfirmingLogout((v) => !v);
+          }}
+        >
+          {t("signOut")}
+        </button>
+        {/* TICKET-118: "sign out other devices". Same muted secondary treatment
+            as logout. Its confirm carries the warning that matters: the other
+            devices land on the host code. Owner's device only (S3): staff
+            devices do not see it, because the route would refuse them. */}
+        {isOwner && (
+          <button
+            type="button"
+            className={styles.logoutBtn}
+            data-testid="admin-revoke-button"
+            disabled={revoking}
+            onClick={() => {
+              setRevokeMsg(null);
+              setConfirmingLogout(false);
+              setConfirmingRevoke((v) => !v);
+            }}
+          >
+            {t("signOutAll")}
+          </button>
+        )}
+      </header>
+
+      {confirmingLogout && (
+        <div className={styles.revokePanel} data-testid="admin-logout-confirm" role="alert">
+          <p className={styles.revokeWarning}>
+            {t("signOutQuestion")}
+            {/* Owner's device only: signing out here drops the owner pin, and
+                with it the "sign out other devices" option. A code login does
+                not bring it back, so the owner must hear it before confirming. */}
+            {isOwner && (
+              <>
+                {" "}
+                <strong data-testid="admin-logout-owner-warning">{t("signOutOwnerWarning")}</strong>
+              </>
+            )}
+          </p>
+          <span className={styles.confirm}>
             <button
               type="button"
               className={styles.confirmYes}
@@ -483,17 +601,47 @@ export default function AdminRoom({
               {t("cancel")}
             </button>
           </span>
-        ) : (
-          <button
-            type="button"
-            className={styles.logoutBtn}
-            data-testid="admin-logout-button"
-            onClick={() => setConfirmingLogout(true)}
-          >
-            Sair
-          </button>
-        )}
-      </header>
+        </div>
+      )}
+      {confirmingRevoke && (
+        <div className={styles.revokePanel} data-testid="admin-revoke-confirm" role="alert">
+          <p className={styles.revokeWarning}>{t("signOutAllWarning")}</p>
+          <span className={styles.confirm}>
+            <button
+              type="button"
+              className={styles.confirmYes}
+              disabled={revoking}
+              data-testid="admin-revoke-confirm-yes"
+              onClick={handleRevokeSessions}
+            >
+              {t("signOutAllConfirm")}
+            </button>
+            <button
+              type="button"
+              className={styles.confirmNo}
+              disabled={revoking}
+              onClick={() => setConfirmingRevoke(false)}
+            >
+              {t("cancel")}
+            </button>
+          </span>
+        </div>
+      )}
+      {revokeMsg && (
+        <p
+          className={revokeMsg === "done" ? styles.revokeDone : styles.revokeError}
+          role="status"
+          data-testid="admin-revoke-toast"
+        >
+          {revokeMsg === "done"
+            ? t("signOutAllDone")
+            : revokeMsg === "ownerOnly"
+              ? t("signOutAllOwnerOnly")
+              : revokeMsg === "throttled"
+                ? t("signOutAllThrottled")
+                : t("signOutAllError")}
+        </p>
+      )}
 
       {/* Mode switcher — live (TICKET-10) */}
       <ModeSwitcher active={mode} onChange={changeMode} disabled={busy} />

@@ -1,0 +1,411 @@
+import {
+  _clearLoginThrottle,
+  claimCookieName,
+  hostCookieName,
+  issueSession,
+  requireHost,
+  resolveRoomSecret,
+  verifySessionValue,
+} from "@/lib/host-auth";
+import { NextRequest } from "next/server";
+import { createHmac } from "crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { POST as revokeRoute } from "@/app/api/host/revoke-sessions/route";
+import { POST as claimRoute } from "@/app/api/host/claim/route";
+import { GET as sessionProbe, POST as logoutRoute } from "@/app/api/host/session/route";
+import { POST as loginRoute } from "@/app/api/host/login/route";
+import { POST as moderationRoute } from "@/app/api/host/moderation/route";
+import {
+  DEFAULT_ROOM,
+  createRoom,
+  getPublicRoom,
+  getRoom,
+  getRoomSessionEpoch,
+  issueRoomClaimToken,
+  normaliseSessionEpoch,
+  revokeRoomHostSessions,
+  roomBackend,
+  revokeRoomClaimToken,
+  setRoomLanguage,
+  setRoomMode,
+  setRoomModeration,
+  verifyRoomClaimToken,
+} from "@/lib/rooms";
+
+const VENUE_IP = "203.0.113.118";
+
+async function mustCreateRoom(name: string) {
+  const created = await createRoom(name);
+  if (!created) throw new Error("room ceiling hit in test");
+  return created;
+}
+
+/** A room, a live claim token for it, and a live host session — the venue's real state. */
+async function venue(name: string) {
+  const { room, hostCode } = await mustCreateRoom(name);
+  const token = await issueRoomClaimToken(room.id, { owner: true });
+  if (!token) throw new Error("claim token not issued");
+  const session = await issueSession(room.id);
+  if (!session) throw new Error("session not issued");
+  return { room, hostCode, token, session };
+}
+
+/** A same-origin `POST /api/host/revoke-sessions` — the shape `AdminRoom` sends. */
+function revokeReq(
+  roomId: string,
+  opts: { session?: string; claimToken?: string; fetchSite?: string; origin?: string } = {},
+): NextRequest {
+  const headers: Record<string, string> = { host: "127.0.0.1:3040" };
+  const jar: string[] = [];
+  if (opts.session) jar.push(`${hostCookieName(roomId)}=${opts.session}`);
+  if (opts.claimToken) jar.push(`${claimCookieName(roomId)}=${opts.claimToken}`);
+  if (jar.length) headers.cookie = jar.join("; ");
+  if (opts.fetchSite) headers["sec-fetch-site"] = opts.fetchSite;
+  if (opts.origin) headers.origin = opts.origin;
+  return new NextRequest(
+    `http://127.0.0.1:3040/api/host/revoke-sessions?room=${encodeURIComponent(roomId)}`,
+    { method: "POST", headers },
+  );
+}
+
+/** A host-authority request to a REAL state-changing host route. */
+function moderationReq(roomId: string, session: string | undefined, on = true): NextRequest {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (session) headers.cookie = `${hostCookieName(roomId)}=${session}`;
+  return new NextRequest(
+    `http://127.0.0.1:3040/api/host/moderation?room=${encodeURIComponent(roomId)}`,
+    { method: "POST", headers, body: JSON.stringify({ moderation: on }) },
+  );
+}
+
+function probeReq(roomId: string, session?: string, claimToken?: string): NextRequest {
+  const jar: string[] = [];
+  if (session) jar.push(`${hostCookieName(roomId)}=${session}`);
+  if (claimToken) jar.push(`${claimCookieName(roomId)}=${claimToken}`);
+  const headers: Record<string, string> = {};
+  if (jar.length) headers.cookie = jar.join("; ");
+  return new NextRequest(
+    `http://127.0.0.1:3040/api/host/session?room=${encodeURIComponent(roomId)}`,
+    { headers },
+  );
+}
+
+function claimReq(roomId: string, token?: string): NextRequest {
+  const headers: Record<string, string> = { "x-forwarded-for": VENUE_IP };
+  if (token !== undefined) headers.cookie = `${claimCookieName(roomId)}=${token}`;
+  return new NextRequest(
+    `http://127.0.0.1:3040/api/host/claim?room=${encodeURIComponent(roomId)}`,
+    { method: "POST", headers },
+  );
+}
+
+function setCookie(res: Response, name: string): string | undefined {
+  for (const raw of res.headers.getSetCookie?.() ?? []) {
+    const [pair] = raw.split(";");
+    const [k, ...rest] = pair.split("=");
+    if (k.trim() === name) return rest.join("=");
+  }
+  return undefined;
+}
+
+
+function loginReq(roomId: string, hostCode: string, ip: string): NextRequest {
+  return new NextRequest(`http://127.0.0.1:3040/api/host/login?room=${roomId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-forwarded-for": ip },
+    body: JSON.stringify({ token: hostCode }),
+  });
+}
+
+const ctx = new AsyncLocalStorage<{ gets: number }>();
+const log = (...a: unknown[]) => console.log("[REGATE]", ...a);
+
+function logoutReq(roomId: string, session: string, claimToken?: string): NextRequest {
+  const jar = [`${hostCookieName(roomId)}=${session}`];
+  if (claimToken) jar.push(`${claimCookieName(roomId)}=${claimToken}`);
+  return new NextRequest(`http://127.0.0.1:3040/api/host/session?room=${roomId}`, {
+    method: "POST",
+    headers: { host: "127.0.0.1:3040", cookie: jar.join("; ") },
+  });
+}
+
+describe("R1 — S1 interleavings against the single-read claim route", () => {
+  it("R1a original S1: claim's read lands BEFORE the bump, its derivation after", async () => {
+    const v = await venue("Rg S1a");
+    const stolen = (await issueRoomClaimToken(v.room.id))!;
+    const orig = roomBackend.get.bind(roomBackend);
+    let reached!: () => void; const atRead = new Promise<void>((r) => (reached = r));
+    let release!: () => void; const gate = new Promise<void>((r) => (release = r));
+    const spy = jest.spyOn(roomBackend, "get").mockImplementation(async (id) => {
+      const s = ctx.getStore();
+      const out = await orig(id);
+      if (s) { s.gets++; if (s.gets === 1) { reached(); await gate; } }
+      return out;
+    });
+    try {
+      const attacker = ctx.run({ gets: 0 }, () => claimRoute(claimReq(v.room.id, stolen)));
+      await atRead;
+      const rv = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+      release();
+      const res = await attacker;
+      spy.mockRestore();
+      const minted = setCookie(res, hostCookieName(v.room.id));
+      const verifies = await verifySessionValue(v.room.id, minted);
+      const mod = (await moderationRoute(moderationReq(v.room.id, minted))).status;
+      const again = (await claimRoute(claimReq(v.room.id, stolen))).status;
+      log("R1a revoke", rv.status, "attacker claim", res.status, "minted?", !!minted, "verifies:", verifies, "moderation:", mod, "re-claim:", again);
+      expect(verifies).toBe(false);
+      expect(mod).toBe(401);
+      expect(again).toBe(401);
+    } finally { spy.mockRestore(); }
+  });
+
+  it("R1b claim read lands BETWEEN bump and rebind", async () => {
+    const v = await venue("Rg S1b");
+    const stolen = (await issueRoomClaimToken(v.room.id))!;
+    const bump = roomBackend.bumpSessionEpoch.bind(roomBackend);
+    let mid: Response | undefined;
+    const spy = jest.spyOn(roomBackend, "bumpSessionEpoch").mockImplementationOnce(async (id, floor) => {
+      const n = await bump(id, floor);
+      mid = await claimRoute(claimReq(v.room.id, stolen));
+      return n;
+    });
+    const rv = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+    spy.mockRestore();
+    const minted = mid ? setCookie(mid, hostCookieName(v.room.id)) : undefined;
+    log("R1b revoke", rv.status, "mid-claim", mid?.status, "minted?", !!minted, "verifies:", await verifySessionValue(v.room.id, minted));
+    expect(mid?.status).toBe(401);
+  });
+
+  it("R1c claim read lands between the rebind WRITE and its confirming re-read", async () => {
+    const v = await venue("Rg S1c");
+    const stolen = (await issueRoomClaimToken(v.room.id))!;
+    const upd = roomBackend.update.bind(roomBackend);
+    let mid: Response | undefined;
+    const spy = jest.spyOn(roomBackend, "update").mockImplementationOnce(async (r) => {
+      await upd(r);
+      mid = await claimRoute(claimReq(v.room.id, stolen));
+    });
+    const rv = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+    spy.mockRestore();
+    log("R1c revoke", rv.status, "mid-claim", mid?.status);
+    expect(mid?.status).toBe(401);
+  });
+
+  it("R1d a 12-way polling attacker across a revoke: no surviving session", async () => {
+    const v = await venue("Rg S1d");
+    const stolen = (await issueRoomClaimToken(v.room.id))!;
+    const polls: Promise<Response>[] = [];
+    for (let i = 0; i < 6; i++) polls.push(claimRoute(claimReq(v.room.id, stolen)));
+    const rv = revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+    for (let i = 0; i < 6; i++) polls.push(claimRoute(claimReq(v.room.id, stolen)));
+    await rv;
+    const outs = await Promise.all(polls);
+    let survivors = 0;
+    for (const o of outs) {
+      const m = setCookie(o, hostCookieName(v.room.id));
+      if (m && (await verifySessionValue(v.room.id, m))) survivors++;
+    }
+    log("R1d statuses", outs.map((o) => o.status).join(","), "surviving sessions:", survivors);
+    expect(survivors).toBe(0);
+  });
+
+  it("R1e attacker logout (old session, pre-bump read) landing after the rebind cannot re-validate its hash", async () => {
+    const v = await venue("Rg S1e");
+    const stolenClaim = (await issueRoomClaimToken(v.room.id))!;
+    const orig = roomBackend.get.bind(roomBackend);
+    let reached!: () => void; const atRead = new Promise<void>((r) => (reached = r));
+    let release!: () => void; const gate = new Promise<void>((r) => (release = r));
+    const spy = jest.spyOn(roomBackend, "get").mockImplementation(async (id) => {
+      const s = ctx.getStore();
+      const out = await orig(id);
+      if (s) { s.gets++; if (s.gets === 2) { reached(); await gate; } } // read #2 = revokeRoomClaimToken's read
+      return out;
+    });
+    try {
+      // the attacker "logs out" a junk token? no: it logs out the OWNER? it cannot; it presents its own (a stale writer)
+      const attacker = ctx.run({ gets: 0 }, () => logoutRoute(logoutReq(v.room.id, v.session, stolenClaim)));
+      await atRead;
+      const rv = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+      release();
+      await attacker;
+      spy.mockRestore();
+      const room = (await getRoom(v.room.id))!;
+      log("R1e revoke", rv.status, "after stale logout write: stolen claim live", await verifyRoomClaimToken(v.room.id, stolenClaim),
+        "owner claim live", await verifyRoomClaimToken(v.room.id, v.token), "listTag", room.claimTokenEpoch, "epoch", room.sessionEpoch,
+        "pin==owner?", room.ownerClaimTokenHash !== undefined);
+      expect(await verifyRoomClaimToken(v.room.id, stolenClaim)).toBe(false);
+    } finally { spy.mockRestore(); }
+  });
+});
+
+describe("R2 — S2 single-fault lockout", () => {
+  it("staff code login between bump and rebind, response lost: acting (owner) device re-claims", async () => {
+    const v = await venue("Rg S2");
+    const bump = roomBackend.bumpSessionEpoch.bind(roomBackend);
+    let staffClaim: string | undefined;
+    const spy = jest.spyOn(roomBackend, "bumpSessionEpoch").mockImplementationOnce(async (id, floor) => {
+      const n = await bump(id, floor);
+      const r = await loginRoute(loginReq(v.room.id, v.hostCode, "198.51.100.9"));
+      staffClaim = setCookie(r, claimCookieName(v.room.id));
+      return n;
+    });
+    const res = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+    spy.mockRestore();
+    const oldClaim = await verifyRoomClaimToken(v.room.id, v.token);
+    const reclaim = await claimRoute(claimReq(v.room.id, v.token));
+    const s = setCookie(reclaim, hostCookieName(v.room.id));
+    log("R2 revoke", res.status, "owner old claim live", oldClaim, "re-claim", reclaim.status, "session verifies", await verifySessionValue(v.room.id, s),
+      "concurrent staff claim kept", await verifyRoomClaimToken(v.room.id, staffClaim));
+    expect(oldClaim).toBe(true);
+    expect(reclaim.status).toBe(200);
+  });
+});
+
+describe("R3 — S3 owner gate and throttle", () => {
+  it("R3a staff, stolen session, junk/hash cookies, forged owner hints -> 403/401, nothing changes", async () => {
+    const v = await venue("Rg S3a");
+    const staffLogin = await loginRoute(loginReq(v.room.id, v.hostCode, "198.51.100.10"));
+    const staffSess = setCookie(staffLogin, hostCookieName(v.room.id))!;
+    const staffClaim = setCookie(staffLogin, claimCookieName(v.room.id))!;
+    const pinHash = (await getRoom(v.room.id))!.ownerClaimTokenHash!;
+    const tries: Array<[string, NextRequest]> = [
+      ["staff+staffclaim", revokeReq(v.room.id, { session: staffSess, claimToken: staffClaim })],
+      ["stolen session, no claim", revokeReq(v.room.id, { session: v.session })],
+      ["session + stored pin HASH as cookie", revokeReq(v.room.id, { session: staffSess, claimToken: pinHash })],
+      ["session + junk claim", revokeReq(v.room.id, { session: staffSess, claimToken: "x" })],
+    ];
+    const forged = new NextRequest(`http://127.0.0.1:3040/api/host/revoke-sessions?room=${v.room.id}&owner=true`, {
+      method: "POST",
+      headers: { host: "127.0.0.1:3040", "content-type": "application/json", "x-owner": "true",
+        cookie: `${hostCookieName(v.room.id)}=${staffSess}; ${claimCookieName(v.room.id)}=${staffClaim}; boraoke_owner=1` },
+      body: JSON.stringify({ owner: true, ownerClaimTokenHash: pinHash }),
+    });
+    tries.push(["forged owner flags", forged]);
+    const epoch0 = await getRoomSessionEpoch(v.room.id);
+    const statuses: string[] = [];
+    for (const [k, r] of tries) statuses.push(`${k}=${(await revokeRoute(r)).status}`);
+    log("R3a", statuses.join(" | "), "epoch unchanged", epoch0 === (await getRoomSessionEpoch(v.room.id)),
+      "owner session still valid", await verifySessionValue(v.room.id, v.session));
+    // the owner still has the full budget after all those refusals
+    const ok = [] as number[];
+    for (let i = 0; i < 4; i++) {
+      const r = await revokeRoute(revokeReq(v.room.id, { session: (await issueSession(v.room.id))!, claimToken: v.token }));
+      ok.push(r.status);
+    }
+    log("R3a owner budget after refusals:", ok.join(","));
+    expect(ok).toEqual([200, 200, 200, 429]);
+  });
+
+  it("R3b replay of the owner claim cookie: by a thief = owner (inherent); after owner logout = refused", async () => {
+    const v = await venue("Rg S3b");
+    const thiefSess = setCookie(await claimRoute(claimReq(v.room.id, v.token)), hostCookieName(v.room.id))!;
+    const t = await revokeRoute(revokeReq(v.room.id, { session: thiefSess, claimToken: v.token }));
+    const ownerBack = (await claimRoute(claimReq(v.room.id, v.token))).status;
+    log("R3b thief with copied owner claim: revoke", t.status, "owner device auto re-claims", ownerBack);
+    // owner logs out on the owner device -> kills the shared hash and the pin
+    const ownerSess = setCookie(await claimRoute(claimReq(v.room.id, v.token)), hostCookieName(v.room.id))!;
+    await logoutRoute(logoutReq(v.room.id, ownerSess, v.token));
+    const thiefSess2 = (await issueSession(v.room.id))!; // a session the thief already held
+    const replay = await revokeRoute(revokeReq(v.room.id, { session: thiefSess2, claimToken: v.token }));
+    log("R3b replay after owner logout:", replay.status, "pin", (await getRoom(v.room.id))!.ownerClaimTokenHash ?? "(none)");
+    expect(replay.status).toBe(403);
+  });
+
+  it("R3c pin changes between the route pre-check and the helper's pre-bump read", async () => {
+    const v = await venue("Rg S3c");
+    const orig = roomBackend.get.bind(roomBackend);
+    let n = 0;
+    const spy = jest.spyOn(roomBackend, "get").mockImplementation(async (id) => {
+      n++;
+      // reads: 1 requireHost, 2 claimStatus (owner pre-check), 3 helper `before`
+      if (n === 3) await revokeRoomClaimToken(v.room.id, v.token); // owner logs out right now
+      return orig(id);
+    });
+    const r = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+    spy.mockRestore();
+    log("R3c revoke after pin vanished mid-request:", r.status, "epoch", await getRoomSessionEpoch(v.room.id));
+    expect(r.status).toBe(403);
+  });
+
+  it("R3d concurrent burst of 20 owner revokes: exactly 3 pass", async () => {
+    const v = await venue("Rg S3d");
+    const rs = await Promise.all(Array.from({ length: 20 }, () => revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }))));
+    const c: Record<number, number> = {};
+    for (const r of rs) c[r.status] = (c[r.status] ?? 0) + 1;
+    log("R3d burst statuses", JSON.stringify(c), "epoch", await getRoomSessionEpoch(v.room.id));
+    expect(rs.filter((r) => r.status === 200).length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("R4 — the no-live-pin fallback (documents behaviour)", () => {
+  it("owner token stolen: owner's only kill is logout, which also removes the lever", async () => {
+    const v = await venue("Rg FB");
+    const thiefSess = setCookie(await claimRoute(claimReq(v.room.id, v.token)), hostCookieName(v.room.id))!;
+    await logoutRoute(logoutReq(v.room.id, v.session, v.token)); // owner kills the stolen claim the only way it can
+    const relog = await loginRoute(loginReq(v.room.id, v.hostCode, "198.51.100.30"));
+    const oSess = setCookie(relog, hostCookieName(v.room.id))!;
+    const oClaim = setCookie(relog, claimCookieName(v.room.id))!;
+    const probe = await (await sessionProbe(probeReq(v.room.id, oSess, oClaim))).json();
+    const r = await revokeRoute(revokeReq(v.room.id, { session: oSess, claimToken: oClaim }));
+    log("R4 after owner logout + code re-login: owner flag", probe.owner, "revoke", r.status,
+      "thief session still valid", await verifySessionValue(v.room.id, thiefSess));
+  });
+});
+
+describe("R6 — hot path store ops", () => {
+  async function count(fn: () => Promise<unknown>) {
+    const g = jest.spyOn(roomBackend, "get"); const u = jest.spyOn(roomBackend, "update"); const b = jest.spyOn(roomBackend, "bumpSessionEpoch");
+    g.mockClear(); u.mockClear(); b.mockClear();
+    await fn();
+    const out = `get=${g.mock.calls.length} update=${u.mock.calls.length} bump=${b.mock.calls.length}`;
+    g.mockRestore(); u.mockRestore(); b.mockRestore();
+    return out;
+  }
+  it("counts", async () => {
+    const v = await venue("Rg Hot");
+    log("R6 requireHost", await count(() => requireHost(moderationReq(v.room.id, v.session), v.room.id)));
+    log("R6 GET session (live claim)", await count(() => sessionProbe(probeReq(v.room.id, v.session, v.token))));
+    log("R6 claim (valid)", await count(() => claimRoute(claimReq(v.room.id, v.token))));
+    log("R6 login (live claim)", await count(() => loginRoute(Object.assign(loginReq(v.room.id, v.hostCode, "198.51.100.40")))));
+    const lw = new NextRequest(`http://127.0.0.1:3040/api/host/login?room=${v.room.id}`, { method: "POST",
+      headers: { "Content-Type": "application/json", "x-forwarded-for": "198.51.100.41", cookie: `${claimCookieName(v.room.id)}=${v.token}` },
+      body: JSON.stringify({ token: v.hostCode }) });
+    log("R6 login (presents live claim)", await count(() => loginRoute(lw)));
+  });
+});
+
+describe("R1f — stolen-session settings write straddling the revoke (TICKET-127 residual, new consequence)", () => {
+  it("costs the owner the pin for good", async () => {
+    const v = await venue("Rg S1f");
+    const orig = roomBackend.get.bind(roomBackend);
+    let reached!: () => void; const atRead = new Promise<void>((r) => (reached = r));
+    let release!: () => void; const gate = new Promise<void>((r) => (release = r));
+    const spy = jest.spyOn(roomBackend, "get").mockImplementation(async (id) => {
+      const s = ctx.getStore();
+      const out = await orig(id);
+      if (s) { s.gets++; if (s.gets === 3) { reached(); await gate; } } // read #3 = setRoomModeration's read
+      return out;
+    });
+    try {
+      const attacker = ctx.run({ gets: 0 }, () => moderationRoute(moderationReq(v.room.id, v.session)));
+      await atRead;
+      const rv = await revokeRoute(revokeReq(v.room.id, { session: v.session, claimToken: v.token }));
+      const ownerNewSess = setCookie(rv, hostCookieName(v.room.id))!;
+      release();
+      const a = await attacker;
+      spy.mockRestore();
+      const sessOk = await verifySessionValue(v.room.id, ownerNewSess);
+      const rm = (await getRoom(v.room.id))!;
+      log("R1f after stale write: epoch", rm.sessionEpoch, "listTag", rm.claimTokenEpoch, "pin set", !!rm.ownerClaimTokenHash);
+      const owner = await (await sessionProbe(probeReq(v.room.id, ownerNewSess, v.token))).json();
+      const reclaim = (await claimRoute(claimReq(v.room.id, v.token))).status;
+      const again = await revokeRoute(revokeReq(v.room.id, { session: ownerNewSess, claimToken: v.token }));
+      const relog = await loginRoute(loginReq(v.room.id, v.hostCode, "198.51.100.50"));
+      const room = (await getRoom(v.room.id))!;
+      log("R1f revoke", rv.status, "stale moderation write", a.status, "owner session ok", sessOk,
+        "owner flag", owner.owner, "owner re-claim", reclaim, "owner 2nd revoke", again.status,
+        "after code re-login pin", room.ownerClaimTokenHash ?? "(none)");
+    } finally { spy.mockRestore(); }
+  });
+});
