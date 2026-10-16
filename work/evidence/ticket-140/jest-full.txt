@@ -1,0 +1,17 @@
+START 18:38:23 load averages: 95.05 110.20 130.29
+
+PASS __tests__/live-search-gate.test.ts
+PASS __tests__/host-stats.test.ts
+PASS __tests__/tv-config.test.ts
+PASS __tests__/search-rate-isolation.test.ts
+PASS __tests__/api-queue-rooms.test.ts
+PASS __tests__/api-video-meta.test.ts
+PASS __tests__/room-moderation.test.ts
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+
+Test Suites: 71 passed, 71 total
+Tests:       18 skipped, 1260 passed, 1278 total
+Snapshots:   0 total
+Time:        31.492 s
+Ran all test suites.
+END 18:39:19 load averages: 104.82 111.81 129.72

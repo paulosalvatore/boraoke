@@ -1,4 +1,5 @@
 "use client";
+import { songLabel, songTitle } from "@/lib/song-label";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
@@ -1043,7 +1044,7 @@ export default function TvScreen({
           <div className={styles.meta}>
             <span className={styles.label}>{t("nowPlaying")}</span>
             <h1 className={styles.hero} data-testid="tv-hero">
-              {nowPlaying.title ?? `youtu.be/${nowPlaying.videoId}`}
+              {songTitle(nowPlaying)}
             </h1>
             <div className={styles.singer} data-testid="tv-singer">
               🎤 {singerLine(nowPlaying)}
@@ -1100,7 +1101,7 @@ export default function TvScreen({
                       <div className={styles.who}>{singerLine(entry)}</div>
                       <div className={styles.metaRow}>
                         <div className={styles.what}>
-                          {entry.title ?? `youtu.be/${entry.videoId}`}
+                          {songLabel(entry)}
                         </div>
                         {entry.table ? (
                           <span className={styles.mesa}>{t("table", { table: entry.table })}</span>

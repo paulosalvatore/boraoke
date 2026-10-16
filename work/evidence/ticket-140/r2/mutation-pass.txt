@@ -1,0 +1,19 @@
+Mutation pass, round 2. Each mutant applied to the fixed code, the named suite run, file restored (cmp-verified).
+Ma read key wrong (get vm: -> vmx:) :: Tests:       6 failed, 15 passed, 21 total
+Mg missing cached 24h (ttlFor) :: Tests:       2 failed, 19 passed, 21 total
+Mg2 found cached 10min :: Tests:       3 failed, 18 passed, 21 total
+Mser stored shape drops channel :: Tests:       2 failed, 19 passed, 21 total
+Mmal malformed: no title check :: Tests:       4 failed, 17 passed, 21 total
+Mget get error throws :: Tests:       1 failed, 20 passed, 21 total
+Mset set error throws :: Tests:       1 failed, 20 passed, 21 total
+Ml1 set skips L1 :: Tests:       4 failed, 17 passed, 21 total
+Mi hours branch dropped :: Tests:       1 failed, 92 passed, 93 total
+Mnokey no-key writes ec: :: Tests:       1 failed, 40 passed, 41 total
+Mcap length cap removed :: Tests:       1 failed, 92 passed, 93 total
+Mstrip trailing loop off-by-one :: Tests:       3 failed, 90 passed, 93 total
+Mstrip leading loop removed :: Tests:       3 failed, 90 passed, 93 total
+Mnostore always private :: Tests:       1 failed, 8 passed, 9 total
+Mseam always on :: Tests:       1 failed, 40 passed, 41 total
+Mtitle client title back :: Tests:       3 failed, 38 passed, 41 total
+
+16/16 KILLED. Reviewer's surviving mutants: Ma (wrong read key) KILLED, Mg (missing cached 24 h) KILLED, Mi (hours branch) KILLED.
