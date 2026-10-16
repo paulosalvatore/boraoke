@@ -41,3 +41,26 @@ None in scope.
 
 - `next build` takes minutes at load ~100; a dedicated `NEXT_DIST_DIR` kept it off the dev tree. `next build` rewrites `tsconfig.json` (`include` gets the dist dir); I reverted it.
 - Search input accessible name is `Search.aria`, not the visible label, so `getByLabel(label)` fails in en/es; harness uses `Search.aria`.
+
+## Re-check at fb373ed (round 2) — PASS
+
+Date 2026-10-15. Source tested is `fb373ed`; the branch has since only gained report/event files (`36400a2`), no source change. Scope: what changed since the PASS at `71a6d5e` (patron "Título da música" field removed, client title never stored, 512-char input cap, paste hint in 429/error copy).
+
+Run: production build into its own dist dir (`.next-apptest`, port 3141, removed afterwards), loopback YouTube stub on 4140 (`work/evidence/ticket-140/apptest-r2/stub.mjs`), no real key, `ROOM_CREATE_LIMIT=200` only to lift the per-IP room-creation throttle, **without** `BORAOKE_TEST_CLIENT_TITLES` (so the server behaves like production for titles). Headless Playwright, one Chromium. Matrix: pt-BR, en, es x 390x844 and 1280x800 (6 combos). Harness `work/evidence/ticket-140/apptest-r2/apptest-r2.mjs`; logs `run-full.txt` and `run-rerun.txt`; 115 screenshots in the same folder.
+
+Result: 103 checks in the full run, 100 PASS first time; the 3 misses were harness timing, not product (TV watchdog skipped the unplayable stub video before the TV text was read; one cold-start timeout). Re-run of those two combos (`ONLY=pt-BR-m390,es-d1280`, TV now read the moment the row appears, longer waits): 35/35 PASS. **Net: all checks PASS, 0 defects.**
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | No "Título da música"/"Song title"/"Título de la canción" label anywhere; form children share the same left and right edges, vertical gaps 11-12 px between controls (no hole where the field was), no horizontal overflow; the only visible inputs are the mode radios, the search box and Mesa. Submit works: paste link + table 7 -> "Música na fila!", row `Title · Canal Teste` | PASS in 6/6 | `*-form-no-title.png`, `*-form-filled.png`, `*-paste-queued.png` |
+| 2 | Failed lookup (stub 5xx): a search result picked with patron-visible title `PATRONTEXT_XYZ_n` queues; patron queue, host admin and TV show `youtu.be/<id>`, never the text. A direct `POST /api/queue` with `title:"EVIL_API_TITLE"` is accepted (201) and shows `youtu.be/<id>` too; the queue API returns no stored title for it. TV shows `youtu.be/<id>` | PASS in 6/6 | `*-fail-picker-results.png`, `*-fail-queue.png`, `*-fail-host-admin.png`, `*-fail-tv.png` |
+| 3 | Real paste (`insertText`) of 5,000 chars: input keeps exactly 512, 8-105 ms, page stays responsive and typable. Programmatic 100,000-char fill: capped at 512 by the input, 28-105 ms, no freeze. A link followed by 900 chars of junk: link within the first 512 stays recognised and queueable. Server side: `POST /api/queue` with a 629-char and a 100,000-char `youtubeUrl` -> 400 in 0.5 s and 0.08 s | PASS in 6/6 | `*-long-paste-5000.png`, `*-long-paste-100k.png`, `*-long-paste-with-link.png` |
+| 4 | Paste hint is shown (and fits, no overflow) in: 429 with empty body (client copy "...cole um link do YouTube" / "...paste a YouTube link" / "...pega un enlace de YouTube"), 429 carrying a server error string (server copy shown as sent), network failure, degraded 200. All three languages | PASS in 6/6 | `*-state-429.png`, `*-state-429-server-copy.png`, `*-state-network-abort.png`, `*-state-degraded-200.png` |
+| 5 | Regression: paste queues with real title + channel, normal search -> pick -> queue shows the server title, not-embeddable refused with friendly copy and nothing queued (copy fits, no overflow), host admin shows real titles | PASS in 6/6 | `*-paste-queued.png`, `*-search-queued.png`, `*-not-embeddable.png`, `*-host-admin.png` |
+
+Notes, none blocking and none from this PR:
+
+- The picker row for a pasted link whose lookup failed shows the generic label "Link do YouTube / Pasted link" with the "Selected: <id>" line under it, not `youtu.be/<id>` (that form appears in the queue, host and TV). Never patron text. Screenshot `en-m390-fail-paste-picker.png`.
+- A non-JSON or JSON HTTP 500 from `/api/search` shows no message at all (no results, no hint). The route never answers 500 (it returns `degraded` JSON, 200, and 429 for limits), so this is unreachable today and predates the PR. Screenshots `*-state-500-*-NOHINT.png`. Cheap hardening if wanted: treat any non-2xx like the network-error branch.
+- The real-server 429 body check was not reproduced this round: 40 distinct-term calls from one uuid never reached a 429 (all answered 200, cause not investigated). The 429 copy is covered by the mocked states above and by the earlier round's real-server 429.
+- The TV loads `youtu.be/<id>` rows but the TV watchdog skips unplayable stub videos within seconds ("Pulando vídeo indisponível"), so TV text must be read right away; harness does.
