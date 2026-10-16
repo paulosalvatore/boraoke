@@ -1,0 +1,8 @@
+STEP1 index typing responses: [{"q":"evidencias karaoke","v":"2","live":false,"status":200,"source":"index","n":16}]
+STEP1 live calls: 0; rows with results: 1
+STEP2 responses: [{"q":"hermeto pascoal bebe ao vivo montreux karaoke","v":"2","live":false,"status":200,"n":0,"liveRequired":true},{"q":"hermeto pascoal bebe ao vivo montreux karaoke","v":"2","live":true,"status":200,"n":50}]
+STEP2 live calls: 1; live with results: 1
+STEP2 personal-limit copy present: false; daily-limit copy: false
+STEP3 /api/search v=2 index-only: status 200 body {"results":[],"liveRequired":true}
+STEP3b /api/search v=2 index-only miss: status 200 body {"results":[],"liveRequired":true}
+TOTAL live calls this run: 1

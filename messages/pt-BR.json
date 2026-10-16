@@ -96,8 +96,6 @@
     "greeting": "Oi,",
     "addSong": "Adicionar música",
     "selected": "✓ Selecionada: {videoId}",
-    "songTitleLabel": "Título da música (opcional)",
-    "songTitlePlaceholder": "ex.: Evidências",
     "tableLabel": "Mesa (opcional)",
     "tableAria": "Número da mesa",
     "tablePlaceholder": "ex.: 7",
@@ -165,6 +163,16 @@
     "removeAria": "Remover {nickname}",
     "confirm": "Confirmar",
     "cancel": "Cancelar",
+    "signOut": "Sair",
+    "signOutQuestion": "Sair deste dispositivo? Os outros dispositivos continuam conectados. Para entrar de novo neste dispositivo, você vai precisar do código do host.",
+    "signOutOwnerWarning": "Este é o dispositivo que criou a sala. Se você sair aqui, perde a opção de desconectar outros dispositivos, mesmo depois de entrar de novo com o código do host.",
+    "signOutAll": "Desconectar outros dispositivos",
+    "signOutAllWarning": "Isso desconecta todos os outros celulares, tablets ou computadores conectados ao painel desta sala, inclusive algum que você não reconheça. Este dispositivo continua conectado. Os outros vão precisar do código do host para entrar de novo.",
+    "signOutAllConfirm": "Desconectar",
+    "signOutAllDone": "Pronto. Os outros dispositivos foram desconectados e vão precisar do código do host para entrar de novo. Este continua conectado.",
+    "signOutAllError": "Não foi possível desconectar os outros dispositivos, então eles podem continuar conectados. Tente de novo. Se este dispositivo também for desconectado, você vai precisar do código do host para entrar de novo.",
+    "signOutAllOwnerOnly": "Só o dispositivo que criou esta sala pode desconectar outros dispositivos.",
+    "signOutAllThrottled": "Você acabou de fazer isso algumas vezes. Espere alguns minutos e tente de novo.",
     "resume": "▶ Retomar",
     "pause": "⏸ Pausar",
     "skipSong": "⏭ Pular música",
@@ -209,7 +217,7 @@
     "label": "Buscar música ou colar link do YouTube *",
     "aria": "Buscar música ou colar link do YouTube",
     "placeholder": "Ex.: evidências — ou cole um link do YouTube",
-    "rateLimited": "Muitas buscas — aguarde um instante.",
+    "rateLimited": "Muitas buscas — aguarde um instante ou cole um link do YouTube.",
     "youtubeLink": "Link do YouTube",
     "pastedLink": "Link colado",
     "degraded": "Busca indisponível — cola o link do YouTube",
@@ -254,7 +262,7 @@
     "errorOffline": "Sem conexão? Tenta de novo em instantes."
   },
   "Errors": {
-    "searchRateLimited": "Muitas buscas — aguarde um instante e tente de novo.",
+    "searchRateLimited": "Muitas buscas — aguarde um instante e tente de novo, ou cole um link do YouTube.",
     "roomsRateLimited": "Muitas salas criadas — tente de novo em uma hora.",
     "roomsFull": "Estamos lotados por enquanto — tente de novo mais tarde.",
     "submitRateLimited": "Calma, cantor! Muitos pedidos em pouco tempo — espere um minutinho e tente de novo.",
@@ -266,7 +274,7 @@
     "submitTableCap": "Sua mesa já tem {cap} músicas na fila — espere uma tocar.",
     "submitPersonCap": "Você já tem {cap} músicas na fila — espere uma tocar para adicionar outra.",
     "pendingFull": "Tem muita música esperando aprovação agora — tente de novo daqui a pouco.",
-    "submitNotEmbeddable": "esse vídeo não permite reprodução em telões — pode não tocar"
+    "submitNotEmbeddable": "Esse vídeo não toca no telão do bar — o dono do vídeo não permite. Tenta outra versão da música."
   },
   "Meta": {
     "title": "Boraoke — a fila do karaokê na TV, no celular de todos",

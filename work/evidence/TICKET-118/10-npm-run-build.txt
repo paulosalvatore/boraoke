@@ -1,0 +1,9 @@
+START 2026-10-15T21:49:14Z head 0199695 load: 94.65 103.88 115.10
+exit 0
+> next build && node scripts/check-bundle-es-target.mjs && node scripts/check-css-target.mjs
+ ✓ Compiled successfully in 22.6s
+├ ƒ /api/host/revoke-sessions              204 B         103 kB
+bundle-es-target: OK — all 51 chunk(s) parse at ES2019.
+css-target: advisory — 6 finding(s) outside the TV surface (phone/desktop, not build-blocking):
+css-target: OK — the TV surface uses nothing newer than Chrome 68 (13 stylesheet(s) scanned).
+END 2026-10-15T21:50:52Z load: 94.98 100.29 112.41

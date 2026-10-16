@@ -1,52 +1,159 @@
 /**
  * YouTube URL parser — extracts the video ID from common YouTube URL formats.
- * No API key required; purely client-side string parsing.
+ * No API key required; purely string parsing. The SAME function runs in the
+ * patron's search box (components/SongSearch.tsx) and on the server
+ * (`POST /api/queue` with a `youtubeUrl` body), so the two can never disagree.
  *
- * Supported formats:
- *   https://www.youtube.com/watch?v=VIDEO_ID
- *   https://youtu.be/VIDEO_ID
- *   https://youtube.com/shorts/VIDEO_ID
- *   https://www.youtube.com/embed/VIDEO_ID
- *   https://www.youtube.com/live/VIDEO_ID
- *   Raw 11-character video IDs
+ * Supported forms (TICKET-140 adds the starred ones):
+ *   https://www.youtube.com/watch?v=VIDEO_ID   (any param order, &t= &list= &si=)
+ *   https://m.youtube.com/watch?v=VIDEO_ID
+ * * https://music.youtube.com/watch?v=VIDEO_ID
+ *   https://youtu.be/VIDEO_ID                  (?si= &t= …)
+ * * https://youtu.be/VIDEO_ID/                 (trailing slash)
+ *   https://www.youtube.com/{embed,shorts,live,v}/VIDEO_ID
+ * * https://www.youtube-nocookie.com/embed/VIDEO_ID
+ * * HTTPS://YOUTU.BE/VIDEO_ID                  (upper-case scheme / host)
+ * * "olha esse https://youtu.be/VIDEO_ID 🔥"   (share text around the link)
+ *   youtube.com/watch?v=VIDEO_ID               (no scheme)
+ *   VIDEO_ID                                   (bare, see looksLikeBareVideoId)
+ *
+ * Look-alike hosts (`youtube.com.evil.com`, `evil.com/youtube.com/…`,
+ * `youtube.com@evil.com`) are refused: the host is compared exactly after
+ * URL parsing, never by substring.
+ *
+ * Input longer than MAX_PARSE_INPUT is refused before any regex runs. The
+ * server parses `youtubeUrl` before its submit rate limit, so the parser's
+ * cost must stay flat whatever an unauthenticated caller sends.
+ *
+ * This module ships to the browser. Anything that reads the API key or calls
+ * YouTube lives in lib/youtube-server.ts, which is `server-only`.
  */
 export function parseYouTubeVideoId(input: string): string | null {
-  if (!input) return null;
+  if (!input || typeof input !== "string") return null;
+  if (input.length > MAX_PARSE_INPUT) return null;
 
   const trimmed = input.trim();
+  if (!trimmed) return null;
 
-  // Raw video ID: exactly 11 chars, alphanumeric + - + _
-  if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) {
-    return trimmed;
-  }
-
-  // Try parsing as URL
-  let url: URL;
-  try {
-    // Attach a scheme if it looks like a bare host
-    url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
-  } catch {
+  // Share text ("olha esse https://youtu.be/… 🔥"): the patron pasted a whole
+  // message. Only a URL-shaped token is taken from it — a bare word inside a
+  // sentence is never read as an id.
+  if (/\s/.test(trimmed)) {
+    for (const token of trimmed.split(/\s+/)) {
+      if (!/youtu/i.test(token)) continue;
+      const id = parseYouTubeUrl(stripSharePunctuation(token));
+      if (id) return id;
+    }
     return null;
   }
 
-  const host = url.hostname.replace(/^www\./, "");
+  // TICKET-140 gap 1: a bare 11-character token is an id only when it cannot
+  // plausibly be a word, so typing "Imagination" searches instead of
+  // auto-selecting a video that does not exist.
+  if (looksLikeBareVideoId(trimmed)) return trimmed;
 
-  if (host === "youtube.com" || host === "m.youtube.com") {
-    // /watch?v=...
+  return parseYouTubeUrl(stripSharePunctuation(trimmed));
+}
+
+/**
+ * A bare 11-character token counts as a video id only when it cannot
+ * plausibly be a typed word (TICKET-140 gap 1). Rule: it is a valid id shape
+ * AND it contains a digit or `_`, OR it mixes case beyond Title Case (an
+ * upper-case letter after the first character next to a lower-case one).
+ *
+ * Trade-off, both directions:
+ *  - Words are safe: "Imagination", "unbreakable", "BITTERSWEET" and also
+ *    hyphenated 11-character queries such as "rock-n-roll" or "hip-hop-pop"
+ *    search as text. A hyphen alone is deliberately NOT enough, for that reason.
+ *  - Real ids lost: roughly 1 in 6,000 real ids has no digit and no `_` AND
+ *    happens to be all lower case, all upper case or Title Case. Pasted as a
+ *    bare id, such an id is searched as text instead; pasted as a link (what
+ *    the share button produces) it still resolves, because URLs never go
+ *    through this check.
+ *  - Words lost the other way: an 11-character query with a digit or odd
+ *    casing ("Blink182abc", "AC-DC-Rocks") is taken as an id. Rare, and the
+ *    patron sees the pasted row and can keep typing.
+ */
+export function looksLikeBareVideoId(token: string): boolean {
+  if (!isValidVideoId(token)) return false;
+  if (/[0-9_]/.test(token)) return true;
+  const hasLower = /[a-z]/.test(token);
+  const upperAfterFirst = /[A-Z]/.test(token.slice(1));
+  return hasLower && upperAfterFirst;
+}
+
+/**
+ * Longest input the parser looks at. A real share message ("olha esse
+ * https://youtu.be/… 🔥") is far shorter; the patron's search box uses the
+ * same cap as its `maxLength`.
+ */
+export const MAX_PARSE_INPUT = 512;
+
+const LEADING_SHARE_PUNCTUATION = new Set(["(", "<", "[", "{", '"', "'", "“", "‘"]);
+const TRAILING_SHARE_PUNCTUATION = new Set([")", ">", "]", "}", '"', "'", "”", "’", ".", ",", ";", ":", "!", "?"]);
+
+/**
+ * Trim the punctuation a chat app glues around a link ("(link)", "link,",
+ * "<link>"). A plain index walk from each end, so the cost is linear in the
+ * token length: an end-anchored regex here backtracked quadratically on a long
+ * run of punctuation that is not at the end.
+ */
+function stripSharePunctuation(token: string): string {
+  let start = 0;
+  let end = token.length;
+  while (start < end && LEADING_SHARE_PUNCTUATION.has(token[start])) start++;
+  while (end > start && TRAILING_SHARE_PUNCTUATION.has(token[end - 1])) end--;
+  return token.slice(start, end);
+}
+
+const WATCH_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+]);
+const NOCOOKIE_HOSTS = new Set(["youtube-nocookie.com", "www.youtube-nocookie.com"]);
+const SHORT_HOSTS = new Set(["youtu.be", "www.youtu.be"]);
+
+/** Parse one URL-shaped token (scheme optional, any case). Returns null for anything else. */
+function parseYouTubeUrl(token: string): string | null {
+  if (!token) return null;
+  let url: URL;
+  try {
+    // Attach a scheme to a bare host. The test is case-insensitive so
+    // "HTTPS://YOUTU.BE/…" is not turned into "https://HTTPS://…".
+    url = new URL(/^https?:\/\//i.test(token) ? token : `https://${token}`);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+
+  // URL lower-cases the hostname, so an upper-case host compares correctly.
+  const host = url.hostname;
+  const segments = url.pathname.split("/").filter((s, i, all) => s !== "" || i < all.length - 1);
+  // segments[0] is "" (leading slash); a single trailing "" is dropped above.
+
+  if (WATCH_HOSTS.has(host)) {
     const v = url.searchParams.get("v");
     if (v && isValidVideoId(v)) return v;
-
-    // /embed/VIDEO_ID, /shorts/VIDEO_ID, /live/VIDEO_ID
-    const match = url.pathname.match(
-      /^\/(embed|shorts|live|v)\/([A-Za-z0-9_-]{11})/
-    );
-    if (match) return match[2];
+    // /embed/ID, /shorts/ID, /live/ID, /v/ID — exactly one id segment.
+    if (segments.length === 3 && /^(embed|shorts|live|v)$/.test(segments[1]) && isValidVideoId(segments[2])) {
+      return segments[2];
+    }
+    return null;
   }
 
-  if (host === "youtu.be") {
-    // youtu.be/VIDEO_ID
-    const id = url.pathname.slice(1).split("?")[0];
-    if (isValidVideoId(id)) return id;
+  if (NOCOOKIE_HOSTS.has(host)) {
+    if (segments.length === 3 && segments[1] === "embed" && isValidVideoId(segments[2])) {
+      return segments[2];
+    }
+    return null;
+  }
+
+  if (SHORT_HOSTS.has(host)) {
+    // youtu.be/ID, optionally with one trailing slash.
+    if (segments.length === 2 && isValidVideoId(segments[1])) return segments[1];
+    return null;
   }
 
   return null;
@@ -57,115 +164,20 @@ export function isValidVideoId(id: string): boolean {
   return /^[A-Za-z0-9_-]{11}$/.test(id);
 }
 
-/* ------------------------------------------------------------------------- *
- * Embeddability pre-check (TICKET-61)
- *
- * A pasted YouTube link bypasses search, so it is never filtered by the
- * `videoEmbeddable`/`videoSyndicated` search params. Some videos refuse to play
- * outside youtube.com — on the venue TV they simply die and the TICKET-41
- * watchdog skips them mid-night. This helper asks `videos.list` for
- * `status.embeddable` (1 quota unit) so the patron can be warned at submit time.
- *
- * Design rules, deliberate and load-bearing:
- *   - It NEVER throws and NEVER blocks: every failure mode (no key, bad id,
- *     HTTP error, quota exhaustion, timeout, malformed JSON) collapses to
- *     "unknown", which the caller renders as "no warning".
- *   - It is bounded by an abort timeout, so a hanging Google call cannot pin an
- *     unauthenticated request open.
- *   - The id is re-validated here (not just at the route) before it is placed in
- *     an outbound URL, and it goes through URLSearchParams — no string
- *     concatenation into the query.
- * ------------------------------------------------------------------------- */
-
-const VIDEOS_ENDPOINT_PATH = "/youtube/v3/videos";
-const DEFAULT_API_ORIGIN = "https://www.googleapis.com";
-
 /**
- * Outbound-call budget for the pre-check. Short: it must not slow a submit.
- *
- * TICKET-95 (MEDIUM-3 of the TICKET-67 cyber follow-ups) tightened this from
- * 1500ms to 800ms. Reasoning: `lib/embed-cache.ts` (TICKET-95 MEDIUM-1) now
- * answers the common case — a repeat videoId — with zero network calls, so
- * this budget only bites on a genuine cache miss (a videoId never checked
- * before, or one whose prior verdict was "unknown" and expired). On a miss,
- * Google's `videos.list` is normally well under 800ms end-to-end; a timeout
- * fails OPEN to "unknown" (never blocks the submit — see the design rules
- * above), so tightening this only trades a few accurate not-embeddable
- * warnings under real upstream slowness for materially less held concurrency
- * on this unauthenticated, most-hit mutation route during a slow-upstream or
- * miss-burst window (many distinct new videos submitted at once). 800ms was
- * chosen over going lower still because Data API p99s occasionally land in
- * the 400–700ms range from some regions, and cutting it much closer would
- * start trading away real warnings for negligible additional hold-time
- * savings.
- */
-export const EMBEDDABLE_CHECK_TIMEOUT_MS = 800;
-
-/**
- * Result of the pre-check. `unknown` is the fail-open value: the caller must
- * treat it exactly like `embeddable` (no warning, no error, submit proceeds).
+ * Result of the embeddability pre-check (lib/youtube-server.ts). `unknown` is
+ * the fail-open value: the caller must treat it exactly like `embeddable` (no
+ * error, submit proceeds). Only `not-embeddable` refuses a submit.
  */
 export type EmbeddableStatus = "embeddable" | "not-embeddable" | "unknown";
 
 /**
- * Resolve the Data API origin. Production is always the constant above; a
- * non-production process may point the helper at a local stub for end-to-end
- * testing (there is no way to intercept a server-side fetch from the browser).
- * Guarded by NODE_ENV so the override can never be honored on the live site.
+ * Display facts about a video, fetched server-side. Every field is optional:
+ * a failed lookup simply leaves the `youtu.be/<id>` display in place.
  */
-function apiOrigin(): string {
-  const override = process.env.YOUTUBE_API_ORIGIN;
-  if (process.env.NODE_ENV === "production" || !override) return DEFAULT_API_ORIGIN;
-  // Loopback only (cyber gate): the call carries the API key, so the override
-  // must not be able to ship a real key to an arbitrary host even by operator
-  // mistake. A local stub is the only legitimate use.
-  try {
-    const host = new URL(override).hostname;
-    if (host === "127.0.0.1" || host === "localhost" || host === "[::1]" || host === "::1") {
-      return override;
-    }
-  } catch {
-    /* unparseable override → ignore it */
-  }
-  return DEFAULT_API_ORIGIN;
-}
-
-/**
- * Ask the YouTube Data API whether `videoId` may be embedded on a third-party
- * page. Costs 1 quota unit per call. Returns "unknown" for every failure —
- * see the design rules above. `fetchImpl` is injectable for tests.
- */
-export async function checkEmbeddable(
-  videoId: string,
-  key: string | undefined,
-  opts: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
-): Promise<EmbeddableStatus> {
-  if (!key) return "unknown"; // no key configured (dev/CI) → no check, no warning
-  if (!isValidVideoId(videoId)) return "unknown"; // never put an unvalidated id in a URL
-
-  const fetchImpl = opts.fetchImpl ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? EMBEDDABLE_CHECK_TIMEOUT_MS;
-
-  try {
-    const url = new URL(VIDEOS_ENDPOINT_PATH, apiOrigin());
-    url.searchParams.set("part", "status");
-    url.searchParams.set("id", videoId);
-    url.searchParams.set("key", key);
-
-    const res = await fetchImpl(url.toString(), {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    // Any non-OK (403 quotaExceeded, 400, 5xx, …) is a fail-open "unknown".
-    if (!res.ok) return "unknown";
-
-    const json = (await res.json()) as {
-      items?: Array<{ status?: { embeddable?: boolean } }>;
-    };
-    const embeddable = json?.items?.[0]?.status?.embeddable;
-    if (typeof embeddable !== "boolean") return "unknown"; // deleted/private/absent
-    return embeddable ? "embeddable" : "not-embeddable";
-  } catch {
-    // Network error, abort timeout, malformed JSON — all fail open.
-    return "unknown";
-  }
+export interface VideoMeta {
+  title?: string;
+  channelTitle?: string;
+  /** Display duration ("3:45"), from `contentDetails.duration`. */
+  duration?: string;
 }

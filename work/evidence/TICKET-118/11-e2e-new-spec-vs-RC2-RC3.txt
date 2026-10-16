@@ -1,0 +1,41 @@
+Targeted e2e, PORT=3118 workers=1, lib/rooms.ts mutated with RC2 (no-op epoch bump) + RC3 (logout clears every device); restored afterwards. 2026-10-15T21:53:48Z-21:55:21Z, load 109.79 -> 81.84
+Running 4 tests using 1 worker
+[1/4] [chromium] › e2e/_canary.spec.ts:22:7 › run-triage canary (not a product test) › the runner evaluates constants correctly
+[2/4] [chromium] › e2e/_canary.spec.ts:28:7 › run-triage canary (not a product test) › the runner's async primitives complete
+[3/4] [chromium] › e2e/creator-reentry.spec.ts:429:7 › sign out other devices (TICKET-118) and this-device logout (TICKET-112) › a session copied to another browser dies; the owner's device stays signed in
+  1) [chromium] › e2e/creator-reentry.spec.ts:429:7 › sign out other devices (TICKET-118) and this-device logout (TICKET-112) › a session copied to another browser dies; the owner's device stays signed in 
+    Error: expect(received).toBe(expected) // Object.is equality
+    Expected: 401
+    Received: 200
+      459 |         data: { moderation: false },
+      460 |       });
+    > 461 |       expect(after.status()).toBe(401);
+          |                              ^
+      462 |       const probe = await copy.request.get(`/api/host/session?room=${id}`);
+      463 |       expect(probe.status()).toBe(401);
+      464 |       expect(probe.headers()["set-cookie"] ?? "").toBe("");
+        at /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation/e2e/creator-reentry.spec.ts:461:30
+    Error Context: test-results/creator-reentry-sign-out-o-92f91-er-s-device-stays-signed-in-chromium/error-context.md
+[4/4] [chromium] › e2e/creator-reentry.spec.ts:477:7 › sign out other devices (TICKET-118) and this-device logout (TICKET-112) › a STAFF device's logout leaves the owner's device able to get back in
+  2) [chromium] › e2e/creator-reentry.spec.ts:477:7 › sign out other devices (TICKET-118) and this-device logout (TICKET-112) › a STAFF device's logout leaves the owner's device able to get back in 
+    Error: expect(locator).toBeVisible() failed
+    Locator: getByTestId('moderation-card')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('moderation-card')
+      514 |     await keepOnlyClaimCookie(page.context(), id);
+      515 |     await page.goto(`/${id}/admin`);
+    > 516 |     await expect(dashboard(page)).toBeVisible();
+          |                                   ^
+      517 |     await expect(gateCodeInput(page)).toHaveCount(0);
+      518 |   });
+      519 | });
+        at /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t118-session-revocation/e2e/creator-reentry.spec.ts:516:35
+    Error Context: test-results/creator-reentry-sign-out-o-e524a--device-able-to-get-back-in-chromium/error-context.md
+  2 failed
+    [chromium] › e2e/creator-reentry.spec.ts:429:7 › sign out other devices (TICKET-118) and this-device logout (TICKET-112) › a session copied to another browser dies; the owner's device stays signed in 
+    [chromium] › e2e/creator-reentry.spec.ts:477:7 › sign out other devices (TICKET-118) and this-device logout (TICKET-112) › a STAFF device's logout leaves the owner's device able to get back in 
+  2 passed (1.5m)

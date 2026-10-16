@@ -1,0 +1,18 @@
+START 18:42:06 load averages: 75.99 99.24 121.54
+exit=1
+END 18:48:06 load averages: 112.85 108.71 117.59
+
+  2 failed
+    [chromium] › e2e/paste-link.spec.ts:88:5 › gap 1: typing an 11-letter word searches instead of selecting a fake video 
+    [chromium] › e2e/paste-link.spec.ts:160:5 › gap 5 fail-open: when every lookup fails the song is still queued, with the old label 
+  136 passed (6.0m)
+
+Both failures were locator bugs in the new spec (getByText substring-matched the input label). Fixed with exact:true and re-run:
+START 18:48:26 load averages: 99.23 105.89 116.37
+exit=0
+END 18:49:53 load averages: 92.51 102.44 114.07
+[3/6] [chromium] › e2e/paste-link.spec.ts:88:5 › gap 1: typing an 11-letter word searches instead of selecting a fake video
+[4/6] [chromium] › e2e/paste-link.spec.ts:119:5 › gap 3: a pasted link shows its real title in the picker and in the queue
+[5/6] [chromium] › e2e/paste-link.spec.ts:148:5 › gap 5: a definitely not-embeddable video is refused with friendly copy
+[6/6] [chromium] › e2e/paste-link.spec.ts:160:5 › gap 5 fail-open: when every lookup fails the song is still queued, with the old label
+  6 passed (1.4m)

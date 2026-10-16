@@ -131,7 +131,7 @@ describe("moderation ON", () => {
   it("host approve promotes the pending entry into the real queue", async () => {
     const room = await freshRoom("Approve Bar");
     await setModeration(room, true);
-    const submitBody = await (await QUEUE_POST(submit(room, UUID_A, { title: "Approve Me" }))).json();
+    const submitBody = await (await QUEUE_POST(submit(room, UUID_A, { nickname: "Approve Me" }))).json();
 
     const list = await (await hostPending(room)).json();
     expect(list.items).toHaveLength(1);
@@ -142,7 +142,7 @@ describe("moderation ON", () => {
     // Now in the queue…
     const q = await (await QUEUE_GET(queueGet(room))).json();
     expect(q.items).toHaveLength(1);
-    expect(q.items[0].title).toBe("Approve Me");
+    expect(q.items[0].nickname).toBe("Approve Me");
     // …and gone from pending.
     const after = await (await hostPending(room)).json();
     expect(after.items.filter((p: { status: string }) => p.status === "pending")).toHaveLength(0);

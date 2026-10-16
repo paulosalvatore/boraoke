@@ -1,0 +1,11 @@
+MUTATION: N2 normaliseSessionEpoch
+FILE: lib/rooms.ts
+--- replaced:
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+--- with:
+  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+--- jest __tests__/host-session-revocation.test.ts (exit 0)
+Test Suites: 1 passed, 1 total
+Tests:       37 passed, 37 total
+--- failing tests:
+

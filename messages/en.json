@@ -96,8 +96,6 @@
     "greeting": "Hi,",
     "addSong": "Add a song",
     "selected": "✓ Selected: {videoId}",
-    "songTitleLabel": "Song title (optional)",
-    "songTitlePlaceholder": "e.g. Bohemian Rhapsody",
     "tableLabel": "Table # (optional)",
     "tableAria": "Table number",
     "tablePlaceholder": "e.g. 7",
@@ -165,6 +163,16 @@
     "removeAria": "Remove {nickname}",
     "confirm": "Confirm",
     "cancel": "Cancel",
+    "signOut": "Sign out",
+    "signOutQuestion": "Sign out of this device? Other devices stay signed in. To get back in on this device, you'll need the host code.",
+    "signOutOwnerWarning": "This is the device that created the room. If you sign out here, you lose the option to sign out other devices, even after you get back in with the host code.",
+    "signOutAll": "Sign out other devices",
+    "signOutAllWarning": "This signs out every other phone, tablet or computer signed in to this room's host panel, including any you don't recognise. This device stays signed in. The others will need the host code to get back in.",
+    "signOutAllConfirm": "Sign them out",
+    "signOutAllDone": "Done. The other devices are signed out and will need the host code to get back in. This one is still signed in.",
+    "signOutAllError": "Couldn't sign the other devices out, so they may still be signed in. Please try again. If this device gets signed out too, you'll need the host code to get back in.",
+    "signOutAllOwnerOnly": "Only the device that created this room can sign out other devices.",
+    "signOutAllThrottled": "You've just done this a few times. Please wait a few minutes and try again.",
     "resume": "▶ Resume",
     "pause": "⏸ Pause",
     "skipSong": "⏭ Skip song",
@@ -209,7 +217,7 @@
     "label": "Search a song or paste a YouTube link *",
     "aria": "Search for a song or paste a YouTube link",
     "placeholder": "e.g. Bohemian Rhapsody — or paste a YouTube link",
-    "rateLimited": "Too many searches — hang on a sec.",
+    "rateLimited": "Too many searches — hang on a sec, or paste a YouTube link.",
     "youtubeLink": "YouTube link",
     "pastedLink": "Pasted link",
     "degraded": "Search is down — paste a YouTube link",
@@ -254,7 +262,7 @@
     "errorOffline": "No connection? Try again in a moment."
   },
   "Errors": {
-    "searchRateLimited": "Too many searches — hang on a sec and try again.",
+    "searchRateLimited": "Too many searches — hang on a sec and try again, or paste a YouTube link.",
     "roomsRateLimited": "Too many rooms created — try again in an hour.",
     "roomsFull": "We're packed right now — try again a little later.",
     "submitRateLimited": "Easy there, superstar! Too many requests at once — give it a minute and try again.",
@@ -266,7 +274,7 @@
     "submitTableCap": "Your table already has {cap} songs in the queue — wait for one to play.",
     "submitPersonCap": "You already have {cap} songs in the queue — wait for one to play before adding another.",
     "pendingFull": "Lots of songs are waiting for approval right now — try again in a bit.",
-    "submitNotEmbeddable": "this video doesn't allow playback on external screens — it may not play"
+    "submitNotEmbeddable": "This video can't play on the bar's screen — its owner doesn't allow it. Try another version of the song."
   },
   "Meta": {
     "title": "Boraoke — the karaoke queue on the TV, on everyone’s phone",

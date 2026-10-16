@@ -12,7 +12,7 @@ import {
   resetLoginThrottle,
   attachClaimCookie,
   rollClaimCookie,
-  verifyClaim,
+  claimStatus,
 } from "@/lib/host-auth";
 
 const MAX_BODY_BYTES = 1024;
@@ -79,7 +79,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const res = NextResponse.json({ ok: true });
+  // One read answers both "does this device already hold a live claim token" and
+  // "is it the owner's" (TICKET-118 S3: the admin page shows "sign out other
+  // devices" only on the owner's device). Same single read `verifyClaim` made.
+  const claim = await claimStatus(req, roomId);
+  const res = NextResponse.json({ ok: true, owner: claim.owner });
   res.cookies.set(hostCookieName(roomId), session, hostCookieOptions());
   // TICKET-104: presenting the host code proves possession, so this device earns
   // the no-typing path — a FRESH admin claim token, minted server-side and put in
@@ -93,7 +97,7 @@ export async function POST(req: NextRequest) {
   // gets that token re-sent (no mint, no store write), exactly like a roll. The
   // cap counts devices, not issues: before this, five logins from one tablet
   // consumed every slot and evicted the creator's phone.
-  if (await verifyClaim(req, roomId)) {
+  if (claim.live) {
     rollClaimCookie(res, req, roomId);
   } else {
     await attachClaimCookie(res, roomId);

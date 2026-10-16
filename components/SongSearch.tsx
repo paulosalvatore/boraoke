@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
-import { parseYouTubeVideoId } from "@/lib/youtube";
+import { MAX_PARSE_INPUT, parseYouTubeVideoId } from "@/lib/youtube";
 import { augmentQuery } from "@/lib/search-query";
 import { planSearch } from "@/lib/search-prefix";
 import type { Mode } from "@/lib/store";
@@ -45,9 +45,17 @@ const MIN_CHARS = 4;
  */
 const PAGE_SIZE = 8;
 
+/** A rendered row: a search result, or the single row a pasted link resolves to. */
+type ResultRow = SearchResult & { pasted?: boolean };
+
 export interface SongSelection {
   videoId: string;
   title?: string;
+  /**
+   * Where the pick came from (TICKET-140). A telemetry label only: the server
+   * runs the same checks and resolves the title itself either way.
+   */
+  source?: "paste" | "search";
 }
 
 interface SongSearchProps {
@@ -95,7 +103,7 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
    * whole fetched page: while the patron keeps extending a query we already hold
    * results for, this is the locally-narrowed subset and no call was spent.
    */
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<ResultRow[]>([]);
   /**
    * The full page we HOLD from the last billed `search.list` call, and the raw
    * query it was fetched for (TICKET-108). One call returns up to 50 rows, so
@@ -511,12 +519,33 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
           channelTitle: t("pastedLink"),
           duration: "",
           thumbnailUrl: `https://i.ytimg.com/vi/${pastedId}/mqdefault.jpg`,
+          pasted: true,
         },
       ]);
       // Auto-select the resolved link. (The parent's effect on the selection
       // state performs the jump-to-CTA — TICKET-40 §1.)
       setSelectedId(pastedId);
-      onSelect({ videoId: pastedId });
+      onSelect({ videoId: pastedId, source: "paste" });
+      // TICKET-140 gap 4: swap the placeholder for the real title and channel
+      // once the server knows them (cached keyless oEmbed, zero Data API
+      // units). Display only — on any failure the placeholder simply stays.
+      const previewSeq = seqRef.current;
+      fetch(`/api/video-meta?v=${encodeURIComponent(pastedId)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((meta: { title?: unknown; channelTitle?: unknown } | null) => {
+          if (seqRef.current !== previewSeq) return; // the input moved on
+          if (!meta || typeof meta.title !== "string" || !meta.title) return;
+          const title = meta.title;
+          const channelTitle = typeof meta.channelTitle === "string" ? meta.channelTitle : "";
+          setResults((rows) =>
+            rows.length === 1 && rows[0].videoId === pastedId
+              ? [{ ...rows[0], title, channelTitle: channelTitle || rows[0].channelTitle, pasted: true }]
+              : rows,
+          );
+        })
+        .catch(() => {
+          /* keep the placeholder */
+        });
       return;
     }
 
@@ -612,12 +641,14 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
     triggerRef.current?.enter(trimmed);
   }
 
-  function handlePick(r: SearchResult) {
+  function handlePick(r: ResultRow) {
     setSelectedId(r.videoId);
-    onSelect({
-      videoId: r.videoId,
-      title: r.title && r.title !== t("youtubeLink") ? r.title : undefined,
-    });
+    // A pasted row carries no client title: the server resolves it (TICKET-140).
+    onSelect(
+      r.pasted
+        ? { videoId: r.videoId, source: "paste" }
+        : { videoId: r.videoId, title: r.title || undefined, source: "search" },
+    );
   }
 
   const modeName = (m: Mode) => (m === "sing" ? t("modeSing") : t("modeListen"));
@@ -726,6 +757,8 @@ export default function SongSearch({ patronUuid, mode, onModeChange, onSelect }:
         id="song-search-input"
         aria-label={t("aria")}
         placeholder={t("placeholder")}
+        // The link parser ignores anything longer, so the box stops there too.
+        maxLength={MAX_PARSE_INPUT}
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}

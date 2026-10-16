@@ -40,7 +40,7 @@ import {
   getRoom,
   hashClaimToken,
   issueRoomClaimToken,
-  revokeRoomClaimTokens,
+  revokeRoomHostSessions,
   verifyRoomClaimToken,
   roomBackend,
   MAX_CLAIM_TOKENS,
@@ -87,10 +87,13 @@ function claimReq(
  */
 function logoutReq(
   roomId: string,
-  opts: { session?: string; fetchSite?: string; origin?: string } = {},
+  opts: { session?: string; claimToken?: string; fetchSite?: string; origin?: string } = {},
 ): NextRequest {
   const headers: Record<string, string> = { host: "127.0.0.1:3040" };
-  if (opts.session) headers.cookie = `${hostCookieName(roomId)}=${opts.session}`;
+  const jar: string[] = [];
+  if (opts.session) jar.push(`${hostCookieName(roomId)}=${opts.session}`);
+  if (opts.claimToken) jar.push(`${claimCookieName(roomId)}=${opts.claimToken}`);
+  if (jar.length) headers.cookie = jar.join("; ");
   if (opts.fetchSite) headers["sec-fetch-site"] = opts.fetchSite;
   if (opts.origin) headers.origin = opts.origin;
   return new NextRequest(
@@ -265,14 +268,17 @@ describe("the capped list holds DEVICES, so one device's re-entry never evicts a
   });
 });
 
-describe("logout REVOKES the credential in server state (B-S1, direction 2)", () => {
-  it("a token COPIED off the device stops working once the owner logs out", async () => {
+describe("logout REVOKES this device's credential in server state (B-S1, direction 2)", () => {
+  it("a token COPIED off the device stops working once that device logs out", async () => {
     const { room, token } = await roomWithClaim("Bar Revogado");
     const stolen = token; // the attacker's copy, taken before logout
     expect((await claimRoute(claimReq(room.id, { token: stolen }))).status).toBe(200);
 
+    // The device logs out presenting its own claim cookie, as the browser does
+    // (the cookie's path covers /api/host). TICKET-112: logout revokes THIS
+    // device's credential, server-side, so the copy of it dies too.
     const session = (await issueSession(room.id))!;
-    expect((await logoutRoute(logoutReq(room.id, { session }))).status).toBe(200);
+    expect((await logoutRoute(logoutReq(room.id, { session, claimToken: token }))).status).toBe(200);
 
     // The copy is dead for the attacker too — which a marker in the victim's own
     // cookie jar could never achieve.
@@ -283,7 +289,7 @@ describe("logout REVOKES the credential in server state (B-S1, direction 2)", ()
   it("entering the host code after a logout mints a FRESH token, not the revoked one", async () => {
     const { room, hostCode, token } = await roomWithClaim("Bar Volta");
     const session = (await issueSession(room.id))!;
-    await logoutRoute(logoutReq(room.id, { session }));
+    await logoutRoute(logoutReq(room.id, { session, claimToken: token }));
 
     const res = await loginRoute(
       new NextRequest(`http://127.0.0.1:3040/api/host/login?room=${room.id}`, {
@@ -300,7 +306,7 @@ describe("logout REVOKES the credential in server state (B-S1, direction 2)", ()
     expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(401);
   });
 
-  it("holds the credential for several devices, capped, and logout clears them ALL", async () => {
+  it("holds the credential for several devices, capped, and SIGN OUT OTHER DEVICES clears all but the actor's", async () => {
     const { room } = await mustCreateRoom("Bar Multi");
     const tokens: string[] = [];
     for (let i = 0; i < MAX_CLAIM_TOKENS + 2; i++) {
@@ -313,10 +319,15 @@ describe("logout REVOKES the credential in server state (B-S1, direction 2)", ()
     for (const dead of tokens.slice(0, 2)) {
       expect(await verifyRoomClaimToken(room.id, dead)).toBe(false);
     }
-    await revokeRoomClaimTokens(room.id);
+    // TICKET-112/118: ending every device's credential is the explicit "sign out
+    // other devices" action now, not logout. It keeps only the acting device's.
+    // Only the OWNER's device may use it (S3), so the actor is the owner's token.
+    const actor = (await issueRoomClaimToken(room.id, { owner: true }))!;
+    await revokeRoomHostSessions(room.id, { presentedClaimToken: actor });
     for (const t of tokens) {
       expect(await verifyRoomClaimToken(room.id, t)).toBe(false);
     }
+    expect(await verifyRoomClaimToken(room.id, actor)).toBe(true);
   });
 });
 
@@ -334,7 +345,7 @@ describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () 
 
   it("a WRONG session value cannot log the room out either", async () => {
     const { room, token } = await roomWithClaim("Bar Sessao Falsa");
-    const res = await logoutRoute(logoutReq(room.id, { session: "f".repeat(64) }));
+    const res = await logoutRoute(logoutReq(room.id, { session: "f".repeat(64), claimToken: token }));
     expect(res.status).toBe(401);
     expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
   });
@@ -350,8 +361,11 @@ describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () 
   it("a valid session presented from ANOTHER SITE cannot log the room out", async () => {
     const { room, token } = await roomWithClaim("Bar Sec Fetch");
     const session = (await issueSession(room.id))!;
+    // The device's claim cookie rides along too (TICKET-112): logout only ever
+    // revokes the PRESENTED token, so without it "nothing was revoked" below
+    // would be true even if the provenance check were deleted.
     const res = await logoutRoute(
-      logoutReq(room.id, { session, fetchSite: "cross-site" }),
+      logoutReq(room.id, { session, claimToken: token, fetchSite: "cross-site" }),
     );
     expect(res.status).toBe(401);
     expect(res.headers.getSetCookie?.() ?? []).toEqual([]);
@@ -365,7 +379,7 @@ describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () 
     const { room, token } = await roomWithClaim("Bar Origem Estranha");
     const session = (await issueSession(room.id))!;
     const res = await logoutRoute(
-      logoutReq(room.id, { session, origin: "http://evil.test" }),
+      logoutReq(room.id, { session, claimToken: token, origin: "http://evil.test" }),
     );
     expect(res.status).toBe(401);
     expect((await getRoom(room.id))!.claimTokenHashes).toHaveLength(1);
@@ -381,6 +395,7 @@ describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () 
     const res = await logoutRoute(
       logoutReq(room.id, {
         session,
+        claimToken: token,
         fetchSite: "same-origin",
         origin: "http://127.0.0.1:3040",
       }),
@@ -409,7 +424,9 @@ describe("logout is AUTHENTICATED, so nobody can lock the owner out (B-S2)", () 
     const res = await logoutRoute(
       new NextRequest(`http://127.0.0.1:3040/api/host/session?room=${room.id}`, {
         method: "POST",
-        headers: { cookie: `${hostCookieName(other.room.id)}=${otherSession}` },
+        headers: {
+          cookie: `${hostCookieName(other.room.id)}=${otherSession}; ${claimCookieName(room.id)}=${token}`,
+        },
       }),
     );
     expect(res.status).toBe(401);
@@ -432,7 +449,7 @@ describe("claim — every caller without a live token stays out", () => {
   });
 
   it("an EMPTY hash list matches nothing — asserted against a hand-written record", async () => {
-    // Unreachable through the app today (`revokeRoomClaimTokens` deletes the key
+    // Unreachable through the app today (`revokeRoomClaimToken` deletes the key
     // rather than emptying it, and creation never writes `[]`), which is exactly
     // why it needs asserting: a mutation that treats an empty list as a match
     // survived a suite that only ever saw the key ABSENT, and that mutation makes

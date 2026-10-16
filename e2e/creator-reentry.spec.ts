@@ -413,3 +413,126 @@ test.describe("a third-party page cannot lock the creator out (B-S2)", () => {
     await expect(dashboard(page)).toHaveCount(0);
   });
 });
+
+/**
+ * TICKET-118: "sign out other devices" ends a host session that was COPIED to
+ * another browser. Before it, a session value was a pure function of the room's
+ * immutable secret, so a copy kept moderating forever and nothing a venue could
+ * do would end it. The copy is planted in a separate browser context (another
+ * device), and the positive control comes first: if the copy cannot moderate
+ * BEFORE the revoke, the run proves nothing and fails loudly instead.
+ *
+ * TICKET-112: a plain logout signs out only the device it is tapped on. A staff
+ * device logging out must not cost the owner's phone its no-typing way back in.
+ */
+test.describe("sign out other devices (TICKET-118) and this-device logout (TICKET-112)", () => {
+  test("a session copied to another browser dies; the owner's device stays signed in", async ({
+    page,
+    browser,
+  }) => {
+    await warmUp(page);
+    const id = await createRoom(page, "Bar Sessao Copiada");
+    await page.goto(`/${id}/admin`);
+    await expect(dashboard(page)).toBeVisible();
+
+    const ownerSession = (await page.context().cookies()).find((c) => c.name === `cantai_host_${id}`);
+    expect(ownerSession, "the owner's device must hold a host session").toBeTruthy();
+
+    const copy = await browser.newContext();
+    try {
+      await copy.addCookies([ownerSession!]);
+      // POSITIVE CONTROL: the copied session moderates before the revoke.
+      const before = await copy.request.post(`/api/host/moderation?room=${id}`, {
+        data: { moderation: true },
+      });
+      expect(before.status(), "control: the copy must work before the revoke").toBe(200);
+
+      await page.getByTestId("admin-revoke-button").click();
+      const confirm = page.getByTestId("admin-revoke-confirm");
+      await expect(confirm).toBeVisible();
+      await expect(confirm).toContainText("Os outros vão precisar do código do host");
+      await page.getByTestId("admin-revoke-confirm-yes").click();
+      await expect(page.getByTestId("admin-revoke-toast")).toContainText("Pronto.");
+
+      // The copy is dead on a real host route, and the probe no longer rolls it.
+      const after = await copy.request.post(`/api/host/moderation?room=${id}`, {
+        data: { moderation: false },
+      });
+      expect(after.status()).toBe(401);
+      const probe = await copy.request.get(`/api/host/session?room=${id}`);
+      expect(probe.status()).toBe(401);
+      expect(probe.headers()["set-cookie"] ?? "").toBe("");
+    } finally {
+      await copy.close();
+    }
+
+    // The owner's device was never signed out: still the dashboard, and still so
+    // after a reload (its session cookie was replaced with one at the new epoch).
+    await expect(dashboard(page)).toBeVisible();
+    expect((await page.request.get(`/api/host/session?room=${id}`)).status()).toBe(200);
+    await page.reload();
+    await expect(dashboard(page)).toBeVisible();
+  });
+
+  test("a STAFF device's logout leaves the owner's device able to get back in", async ({
+    page,
+    browser,
+  }) => {
+    await warmUp(page);
+    await page.goto("/new");
+    await page.getByLabel("Nome do bar").fill("Bar Fim De Turno");
+    await page.getByRole("button", { name: /^criar sala$/i }).click();
+    await page.getByTestId("join-url").waitFor();
+    const id = (await page.getByTestId("join-url").textContent())!.trim().split("/").pop()!;
+    const hostCode = (await page.getByTestId("host-code").textContent())!.trim();
+    await page.goto(`/${id}/admin`);
+    await expect(dashboard(page)).toBeVisible();
+
+    // A staff member types the code on their own device, then logs out.
+    const staff = await browser.newContext();
+    try {
+      const staffPage = await staff.newPage();
+      await staffPage.goto(`/${id}/admin`);
+      await gateCodeInput(staffPage).fill(hostCode);
+      await staffPage.getByRole("button", { name: /^entrar$/i }).click();
+      await expect(dashboard(staffPage)).toBeVisible();
+      // "Sign out other devices" is the owner's device only (TICKET-118 S3), so a
+      // staff device never sees it; the owner's device does.
+      await expect(staffPage.getByTestId("admin-logout-button")).toBeVisible();
+      await expect(staffPage.getByTestId("admin-revoke-button")).toHaveCount(0);
+      await expect(page.getByTestId("admin-revoke-button")).toBeVisible();
+
+      // U1: the OWNER device's logout confirm warns that signing out here loses
+      // the "sign out other devices" option; a staff device's confirm does not,
+      // because it never had that option.
+      await page.getByTestId("admin-logout-button").click();
+      const ownerConfirm = page.getByTestId("admin-logout-confirm");
+      await expect(ownerConfirm).toContainText("Sair deste dispositivo?");
+      await expect(page.getByTestId("admin-logout-owner-warning")).toHaveText(
+        "Este é o dispositivo que criou a sala. Se você sair aqui, perde a opção de desconectar outros dispositivos, mesmo depois de entrar de novo com o código do host.",
+      );
+      await ownerConfirm.getByRole("button", { name: /^cancelar$/i }).click();
+      await expect(ownerConfirm).toHaveCount(0);
+
+      await staffPage.getByTestId("admin-logout-button").click();
+      const confirm = staffPage.getByTestId("admin-logout-confirm");
+      await expect(confirm).toContainText("Sair deste dispositivo?");
+      await expect(staffPage.getByTestId("admin-logout-owner-warning")).toHaveCount(0);
+      await expect(confirm).not.toContainText("criou a sala");
+      await confirm.getByRole("button", { name: /^confirmar$/i }).click();
+      await expect(gateCodeInput(staffPage)).toBeVisible();
+      // The staff device really is out, and a reload does not auto-claim it back.
+      await staffPage.goto(`/${id}/admin`);
+      await expect(gateCodeInput(staffPage)).toBeVisible();
+    } finally {
+      await staff.close();
+    }
+
+    // The owner's no-typing credential survived: with ONLY the claim cookie left
+    // (the state of an owner whose session lapsed), admin still opens.
+    await keepOnlyClaimCookie(page.context(), id);
+    await page.goto(`/${id}/admin`);
+    await expect(dashboard(page)).toBeVisible();
+    await expect(gateCodeInput(page)).toHaveCount(0);
+  });
+});

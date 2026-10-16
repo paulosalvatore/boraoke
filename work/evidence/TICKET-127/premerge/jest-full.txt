@@ -1,0 +1,357 @@
+PASS __tests__/host-claim.test.ts
+PASS __tests__/host-api.test.ts
+PASS __tests__/api-rooms.test.ts
+PASS __tests__/api-queue.test.ts
+PASS __tests__/search-budget.test.ts
+PASS __tests__/room-write-cas.test.ts
+PASS __tests__/room-cas-lua.integration.test.ts
+PASS __tests__/room-session-epoch-backend.test.ts
+PASS __tests__/room-write-race.test.ts
+PASS __tests__/search-principal-lua.integration.test.ts
+PASS __tests__/store.test.ts
+PASS __tests__/api-search-index-tier.test.ts
+  ● Console
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 88/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 88/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 87/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 88/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 88/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+PASS __tests__/api-search-budget.test.ts
+PASS __tests__/karaoke-index-store-refresh.test.ts
+PASS __tests__/api-search-personal-caps.test.ts
+PASS __tests__/api-t.test.ts
+PASS __tests__/api-queue-rooms.test.ts
+PASS __tests__/host-auth.test.ts
+PASS __tests__/search-budget-lua.integration.test.ts
+PASS __tests__/api-search.test.ts
+  ● Console
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+PASS __tests__/room-memory.test.ts
+PASS __tests__/advance-rate-limit.test.ts
+PASS __tests__/karaoke-index-matcher.test.ts
+PASS __tests__/api-video-meta.test.ts
+PASS __tests__/karaoke-index-title-parser.test.ts
+PASS __tests__/telemetry-instrumentation.test.ts
+  ● Console
+
+    console.warn
+      [advance-auth] would-block advance room=default reason=unauthorized mode=log
+
+      45 |     // log-only: observe the would-block, then let the call proceed. This is the
+      46 |     // quiet observation window before the TM flips ADVANCE_AUTH=enforce.
+    > 47 |     console.warn(
+         |             ^
+      48 |       `[advance-auth] would-block advance room=${roomId} reason=${auth.reason} mode=log`,
+      49 |     );
+      50 |   }
+
+      at POST (app/api/queue/advance/route.ts:47:13)
+      at Object.<anonymous> (__tests__/telemetry-instrumentation.test.ts:90:17)
+
+    console.warn
+      [advance-auth] would-block advance room=default reason=unauthorized mode=log
+
+      45 |     // log-only: observe the would-block, then let the call proceed. This is the
+      46 |     // quiet observation window before the TM flips ADVANCE_AUTH=enforce.
+    > 47 |     console.warn(
+         |             ^
+      48 |       `[advance-auth] would-block advance room=${roomId} reason=${auth.reason} mode=log`,
+      49 |     );
+      50 |   }
+
+      at POST (app/api/queue/advance/route.ts:47:13)
+      at Object.<anonymous> (__tests__/telemetry-instrumentation.test.ts:105:17)
+
+    console.warn
+      [advance-auth] would-block advance room=default reason=unauthorized mode=log
+
+      45 |     // log-only: observe the would-block, then let the call proceed. This is the
+      46 |     // quiet observation window before the TM flips ADVANCE_AUTH=enforce.
+    > 47 |     console.warn(
+         |             ^
+      48 |       `[advance-auth] would-block advance room=${roomId} reason=${auth.reason} mode=log`,
+      49 |     );
+      50 |   }
+
+      at POST (app/api/queue/advance/route.ts:47:13)
+      at Object.<anonymous> (__tests__/telemetry-instrumentation.test.ts:119:17)
+
+    console.warn
+      [advance-auth] would-block advance room=default reason=unauthorized mode=log
+
+      45 |     // log-only: observe the would-block, then let the call proceed. This is the
+      46 |     // quiet observation window before the TM flips ADVANCE_AUTH=enforce.
+    > 47 |     console.warn(
+         |             ^
+      48 |       `[advance-auth] would-block advance room=${roomId} reason=${auth.reason} mode=log`,
+      49 |     );
+      50 |   }
+
+      at POST (app/api/queue/advance/route.ts:47:13)
+      at Object.<anonymous> (__tests__/telemetry-instrumentation.test.ts:142:17)
+
+    console.warn
+      [advance-auth] would-block advance room=default reason=unauthorized mode=log
+
+      45 |     // log-only: observe the would-block, then let the call proceed. This is the
+      46 |     // quiet observation window before the TM flips ADVANCE_AUTH=enforce.
+    > 47 |     console.warn(
+         |             ^
+      48 |       `[advance-auth] would-block advance room=${roomId} reason=${auth.reason} mode=log`,
+      49 |     );
+      50 |   }
+
+      at POST (app/api/queue/advance/route.ts:47:13)
+      at Object.<anonymous> (__tests__/telemetry-instrumentation.test.ts:155:17)
+
+PASS __tests__/search-pagination.test.ts
+  ● Console
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 88/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+    console.info
+      [search-budget] spent 1 search.list — 89/90 remaining for PT day 2026-10-16 (hard cap 100, margin 10)
+
+      at logSpend (lib/search-budget.ts:610:16)
+
+PASS __tests__/api-feedback.test.ts
+PASS __tests__/host-stats.test.ts
+PASS __tests__/api-moderation.test.ts
+PASS __tests__/host-session-revocation.test.ts
+PASS __tests__/queue-rate-limit.test.ts
+PASS __tests__/search-budget-principal.test.ts
+PASS __tests__/rooms.test.ts
+PASS __tests__/youtube.test.ts
+PASS __tests__/feedback-store.test.ts
+PASS __tests__/youtube-search.test.ts
+PASS __tests__/api-admin-analytics.test.ts
+PASS __tests__/pending-store.test.ts
+PASS __tests__/room-moderation.test.ts
+PASS __tests__/queue-advance-song-played-props.test.ts
+  ● Console
+
+    console.warn
+      [advance-auth] would-block advance room=default reason=unauthorized mode=log
+
+      45 |     // log-only: observe the would-block, then let the call proceed. This is the
+      46 |     // quiet observation window before the TM flips ADVANCE_AUTH=enforce.
+    > 47 |     console.warn(
+         |             ^
+      48 |       `[advance-auth] would-block advance room=${roomId} reason=${auth.reason} mode=log`,
+      49 |     );
+      50 |   }
+
+      at POST (app/api/queue/advance/route.ts:47:13)
+      at Object.<anonymous> (__tests__/queue-advance-song-played-props.test.ts:57:17)
+
+    console.warn
+      [advance-auth] would-block advance room=default reason=unauthorized mode=log
+
+      45 |     // log-only: observe the would-block, then let the call proceed. This is the
+      46 |     // quiet observation window before the TM flips ADVANCE_AUTH=enforce.
+    > 47 |     console.warn(
+         |             ^
+      48 |       `[advance-auth] would-block advance room=${roomId} reason=${auth.reason} mode=log`,
+      49 |     );
+      50 |   }
+
+      at POST (app/api/queue/advance/route.ts:47:13)
+      at Object.<anonymous> (__tests__/queue-advance-song-played-props.test.ts:74:17)
+
+    console.warn
+      [advance-auth] would-block advance room=default reason=unauthorized mode=log
+
+      45 |     // log-only: observe the would-block, then let the call proceed. This is the
+      46 |     // quiet observation window before the TM flips ADVANCE_AUTH=enforce.
+    > 47 |     console.warn(
+         |             ^
+      48 |       `[advance-auth] would-block advance room=${roomId} reason=${auth.reason} mode=log`,
+      49 |     );
+      50 |   }
+
+      at POST (app/api/queue/advance/route.ts:47:13)
+      at Object.<anonymous> (__tests__/queue-advance-song-played-props.test.ts:87:17)
+
+    console.warn
+      [advance-auth] would-block advance room=default reason=unauthorized mode=log
+
+      45 |     // log-only: observe the would-block, then let the call proceed. This is the
+      46 |     // quiet observation window before the TM flips ADVANCE_AUTH=enforce.
+    > 47 |     console.warn(
+         |             ^
+      48 |       `[advance-auth] would-block advance room=${roomId} reason=${auth.reason} mode=log`,
+      49 |     );
+      50 |   }
+
+      at POST (app/api/queue/advance/route.ts:47:13)
+      at Object.<anonymous> (__tests__/queue-advance-song-played-props.test.ts:98:17)
+
+PASS __tests__/room-language.test.ts
+PASS __tests__/identity.test.ts
+PASS __tests__/api-cron-karaoke-index.test.ts
+  ● Console
+
+    console.info
+      [karaoke-index] refreshed 0 channels, skipped 0, units 0, search.list 0
+
+      at GET (app/api/cron/karaoke-index/route.ts:52:13)
+
+PASS __tests__/retention.test.ts
+PASS __tests__/search-cache.test.ts
+PASS __tests__/metadata.test.ts
+PASS __tests__/telemetry-track.test.ts
+PASS __tests__/rate-limit-counter.test.ts
+PASS __tests__/tv-self-heal.test.ts
+PASS __tests__/search-rate-isolation.test.ts
+PASS __tests__/client-ip.test.ts
+PASS __tests__/identity-store.test.ts
+PASS __tests__/room-create-throttle.test.ts
+PASS __tests__/karaoke-index-harvest.test.ts
+PASS __tests__/telemetry-store.test.ts
+PASS __tests__/i18n-completeness.test.ts
+PASS __tests__/karaoke-index-store-redis.test.ts
+PASS __tests__/search-prefix.test.ts
+PASS __tests__/telemetry-rollup.test.ts
+PASS __tests__/tv-html-lang.test.ts
+PASS __tests__/api-mode.test.ts
+PASS __tests__/tv-watchdog.test.ts
+PASS __tests__/rotation-adapter.test.ts
+PASS __tests__/live-search-gate.test.ts
+PASS __tests__/analytics.test.ts
+PASS __tests__/tv-focus-state.test.ts
+PASS __tests__/embed-cache.test.ts
+PASS __tests__/video-meta-cache.test.ts
+PASS __tests__/search-trigger.test.ts
+PASS __tests__/tv-config.test.ts
+PASS __tests__/screen-token.test.ts
+PASS __tests__/search-query.test.ts
+PASS __tests__/served-lang.test.ts
+PASS __tests__/i18n-locales.test.ts
+PASS __tests__/route-locale.test.ts
+PASS __tests__/claim-token-owner-pin.test.ts
+PASS __tests__/search-single-flight.test.ts
+
+Test Suites: 78 passed, 78 total
+Tests:       89 skipped, 1462 passed, 1551 total
+Snapshots:   0 total
+Time:        4.309 s
+Ran all test suites.

@@ -62,6 +62,38 @@
   cursor: pointer;
 }
 .logoutBtn:hover { color: var(--text); text-decoration: underline; }
+.logoutBtn:disabled { cursor: default; opacity: 0.6; }
+
+/* TICKET-118: "sign out all other devices" confirm panel. Below the header
+   rather than inline in it — the warning is the point of the confirm, and at
+   390px a sentence cannot share a row with four other controls. Bordered and
+   tinted so it reads as a deliberate destructive step. */
+.revokePanel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.7rem 0.85rem;
+  margin: 0 0 0.75rem;
+}
+.revokeWarning {
+  flex: 1 1 14rem;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+.revokeDone,
+.revokeError {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.revokeDone { color: var(--text-muted); }
+.revokeError { color: var(--accent-text); }
 
 .label {
   display: block;

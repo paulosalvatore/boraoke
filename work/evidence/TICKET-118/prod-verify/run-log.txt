@@ -1,0 +1,7 @@
+room id: t118-prod-verify-throwaway (host code saved to scratchpad only)
+A dashboard without typing: true
+B logged in with code: true
+CHECK1 B sees "Sign out other devices": 0 (want 0); A sees it: 1 (want 1)
+CHECK1 A logout confirm owner warning: "Este é o dispositivo que criou a sala. Se você sair aqui, perde a opção de desconectar outros dispositivos, mesmo depois de entrar de novo com o código do host."
+A revoke confirm text: "Isso desconecta todos os outros celulares, tablets ou computadores conectados ao painel desta sala, inclusive algum que você não reconheça. Este dispositivo continua conectado. Os outros vão precisar do código do host para entrar de novo. Desconectar Cancelar"
+A revoke toast: "Pronto. Os outros dispositivos foram desconectados e vão precisar do código do host para entrar de novo. Este continua conectado."

@@ -1,0 +1,9 @@
+locator.click: Element is outside of the viewport
+Call log:
+[2m  - waiting for getByTestId('moderation-toggle')[22m
+[2m    - locator resolved to <input role="switch" type="checkbox" data-testid="moderation-toggle" aria-label="Moderação de músicas"/>[22m
+[2m  - attempting click action[22m
+[2m    - scrolling into view if needed[22m
+[2m    - done scrolling[22m
+
+    at /Users/paulosalvatore/Documents/GitHub/boraoke/work/evidence/TICKET-118/prod-verify/harness.cjs:71:44

@@ -1,0 +1,650 @@
+[
+ {
+  "combo": "pt-BR-m390",
+  "name": "room created",
+  "pass": true,
+  "detail": "at140-pt-br-m390-zc03"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "join",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "word Imagination searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "word Bittersweet searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "word UNBREAKABLE searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "bare dQw4w9WgXcQ is a video",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "rate-limit copy mentions paste a link, fits",
+  "pass": true,
+  "detail": "Muitas buscas — aguarde um instante ou cole um link do YouTube."
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "paste music queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF1C01xx · Canal Teste"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "paste nocookie queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF2C01xx · Canal Teste"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "paste upper queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF3C01xx · Canal Teste"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "paste slash queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF4C01xx · Canal Teste"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "paste share queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF5C01xx · Canal Teste"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "not-embeddable refused with friendly copy",
+  "pass": true,
+  "detail": "refused"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "timed-out check still lets the song in (slow 4s stub)",
+  "pass": true,
+  "detail": "queued in 2422ms"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "failed lookup falls back to link label, queued",
+  "pass": true,
+  "detail": "fallback ok; console errors: []"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "host admin shows real title",
+  "pass": true,
+  "detail": "▶Tester1Música Teste apOkF1C01xx · Canal Teste▲▼remover  [NOTE: admin page scrolls horizontally here; pre-existing, row width independent of title]"
+ },
+ {
+  "combo": "pt-BR-m390",
+  "name": "TV shows real title",
+  "pass": true,
+  "detail": "title visible on /tv"
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "room created",
+  "pass": true,
+  "detail": "at140-pt-br-m320-2bhs"
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "join",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "word Imagination searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "word Bittersweet searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "word UNBREAKABLE searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "bare dQw4w9WgXcQ is a video",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "rate-limit copy mentions paste a link, fits",
+  "pass": true,
+  "detail": "Muitas buscas — aguarde um instante ou cole um link do YouTube."
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "paste nocookie queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF2C02xx · Canal Teste"
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "not-embeddable refused with friendly copy",
+  "pass": true,
+  "detail": "refused"
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "host admin shows real title",
+  "pass": true,
+  "detail": "▶Tester2Música Teste apOkF2C02xx · Canal Teste▲▼remover  [NOTE: admin page scrolls horizontally here; pre-existing, row width independent of title]"
+ },
+ {
+  "combo": "pt-BR-m320",
+  "name": "TV shows real title",
+  "pass": true,
+  "detail": "title visible on /tv"
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "room created",
+  "pass": true,
+  "detail": "at140-pt-br-d1280-gvfk"
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "join",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "word Imagination searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "word Bittersweet searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "word UNBREAKABLE searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "bare dQw4w9WgXcQ is a video",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "rate-limit copy mentions paste a link, fits",
+  "pass": true,
+  "detail": "Muitas buscas — aguarde um instante ou cole um link do YouTube."
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "paste upper queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF3C03xx · Canal Teste"
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "not-embeddable refused with friendly copy",
+  "pass": true,
+  "detail": "refused"
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "host admin shows real title",
+  "pass": true,
+  "detail": "▶Tester3Música Teste apOkF3C03xx · Canal Teste▲▼remover"
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "TV shows real title",
+  "pass": true,
+  "detail": "title visible on /tv"
+ },
+ {
+  "combo": "pt-BR-d1280",
+  "name": "moderated: host pending row title · channel · duration",
+  "pass": true,
+  "detail": "ModMúsica Teste apOkMod03xx · Canal Teste · 3:27✓ Aprovar✕ Recusar"
+ },
+ {
+  "combo": "en-m390",
+  "name": "room created",
+  "pass": true,
+  "detail": "at140-en-m390-xdc5"
+ },
+ {
+  "combo": "en-m390",
+  "name": "join",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "en-m390",
+  "name": "word Imagination searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "en-m390",
+  "name": "word Bittersweet searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "en-m390",
+  "name": "word UNBREAKABLE searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "en-m390",
+  "name": "bare dQw4w9WgXcQ is a video",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "en-m390",
+  "name": "rate-limit copy mentions paste a link, fits",
+  "pass": true,
+  "detail": "Too many searches — hang on a sec, or paste a YouTube link."
+ },
+ {
+  "combo": "en-m390",
+  "name": "paste slash queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF4C04xx · Canal Teste"
+ },
+ {
+  "combo": "en-m390",
+  "name": "not-embeddable refused with friendly copy",
+  "pass": true,
+  "detail": "refused"
+ },
+ {
+  "combo": "en-m390",
+  "name": "host admin shows real title",
+  "pass": true,
+  "detail": "▶Tester4Música Teste apOkF4C04xx · Canal Teste▲▼remove  [NOTE: admin page scrolls horizontally here; pre-existing, row width independent of title]"
+ },
+ {
+  "combo": "en-m390",
+  "name": "TV shows real title",
+  "pass": true,
+  "detail": "title visible on /tv"
+ },
+ {
+  "combo": "en-m320",
+  "name": "room created",
+  "pass": true,
+  "detail": "at140-en-m320-495d"
+ },
+ {
+  "combo": "en-m320",
+  "name": "join",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "en-m320",
+  "name": "word Imagination searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "en-m320",
+  "name": "word Bittersweet searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "en-m320",
+  "name": "word UNBREAKABLE searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "en-m320",
+  "name": "bare dQw4w9WgXcQ is a video",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "en-m320",
+  "name": "rate-limit copy mentions paste a link, fits",
+  "pass": true,
+  "detail": "Too many searches — hang on a sec, or paste a YouTube link."
+ },
+ {
+  "combo": "en-m320",
+  "name": "paste share queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF5C05xx · Canal Teste"
+ },
+ {
+  "combo": "en-m320",
+  "name": "not-embeddable refused with friendly copy",
+  "pass": true,
+  "detail": "refused"
+ },
+ {
+  "combo": "en-m320",
+  "name": "host admin shows real title",
+  "pass": true,
+  "detail": "▶Tester5Música Teste apOkF5C05xx · Canal Teste▲▼remove  [NOTE: admin page scrolls horizontally here; pre-existing, row width independent of title]"
+ },
+ {
+  "combo": "en-m320",
+  "name": "TV shows real title",
+  "pass": true,
+  "detail": "title visible on /tv"
+ },
+ {
+  "combo": "en-d1280",
+  "name": "room created",
+  "pass": true,
+  "detail": "at140-en-d1280-63ed"
+ },
+ {
+  "combo": "en-d1280",
+  "name": "join",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "en-d1280",
+  "name": "word Imagination searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "en-d1280",
+  "name": "word Bittersweet searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "en-d1280",
+  "name": "word UNBREAKABLE searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "en-d1280",
+  "name": "bare dQw4w9WgXcQ is a video",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "en-d1280",
+  "name": "rate-limit copy mentions paste a link, fits",
+  "pass": true,
+  "detail": "Too many searches — hang on a sec, or paste a YouTube link."
+ },
+ {
+  "combo": "en-d1280",
+  "name": "paste music queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF1C06xx · Canal Teste"
+ },
+ {
+  "combo": "en-d1280",
+  "name": "not-embeddable refused with friendly copy",
+  "pass": true,
+  "detail": "refused"
+ },
+ {
+  "combo": "en-d1280",
+  "name": "host admin shows real title",
+  "pass": true,
+  "detail": "▶Tester6Música Teste apOkF1C06xx · Canal Teste▲▼remove"
+ },
+ {
+  "combo": "en-d1280",
+  "name": "TV shows real title",
+  "pass": true,
+  "detail": "title visible on /tv"
+ },
+ {
+  "combo": "en-d1280",
+  "name": "moderated: host pending row title · channel · duration",
+  "pass": true,
+  "detail": "ModMúsica Teste apOkMod06xx · Canal Teste · 3:27✓ Approve✕ Reject"
+ },
+ {
+  "combo": "es-m390",
+  "name": "room created",
+  "pass": true,
+  "detail": "at140-es-m390-419f"
+ },
+ {
+  "combo": "es-m390",
+  "name": "join",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "es-m390",
+  "name": "word Imagination searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "es-m390",
+  "name": "word Bittersweet searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "es-m390",
+  "name": "word UNBREAKABLE searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "es-m390",
+  "name": "bare dQw4w9WgXcQ is a video",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "es-m390",
+  "name": "rate-limit copy mentions paste a link, fits",
+  "pass": true,
+  "detail": "Demasiadas búsquedas — espera un momento o pega un enlace de YouTube."
+ },
+ {
+  "combo": "es-m390",
+  "name": "paste nocookie queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF2C07xx · Canal Teste"
+ },
+ {
+  "combo": "es-m390",
+  "name": "not-embeddable refused with friendly copy",
+  "pass": true,
+  "detail": "refused"
+ },
+ {
+  "combo": "es-m390",
+  "name": "host admin shows real title",
+  "pass": true,
+  "detail": "▶Tester7Música Teste apOkF2C07xx · Canal Teste▲▼quitar  [NOTE: admin page scrolls horizontally here; pre-existing, row width independent of title]"
+ },
+ {
+  "combo": "es-m390",
+  "name": "TV shows real title",
+  "pass": true,
+  "detail": "title visible on /tv"
+ },
+ {
+  "combo": "es-m320",
+  "name": "room created",
+  "pass": true,
+  "detail": "at140-es-m320-f6a2"
+ },
+ {
+  "combo": "es-m320",
+  "name": "join",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "es-m320",
+  "name": "word Imagination searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "es-m320",
+  "name": "word Bittersweet searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "es-m320",
+  "name": "word UNBREAKABLE searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "es-m320",
+  "name": "bare dQw4w9WgXcQ is a video",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "es-m320",
+  "name": "rate-limit copy mentions paste a link, fits",
+  "pass": true,
+  "detail": "Demasiadas búsquedas — espera un momento o pega un enlace de YouTube."
+ },
+ {
+  "combo": "es-m320",
+  "name": "paste upper queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF3C08xx · Canal Teste"
+ },
+ {
+  "combo": "es-m320",
+  "name": "not-embeddable refused with friendly copy",
+  "pass": true,
+  "detail": "refused"
+ },
+ {
+  "combo": "es-m320",
+  "name": "host admin shows real title",
+  "pass": true,
+  "detail": "▶Tester8Música Teste apOkF3C08xx · Canal Teste▲▼quitar  [NOTE: admin page scrolls horizontally here; pre-existing, row width independent of title]"
+ },
+ {
+  "combo": "es-m320",
+  "name": "TV shows real title",
+  "pass": true,
+  "detail": "title visible on /tv"
+ },
+ {
+  "combo": "es-d1280",
+  "name": "room created",
+  "pass": true,
+  "detail": "at140-es-d1280"
+ },
+ {
+  "combo": "es-d1280",
+  "name": "join",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "es-d1280",
+  "name": "word Imagination searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "es-d1280",
+  "name": "word Bittersweet searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "es-d1280",
+  "name": "word UNBREAKABLE searches, no fake link row",
+  "pass": true,
+  "detail": "searched"
+ },
+ {
+  "combo": "es-d1280",
+  "name": "bare dQw4w9WgXcQ is a video",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "combo": "es-d1280",
+  "name": "rate-limit copy mentions paste a link, fits",
+  "pass": true,
+  "detail": "Demasiadas búsquedas — espera un momento o pega un enlace de YouTube."
+ },
+ {
+  "combo": "es-d1280",
+  "name": "paste slash queues with real title+channel",
+  "pass": true,
+  "detail": "Música Teste apOkF4C09xx · Canal Teste"
+ },
+ {
+  "combo": "es-d1280",
+  "name": "not-embeddable refused with friendly copy",
+  "pass": true,
+  "detail": "refused"
+ },
+ {
+  "combo": "es-d1280",
+  "name": "host admin shows real title",
+  "pass": true,
+  "detail": "▶Tester9Música Teste apOkF4C09xx · Canal Teste▲▼quitar"
+ },
+ {
+  "combo": "es-d1280",
+  "name": "TV shows real title",
+  "pass": true,
+  "detail": "title visible on /tv"
+ },
+ {
+  "combo": "es-d1280",
+  "name": "moderated: host pending row title · channel · duration",
+  "pass": true,
+  "detail": "ModMúsica Teste apOkMod09xx · Canal Teste · 3:27✓ Aprobar✕ Rechazar"
+ }
+]

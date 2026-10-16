@@ -1,0 +1,43 @@
+MUTATION: H1 logout revokes before its refusal check — vs the FIXED refusal tests
+FILE: app/api/host/session/route.ts
+--- replaced:
+  if (isCrossSiteRequest(req) || !(await requireHost(req, roomId))) {
+    // Nothing to log out of, and nothing is changed — no cookie cleared, no
+
+--- with:
+  await revokeRoomClaimToken(roomId, claimTokenFrom(req, roomId)); // H1: revoke before the refusal
+  if (isCrossSiteRequest(req) || !(await requireHost(req, roomId))) {
+    // Nothing to log out of, and nothing is changed — no cookie cleared, no
+
+--- jest __tests__/host-claim.test.ts (exit 1)
+    ✕ a WRONG session value cannot log the room out either (2 ms)
+    ✕ a valid session presented from ANOTHER SITE cannot log the room out
+    ✕ a valid session with a FOREIGN Origin cannot log the room out either
+    ✕ another room's valid session cannot log THIS room out (1 ms)
+Test Suites: 1 failed, 1 total
+Tests:       4 failed, 30 passed, 34 total
+--- failing tests:
+● logout is AUTHENTICATED, so nobody can lock the owner out (B-S2) › a WRONG session value cannot log the room out either
+● logout is AUTHENTICATED, so nobody can lock the owner out (B-S2) › a valid session presented from ANOTHER SITE cannot log the room out
+● logout is AUTHENTICATED, so nobody can lock the owner out (B-S2) › a valid session with a FOREIGN Origin cannot log the room out either
+● logout is AUTHENTICATED, so nobody can lock the owner out (B-S2) › another room's valid session cannot log THIS room out
+
+--- first failure, verbatim:
+  ● logout is AUTHENTICATED, so nobody can lock the owner out (B-S2) › a WRONG session value cannot log the room out either
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 401
+
+      347 |     const res = await logoutRoute(logoutReq(room.id, { session: "f".repeat(64), claimToken: token }));
+      348 |     expect(res.status).toBe(401);
+    > 349 |     expect((await claimRoute(claimReq(room.id, { token }))).status).toBe(200);
+          |                                                                     ^
+      350 |   });
+      351 |
+      352 |   /**
+
+      at Object.<anonymous> (__tests__/host-claim.test.ts:349:69)
+
+  ● logout is AUTHENTICATED, so nobody can lock the owner out (B-S2) › a valid session presented from ANOTHER SITE cannot log the room out

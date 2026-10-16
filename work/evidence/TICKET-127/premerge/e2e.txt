@@ -1,0 +1,37 @@
+
+[WebServer]  ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+[WebServer]  We detected multiple lockfiles and selected the directory of /Users/paulosalvatore/Documents/GitHub/boraoke/package-lock.json as the root directory.
+[WebServer]  To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+[WebServer]    See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+[WebServer]  Detected additional lockfiles: 
+[WebServer]    * /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/package-lock.json
+[WebServer] 
+
+[WebServer]  ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+[WebServer]  We detected multiple lockfiles and selected the directory of /Users/paulosalvatore/Documents/GitHub/boraoke/package-lock.json as the root directory.
+[WebServer]  To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+[WebServer]    See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+[WebServer]  Detected additional lockfiles: 
+[WebServer]    * /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/package-lock.json
+[WebServer] 
+
+Running 17 tests using 1 worker
+
+[1/17] [chromium] › e2e/_canary.spec.ts:22:7 › run-triage canary (not a product test) › the runner evaluates constants correctly
+[2/17] [chromium] › e2e/_canary.spec.ts:28:7 › run-triage canary (not a product test) › the runner's async primitives complete
+[3/17] [chromium] › e2e/creator-reentry.spec.ts:86:7 › creator admin re-entry › the creator reaches admin straight from creation, typing nothing
+[4/17] [chromium] › e2e/creator-reentry.spec.ts:96:7 › creator admin re-entry › re-entry works with ONLY the claim cookie left (host session gone)
+[5/17] [chromium] › e2e/creator-reentry.spec.ts:117:7 › creator admin re-entry › deliberate LOGOUT is not undone by auto-claim
+[6/17] [chromium] › e2e/creator-reentry.spec.ts:142:7 › creator admin re-entry › entering the host code after a logout restores frictionless re-entry
+[7/17] [chromium] › e2e/creator-reentry.spec.ts:187:7 › creator admin re-entry › a device that did NOT create the room still hits the code gate
+[8/17] [chromium] › e2e/creator-reentry.spec.ts:209:7 › returning-creator homepage hero › the hero leads with the created room and links into admin
+[9/17] [chromium] › e2e/creator-reentry.spec.ts:229:7 › returning-creator homepage hero › a first-time visitor sees the generic hero, unchanged
+[10/17] [chromium] › e2e/creator-reentry.spec.ts:251:7 › the claim credential cannot be exfiltrated and replayed (B-S1) › everything page JS can see is NOT enough to claim the room
+[11/17] [chromium] › e2e/creator-reentry.spec.ts:366:7 › a third-party page cannot lock the creator out (B-S2) › a cross-site top-level POST to logout changes nothing
+[12/17] [chromium] › e2e/creator-reentry.spec.ts:397:7 › a third-party page cannot lock the creator out (B-S2) › the owner's OWN logout still works, and still sticks
+[13/17] [chromium] › e2e/creator-reentry.spec.ts:429:7 › sign out other devices (TICKET-118) and this-device logout (TICKET-112) › a session copied to another browser dies; the owner's device stays signed in
+[14/17] [chromium] › e2e/creator-reentry.spec.ts:477:7 › sign out other devices (TICKET-118) and this-device logout (TICKET-112) › a STAFF device's logout leaves the owner's device able to get back in
+[15/17] [chromium] › e2e/moderation.spec.ts:91:5 › moderation OFF (default): submission goes straight to the queue
+[16/17] [chromium] › e2e/moderation.spec.ts:99:5 › moderation ON: submit → pending → approve → appears in queue
+[17/17] [chromium] › e2e/moderation.spec.ts:127:5 › moderation ON: reject → patron sees the polite rejected state
+  17 passed (33.5s)

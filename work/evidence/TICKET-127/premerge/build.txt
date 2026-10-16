@@ -1,0 +1,89 @@
+
+> boraoke@0.1.0 build
+> next build && node scripts/check-bundle-es-target.mjs && node scripts/check-css-target.mjs
+
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /Users/paulosalvatore/Documents/GitHub/boraoke/package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/package-lock.json
+
+   ▲ Next.js 15.5.20
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 1407ms
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/36) ...
+   Generating static pages (9/36) 
+   Generating static pages (18/36) 
+   Generating static pages (27/36) 
+ ✓ Generating static pages (36/36)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ƒ /                                    3.26 kB         123 kB
+├ ƒ /_not-found                             1 kB         103 kB
+├ ƒ /[room]                              8.63 kB         129 kB
+├ ƒ /[room]/admin                        6.08 kB         130 kB
+├ ƒ /[room]/tv                           5.85 kB         129 kB
+├ ƒ /admin                                 207 B         103 kB
+├ ƒ /admin/analytics                     2.32 kB         105 kB
+├ ƒ /api/cron/karaoke-index                207 B         103 kB
+├ ƒ /api/feedback                          207 B         103 kB
+├ ƒ /api/host/analytics                    207 B         103 kB
+├ ƒ /api/host/claim                        207 B         103 kB
+├ ƒ /api/host/language                     207 B         103 kB
+├ ƒ /api/host/login                        207 B         103 kB
+├ ƒ /api/host/mode                         207 B         103 kB
+├ ƒ /api/host/moderation                   207 B         103 kB
+├ ƒ /api/host/pause                        207 B         103 kB
+├ ƒ /api/host/pending                      207 B         103 kB
+├ ƒ /api/host/pending/approve              207 B         103 kB
+├ ƒ /api/host/pending/reject               207 B         103 kB
+├ ƒ /api/host/remove                       207 B         103 kB
+├ ƒ /api/host/reorder                      207 B         103 kB
+├ ƒ /api/host/revoke-sessions              207 B         103 kB
+├ ƒ /api/host/session                      207 B         103 kB
+├ ƒ /api/host/skip                         207 B         103 kB
+├ ƒ /api/identity                          207 B         103 kB
+├ ƒ /api/queue                             207 B         103 kB
+├ ƒ /api/queue/advance                     207 B         103 kB
+├ ƒ /api/queue/pending                     207 B         103 kB
+├ ƒ /api/rooms                             207 B         103 kB
+├ ƒ /api/search                            207 B         103 kB
+├ ƒ /api/t                                 207 B         103 kB
+├ ƒ /api/video-meta                        207 B         103 kB
+├ ○ /apple-icon.png                          0 B            0 B
+├ ○ /icon.png                                0 B            0 B
+├ ƒ /new                                 2.07 kB         131 kB
+├ ○ /robots.txt                            207 B         103 kB
+├ ○ /sitemap.xml                           207 B         103 kB
+└ ƒ /tv                                    207 B         103 kB
++ First Load JS shared by all             102 kB
+  ├ chunks/1255-d90f22433f14e976.js      46.3 kB
+  ├ chunks/4bd1b696-f785427dddbba9fb.js  54.2 kB
+  └ other shared chunks (total)          1.96 kB
+
+
+ƒ Middleware                             33.9 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+bundle-es-target: OK — all 52 chunk(s) parse at ES2019.
+css-target: advisory — 10 finding(s) outside the TV surface (phone/desktop, not build-blocking):
+  gap inside display:flex (Chrome 84) x6 — .next/static/css/06f39afe86bd05f3.css
+  gap inside display:flex (Chrome 84) x12 — .next/static/css/c585ea5756924d53.css
+  aspect-ratio (Chrome 88) x1 — .next/static/css/fe5a198a335cfb9b.css
+  clamp() (Chrome 79) x1 — .next/static/css/fe5a198a335cfb9b.css
+  gap inside display:flex (Chrome 84) x6 — .next-e2e/static/css/06f39afe86bd05f3.css
+  gap inside display:flex (Chrome 84) x12 — .next-e2e/static/css/c585ea5756924d53.css
+  aspect-ratio (Chrome 88) x1 — .next-e2e/static/css/fe5a198a335cfb9b.css
+  clamp() (Chrome 79) x1 — .next-e2e/static/css/fe5a198a335cfb9b.css
+  gap inside display:flex (Chrome 84) x12 — app/(patron)/[room]/admin/admin.module.css
+  gap inside display:flex (Chrome 84) x6 — app/admin/analytics/analytics.module.css
+
+css-target: OK — the TV surface uses nothing newer than Chrome 68 (18 stylesheet(s) scanned).

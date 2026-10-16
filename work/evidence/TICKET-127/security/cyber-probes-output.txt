@@ -1,0 +1,57 @@
+lib/app clean at 8a6286b
+    C1 violations 0 []
+    C2 deploy-window: staff[0] resurrected by old SET = true ; new-code stale CAS after rollback = ok
+    C3 lat=1+1 attackers=10 kind=login {"revoke":{"rebind-exhausted;fallback-mint-ok":2,"ok":4},"logout":{"ok":6},"settings":{"ok":5,"threw-conflict":1},"ownerMint":{"null":3,"ok":3}} revoke-rooms-without-pin=0/6 flood reqs=597 commits=543 attacker-exhausted=54 CAS-evals/flood-req=8.03
+    C3 lat=1+1 attackers=50 kind=login {"revoke":{"rebind-exhausted;fallback-mint-ok":5,"ok":1},"logout":{"ok":6},"settings":{"threw-conflict":4,"ok":2},"ownerMint":{"null":4,"ok":2}} revoke-rooms-without-pin=0/6 flood reqs=2371 commits=1184 attacker-exhausted=1187 CAS-evals/flood-req=21.61
+    C3 lat=1+1 attackers=200 kind=login {"revoke":{"ok":5,"rebind-exhausted;fallback-mint-ok":1},"logout":{"ok":6},"settings":{"ok":3,"threw-conflict":3},"ownerMint":{"ok":3,"null":3}} revoke-rooms-without-pin=0/6 flood reqs=6492 commits=992 attacker-exhausted=5500 CAS-evals/flood-req=29.12
+    C3 lat=5+3 attackers=50 kind=login {"revoke":{"rebind-exhausted;fallback-mint-null":1,"ok":5},"logout":{"ok":6},"settings":{"threw-conflict":1,"ok":5},"ownerMint":{"ok":6}} revoke-rooms-without-pin=1/6 flood reqs=1643 commits=1476 attacker-exhausted=167 CAS-evals/flood-req=17.02
+    C3 lat=5+3 attackers=200 kind=login {"revoke":{"rebind-exhausted;fallback-mint-null":3,"ok":2,"rebind-exhausted;fallback-mint-ok":1},"logout":{"ok":6},"settings":{"ok":4,"threw-conflict":2},"ownerMint":{"ok":5,"null":1}} revoke-rooms-without-pin=3/6 flood reqs=7172 commits=2446 attacker-exhausted=4726 CAS-evals/flood-req=26.95
+    C3 lat=5+3 attackers=500 kind=login {"revoke":{"rebind-exhausted;fallback-mint-null":4,"ok":1,"rebind-exhausted;fallback-mint-ok":1},"logout":{"ok":6},"settings":{"threw-conflict":3,"ok":3},"ownerMint":{"ok":1,"null":5}} revoke-rooms-without-pin=4/6 flood reqs=20647 commits=3157 attacker-exhausted=17490 CAS-evals/flood-req=29.81
+    C3 lat=15+10 attackers=200 kind=login {"revoke":{"rebind-exhausted;fallback-mint-null":6},"logout":{"ok":6},"settings":{"threw-conflict":5,"ok":1},"ownerMint":{"null":4,"ok":2}} revoke-rooms-without-pin=6/6 flood reqs=9469 commits=3246 attacker-exhausted=6223 CAS-evals/flood-req=26.91
+    C3 lat=15+10 attackers=500 kind=login {"revoke":{"rebind-exhausted;fallback-mint-null":5,"rebind-exhausted;fallback-mint-ok":1},"logout":{"ok":6},"settings":{"threw-conflict":5,"ok":1},"ownerMint":{"null":6}} revoke-rooms-without-pin=5/6 flood reqs=23091 commits=3463 attacker-exhausted=19628 CAS-evals/flood-req=29.80
+    C3 lat=5+3 attackers=200 kind=settings {"revoke":{"ok":5,"rebind-exhausted;fallback-mint-null":1},"logout":{"threw-conflict":2,"ok":4},"settings":{"ok":5,"threw-conflict":1},"ownerMint":{"null":1,"ok":5}} revoke-rooms-without-pin=0/6 flood reqs=6284 commits=2137 attacker-exhausted=4147 CAS-evals/flood-req=27.11
+    C4 requireHost cmds=1 casEvals=0; verifyClaim cmds=1; record unchanged=true
+    C5 rev="0b1" ts=1 lua-accepts-ts=false
+    C5 rev="\u00a07" ts=7 lua-accepts-ts=false
+    C5 rev="0x1p4" ts=0 lua-accepts-ts=false
+    C5 rev="0x10" ts=16 lua-accepts-ts=true
+    C5 rev="1e2" ts=100 lua-accepts-ts=true
+    C5 rev=" 7 " ts=7 lua-accepts-ts=true
+    C5 rev="7.0" ts=7 lua-accepts-ts=true
+    C5 rev=9007199254740993 ts=9007199254740992 lua-accepts-ts=true
+    C6 lat=5+3 n=50 {"ok":6} rooms-with-live-pin=6/6
+    C6 lat=5+3 n=200 {"ok":6} rooms-with-live-pin=6/6
+    C6 lat=15+10 n=200 {"ok":6} rooms-with-live-pin=6/6
+    C6 lat=15+10 n=500 {"rebind-exhausted;mint-ok":2,"ok":4} rooms-with-live-pin=6/6
+  C1 randomized concurrency on real Redis
+    ✓ 200 rounds: revoke + logouts + logins + three settings, all concurrent, jittered latency (45346 ms)
+  C2 rev manipulation
+    ✓ a writer whose snapshot has rev deleted, or rev=0, against a rev>0 record is refused (104 ms)
+    ✓ an old-code plain SET mid-deploy rolls rev back: measure the ABA it enables (111 ms)
+  C3 retry-exhaustion flood
+    ✓ latency 1ms+1ms jitter, 10 attackers, login flood (6485 ms)
+    ✓ latency 1ms+1ms jitter, 50 attackers, login flood (11414 ms)
+    ✓ latency 1ms+1ms jitter, 200 attackers, login flood (15571 ms)
+    ✓ latency 5ms+3ms jitter, 50 attackers, login flood (29709 ms)
+    ✓ latency 5ms+3ms jitter, 200 attackers, login flood (39816 ms)
+    ✓ latency 5ms+3ms jitter, 500 attackers, login flood (56460 ms)
+    ✓ latency 15ms+10ms jitter, 200 attackers, login flood (140772 ms)
+    ✓ latency 15ms+10ms jitter, 500 attackers, login flood (145425 ms)
+    ✓ latency 5ms+3ms jitter, 200 attackers, settings flood (34552 ms)
+  C4 auth path command count
+    ✓ verifySessionValue (requireHost) and verifyRoomClaimToken: 1 command each, 0 evals of the CAS (12 ms)
+  C5 Lua/TS normalisation parity on exotic string revs
+    ✓ rev "0b1" (2 ms)
+    ✓ rev "\u00a07" (1 ms)
+    ✓ rev "0x1p4" (2 ms)
+    ✓ rev "0x10" (1 ms)
+    ✓ rev "1e2" (1 ms)
+    ✓ rev " 7 " (2 ms)
+    ✓ rev "7.0" (1 ms)
+    ✓ rev 9007199254740993 (2 ms)
+  C6 stolen-session settings flood, auth re-checked per request (dies at the bump)
+    ✓ lat 5+3, 50 in-flight (7154 ms)
+    ✓ lat 5+3, 200 in-flight (8859 ms)
+    ✓ lat 15+10, 200 in-flight (20969 ms)
+    ✓ lat 15+10, 500 in-flight (22210 ms)
+Tests:       25 passed, 25 total

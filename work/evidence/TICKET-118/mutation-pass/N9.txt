@@ -1,0 +1,11 @@
+MUTATION: N9 normaliseSessionEpoch
+FILE: lib/rooms.ts
+--- replaced:
+  if (n < 0) return 0;
+--- with:
+  if (n <= 0) return 0;
+--- jest __tests__/host-session-revocation.test.ts (exit 0)
+Test Suites: 1 passed, 1 total
+Tests:       37 passed, 37 total
+--- failing tests:
+

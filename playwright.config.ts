@@ -143,6 +143,26 @@ export default defineConfig({
       // x-forwarded-for, so it declares that header explicitly, which is the
       // same posture a non-Vercel deployment behind a known proxy would take.
       TRUSTED_CLIENT_IP_HEADER: "x-forwarded-for",
+      // The server's outbound YouTube calls (the videos.list
+      // embeddability check and the oEmbed title lookup) go to a LOCAL stub on
+      // PORT+1000, which e2e/paste-link.spec.ts starts for its own tests. With
+      // no stub listening (every other spec) the calls fail fast and fail
+      // open, exactly like an outage, and nothing ever reaches youtube.com or
+      // googleapis.com. A production build only honours these loopback
+      // overrides with BORAOKE_E2E_STUBS=1 and never on Vercel
+      // (lib/youtube-server.ts `overrideAllowed`); the app sends a placeholder key to
+      // a stub origin, never a real one.
+      BORAOKE_E2E_STUBS: "1",
+      // Specs seed songs through POST /api/queue and tell them apart by title.
+      // With no stub answering, a production server would store no title at
+      // all (it never keeps a client-sent one), so this lets the local e2e
+      // build keep the seeded title when every lookup failed. Same gate as the
+      // origin overrides: ignored on Vercel (lib/youtube-server.ts
+      // `clientTitleFallbackAllowed`). jest does NOT set it, so the unit suites
+      // run the production rule.
+      BORAOKE_TEST_CLIENT_TITLES: "1",
+      YOUTUBE_API_ORIGIN: `http://127.0.0.1:${PORT + 1000}`,
+      YOUTUBE_OEMBED_ORIGIN: `http://127.0.0.1:${PORT + 1000}`,
     },
   },
 });

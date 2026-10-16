@@ -1,0 +1,36 @@
+PASS [pt-BR-m390] room created at140r2-pt-br-m390-c7mv
+PASS [pt-BR-m390] join 
+PASS [pt-BR-m390] 1 no 'song title' field, layout aligned, no gap inputs=["radio","radio","song-search-input","ex.: 7"] gaps=[12,12]
+PASS [pt-BR-m390] 1 submit still works (paste + table) Música Teste apOkPaC01xx · Canal Teste
+PASS [pt-BR-m390] 2 failed lookup shows youtu.be/<id>, never patron text (picker pick, queue, host, TV) api POST 201; stored ; TV has youtu.be: true
+PASS [pt-BR-m390] 3 very long paste is cut off at 512, no freeze kept 512 chars in 63ms; still typable (okxy)
+PASS [pt-BR-m390] 3 programmatic 100k string (bypasses maxLength): refused/handled, no freeze 100k fill 80ms alive; selected-line count 0; link+600 junk selects video: true
+PASS [pt-BR-m390] 3 link followed by long junk in a real paste: link kept (within 512) and queueable value 512 chars, link still recognised
+PASS [pt-BR-m390] 4 state 429 shows paste hint Muitas buscas — aguarde um instante ou cole um link do YouTube.
+PASS [pt-BR-m390] 4 state 429-server-copy shows paste hint SERVER_COPY_429
+PASS [pt-BR-m390] 4 state 500-json shows paste hint OBS: an HTTP 500 from /api/search shows nothing (route never returns 500, it answers degraded JSON; pre-existing, unreachable)
+PASS [pt-BR-m390] 4 state 500-plaintext shows paste hint OBS: an HTTP 500 from /api/search shows nothing (route never returns 500, it answers degraded JSON; pre-existing, unreachable)
+PASS [pt-BR-m390] 4 state network-abort shows paste hint Busca indisponível — cola o link do YouTube
+PASS [pt-BR-m390] 4 state degraded-200 shows paste hint Busca indisponível — cola o link do YouTube
+PASS [pt-BR-m390] 4 real server 429 body carries the paste hint no 429 reached (status 200); skipped
+PASS [pt-BR-m390] 5 normal search + pick + queue Música Teste apOkSrC01xx · Canal Teste
+PASS [pt-BR-m390] 5 not-embeddable refused, nothing queued refused
+PASS [pt-BR-m390] 5 host admin + TV show real titles for resolved songs ok
+PASS [es-d1280] room created at140r2-es-d1280-7aq8
+PASS [es-d1280] join 
+PASS [es-d1280] 1 no 'song title' field, layout aligned, no gap inputs=["radio","radio","song-search-input","ej.: 7"] gaps=[12,11]
+PASS [es-d1280] 1 submit still works (paste + table) Música Teste apOkPaC06xx · Canal Teste
+PASS [es-d1280] 2 failed lookup shows youtu.be/<id>, never patron text (picker pick, queue, host, TV) api POST 201; stored ; TV has youtu.be: true
+PASS [es-d1280] 3 very long paste is cut off at 512, no freeze kept 512 chars in 68ms; still typable (okxy)
+PASS [es-d1280] 3 programmatic 100k string (bypasses maxLength): refused/handled, no freeze 100k fill 134ms alive; selected-line count 0; link+600 junk selects video: true
+PASS [es-d1280] 3 link followed by long junk in a real paste: link kept (within 512) and queueable value 512 chars, link still recognised
+PASS [es-d1280] 4 state 429 shows paste hint Demasiadas búsquedas — espera un momento o pega un enlace de YouTube.
+PASS [es-d1280] 4 state 429-server-copy shows paste hint SERVER_COPY_429
+PASS [es-d1280] 4 state 500-json shows paste hint OBS: an HTTP 500 from /api/search shows nothing (route never returns 500, it answers degraded JSON; pre-existing, unreachable)
+PASS [es-d1280] 4 state 500-plaintext shows paste hint OBS: an HTTP 500 from /api/search shows nothing (route never returns 500, it answers degraded JSON; pre-existing, unreachable)
+PASS [es-d1280] 4 state network-abort shows paste hint La búsqueda no está disponible — pega un enlace de YouTube
+PASS [es-d1280] 4 state degraded-200 shows paste hint La búsqueda no está disponible — pega un enlace de YouTube
+PASS [es-d1280] 5 normal search + pick + queue Música Teste apOkSrC06xx · Canal Teste
+PASS [es-d1280] 5 not-embeddable refused, nothing queued refused
+PASS [es-d1280] 5 host admin + TV show real titles for resolved songs ok
+DONE 35/35 pass

@@ -1,0 +1,846 @@
+FAIL __tests__/room-write-race.test.ts
+  TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair
+    ✕ stale mint, interleaved mint (4 ms)
+    ✕ stale mint, interleaved ownerMint
+    ✕ stale mint, interleaved logout
+    ✕ stale mint, interleaved revoke (1 ms)
+    ✕ stale mint, interleaved mode (2 ms)
+    ✕ stale mint, interleaved language (1 ms)
+    ✕ stale mint, interleaved moderation
+    ✕ stale ownerMint, interleaved mint (1 ms)
+    ✕ stale ownerMint, interleaved ownerMint
+    ✕ stale ownerMint, interleaved logout
+    ✕ stale ownerMint, interleaved revoke
+    ✕ stale ownerMint, interleaved mode (1 ms)
+    ✕ stale ownerMint, interleaved language
+    ✕ stale ownerMint, interleaved moderation
+    ✕ stale logout, interleaved mint (1 ms)
+    ✕ stale logout, interleaved ownerMint
+    ✕ stale logout, interleaved logout
+    ✕ stale logout, interleaved revoke (1 ms)
+    ✕ stale logout, interleaved mode
+    ✕ stale logout, interleaved language
+    ✕ stale logout, interleaved moderation
+    ✕ stale revoke, interleaved mint
+    ✕ stale revoke, interleaved ownerMint
+    ✓ stale revoke, interleaved logout (1 ms)
+    ✕ stale revoke, interleaved mode
+    ✕ stale revoke, interleaved language (1 ms)
+    ✕ stale revoke, interleaved moderation
+    ✕ stale mode, interleaved mint
+    ✕ stale mode, interleaved ownerMint
+    ✕ stale mode, interleaved logout
+    ✕ stale mode, interleaved revoke
+    ✕ stale mode, interleaved language
+    ✕ stale mode, interleaved moderation (1 ms)
+    ✕ stale language, interleaved mint
+    ✕ stale language, interleaved ownerMint
+    ✕ stale language, interleaved logout
+    ✕ stale language, interleaved revoke
+    ✕ stale language, interleaved mode
+    ✕ stale language, interleaved moderation
+    ✕ stale moderation, interleaved mint
+    ✕ stale moderation, interleaved ownerMint
+    ✕ stale moderation, interleaved logout (1 ms)
+    ✕ stale moderation, interleaved revoke
+    ✕ stale moderation, interleaved mode
+    ✕ stale moderation, interleaved language
+    ✓ covers every ordered writer pair except the documented skips (1 ms)
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mint, interleaved mint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     check: async (ctx, slot) => {
+      68 |       // The device that typed the code holds a live claim token (scenario 1).
+    > 69 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      70 |     },
+      71 |   },
+      72 |   ownerMint: {
+
+      at Object.check (__tests__/room-write-race.test.ts:69:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mint, interleaved ownerMint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      73 |     run: async (ctx, slot) => (ctx.minted[slot] = await issueRoomClaimToken(ctx.roomId, { owner: true })),
+      74 |     check: async (ctx, slot) => {
+    > 75 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      76 |     },
+      77 |   },
+      78 |   logout: {
+
+      at Object.check (__tests__/room-write-race.test.ts:75:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mint, interleaved logout
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      80 |     check: async (ctx, slot) => {
+      81 |       // A device that logged out stays logged out (no stale write restores its hash).
+    > 82 |       expect(await verifyRoomClaimToken(ctx.roomId, logoutToken(ctx, slot))).toBe(false);
+         |                                                                              ^
+      83 |     },
+      84 |   },
+      85 |   revoke: {
+
+      at Object.check (__tests__/room-write-race.test.ts:82:78)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mint, interleaved revoke
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      91 |       expect(await verifySessionValue(ctx.roomId, ctx.oldSession)).toBe(false);
+      92 |       // Claims half: the owner kept its credential, a pruned staff claim stays dead.
+    > 93 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.owner)).toBe(true);
+         |                                                                 ^
+      94 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.staff[0])).toBe(false);
+      95 |     },
+      96 |   },
+
+      at Object.check (__tests__/room-write-race.test.ts:93:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mint, interleaved mode
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "per-table-2"
+    Received: "full-karaoke"
+
+       97 |   mode: {
+       98 |     run: (ctx) => setRoomMode(ctx.roomId, "per-table-2"),
+    >  99 |     check: async (ctx) => expect(await getRoomMode(ctx.roomId)).toBe("per-table-2"),
+          |                                                                 ^
+      100 |   },
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+
+      at Object.check (__tests__/room-write-race.test.ts:99:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mint, interleaved language
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "es"
+    Received: "pt-BR"
+
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+    > 103 |     check: async (ctx) => expect(await getRoomLanguage(ctx.roomId)).toBe("es"),
+          |                                                                     ^
+      104 |   },
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+
+      at Object.check (__tests__/room-write-race.test.ts:103:69)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mint, interleaved moderation
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+    > 107 |     check: async (ctx) => expect(await getRoomModeration(ctx.roomId)).toBe(true),
+          |                                                                       ^
+      108 |   },
+      109 | };
+      110 |
+
+      at Object.check (__tests__/room-write-race.test.ts:107:71)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale ownerMint, interleaved mint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     check: async (ctx, slot) => {
+      68 |       // The device that typed the code holds a live claim token (scenario 1).
+    > 69 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      70 |     },
+      71 |   },
+      72 |   ownerMint: {
+
+      at Object.check (__tests__/room-write-race.test.ts:69:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale ownerMint, interleaved ownerMint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      73 |     run: async (ctx, slot) => (ctx.minted[slot] = await issueRoomClaimToken(ctx.roomId, { owner: true })),
+      74 |     check: async (ctx, slot) => {
+    > 75 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      76 |     },
+      77 |   },
+      78 |   logout: {
+
+      at Object.check (__tests__/room-write-race.test.ts:75:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale ownerMint, interleaved logout
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      80 |     check: async (ctx, slot) => {
+      81 |       // A device that logged out stays logged out (no stale write restores its hash).
+    > 82 |       expect(await verifyRoomClaimToken(ctx.roomId, logoutToken(ctx, slot))).toBe(false);
+         |                                                                              ^
+      83 |     },
+      84 |   },
+      85 |   revoke: {
+
+      at Object.check (__tests__/room-write-race.test.ts:82:78)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale ownerMint, interleaved revoke
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      91 |       expect(await verifySessionValue(ctx.roomId, ctx.oldSession)).toBe(false);
+      92 |       // Claims half: the owner kept its credential, a pruned staff claim stays dead.
+    > 93 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.owner)).toBe(true);
+         |                                                                 ^
+      94 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.staff[0])).toBe(false);
+      95 |     },
+      96 |   },
+
+      at Object.check (__tests__/room-write-race.test.ts:93:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale ownerMint, interleaved mode
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "per-table-2"
+    Received: "full-karaoke"
+
+       97 |   mode: {
+       98 |     run: (ctx) => setRoomMode(ctx.roomId, "per-table-2"),
+    >  99 |     check: async (ctx) => expect(await getRoomMode(ctx.roomId)).toBe("per-table-2"),
+          |                                                                 ^
+      100 |   },
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+
+      at Object.check (__tests__/room-write-race.test.ts:99:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale ownerMint, interleaved language
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "es"
+    Received: "pt-BR"
+
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+    > 103 |     check: async (ctx) => expect(await getRoomLanguage(ctx.roomId)).toBe("es"),
+          |                                                                     ^
+      104 |   },
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+
+      at Object.check (__tests__/room-write-race.test.ts:103:69)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale ownerMint, interleaved moderation
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+    > 107 |     check: async (ctx) => expect(await getRoomModeration(ctx.roomId)).toBe(true),
+          |                                                                       ^
+      108 |   },
+      109 | };
+      110 |
+
+      at Object.check (__tests__/room-write-race.test.ts:107:71)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale logout, interleaved mint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     check: async (ctx, slot) => {
+      68 |       // The device that typed the code holds a live claim token (scenario 1).
+    > 69 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      70 |     },
+      71 |   },
+      72 |   ownerMint: {
+
+      at Object.check (__tests__/room-write-race.test.ts:69:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale logout, interleaved ownerMint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      73 |     run: async (ctx, slot) => (ctx.minted[slot] = await issueRoomClaimToken(ctx.roomId, { owner: true })),
+      74 |     check: async (ctx, slot) => {
+    > 75 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      76 |     },
+      77 |   },
+      78 |   logout: {
+
+      at Object.check (__tests__/room-write-race.test.ts:75:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale logout, interleaved logout
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      80 |     check: async (ctx, slot) => {
+      81 |       // A device that logged out stays logged out (no stale write restores its hash).
+    > 82 |       expect(await verifyRoomClaimToken(ctx.roomId, logoutToken(ctx, slot))).toBe(false);
+         |                                                                              ^
+      83 |     },
+      84 |   },
+      85 |   revoke: {
+
+      at Object.check (__tests__/room-write-race.test.ts:82:78)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale logout, interleaved revoke
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      91 |       expect(await verifySessionValue(ctx.roomId, ctx.oldSession)).toBe(false);
+      92 |       // Claims half: the owner kept its credential, a pruned staff claim stays dead.
+    > 93 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.owner)).toBe(true);
+         |                                                                 ^
+      94 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.staff[0])).toBe(false);
+      95 |     },
+      96 |   },
+
+      at Object.check (__tests__/room-write-race.test.ts:93:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale logout, interleaved mode
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "per-table-2"
+    Received: "full-karaoke"
+
+       97 |   mode: {
+       98 |     run: (ctx) => setRoomMode(ctx.roomId, "per-table-2"),
+    >  99 |     check: async (ctx) => expect(await getRoomMode(ctx.roomId)).toBe("per-table-2"),
+          |                                                                 ^
+      100 |   },
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+
+      at Object.check (__tests__/room-write-race.test.ts:99:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale logout, interleaved language
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "es"
+    Received: "pt-BR"
+
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+    > 103 |     check: async (ctx) => expect(await getRoomLanguage(ctx.roomId)).toBe("es"),
+          |                                                                     ^
+      104 |   },
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+
+      at Object.check (__tests__/room-write-race.test.ts:103:69)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale logout, interleaved moderation
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+    > 107 |     check: async (ctx) => expect(await getRoomModeration(ctx.roomId)).toBe(true),
+          |                                                                       ^
+      108 |   },
+      109 | };
+      110 |
+
+      at Object.check (__tests__/room-write-race.test.ts:107:71)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale revoke, interleaved mint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     check: async (ctx, slot) => {
+      68 |       // The device that typed the code holds a live claim token (scenario 1).
+    > 69 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      70 |     },
+      71 |   },
+      72 |   ownerMint: {
+
+      at Object.check (__tests__/room-write-race.test.ts:69:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale revoke, interleaved ownerMint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      73 |     run: async (ctx, slot) => (ctx.minted[slot] = await issueRoomClaimToken(ctx.roomId, { owner: true })),
+      74 |     check: async (ctx, slot) => {
+    > 75 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      76 |     },
+      77 |   },
+      78 |   logout: {
+
+      at Object.check (__tests__/room-write-race.test.ts:75:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale revoke, interleaved mode
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "per-table-2"
+    Received: "full-karaoke"
+
+       97 |   mode: {
+       98 |     run: (ctx) => setRoomMode(ctx.roomId, "per-table-2"),
+    >  99 |     check: async (ctx) => expect(await getRoomMode(ctx.roomId)).toBe("per-table-2"),
+          |                                                                 ^
+      100 |   },
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+
+      at Object.check (__tests__/room-write-race.test.ts:99:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale revoke, interleaved language
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "es"
+    Received: "pt-BR"
+
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+    > 103 |     check: async (ctx) => expect(await getRoomLanguage(ctx.roomId)).toBe("es"),
+          |                                                                     ^
+      104 |   },
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+
+      at Object.check (__tests__/room-write-race.test.ts:103:69)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale revoke, interleaved moderation
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+    > 107 |     check: async (ctx) => expect(await getRoomModeration(ctx.roomId)).toBe(true),
+          |                                                                       ^
+      108 |   },
+      109 | };
+      110 |
+
+      at Object.check (__tests__/room-write-race.test.ts:107:71)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mode, interleaved mint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     check: async (ctx, slot) => {
+      68 |       // The device that typed the code holds a live claim token (scenario 1).
+    > 69 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      70 |     },
+      71 |   },
+      72 |   ownerMint: {
+
+      at Object.check (__tests__/room-write-race.test.ts:69:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mode, interleaved ownerMint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      73 |     run: async (ctx, slot) => (ctx.minted[slot] = await issueRoomClaimToken(ctx.roomId, { owner: true })),
+      74 |     check: async (ctx, slot) => {
+    > 75 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      76 |     },
+      77 |   },
+      78 |   logout: {
+
+      at Object.check (__tests__/room-write-race.test.ts:75:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mode, interleaved logout
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      80 |     check: async (ctx, slot) => {
+      81 |       // A device that logged out stays logged out (no stale write restores its hash).
+    > 82 |       expect(await verifyRoomClaimToken(ctx.roomId, logoutToken(ctx, slot))).toBe(false);
+         |                                                                              ^
+      83 |     },
+      84 |   },
+      85 |   revoke: {
+
+      at Object.check (__tests__/room-write-race.test.ts:82:78)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mode, interleaved revoke
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      91 |       expect(await verifySessionValue(ctx.roomId, ctx.oldSession)).toBe(false);
+      92 |       // Claims half: the owner kept its credential, a pruned staff claim stays dead.
+    > 93 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.owner)).toBe(true);
+         |                                                                 ^
+      94 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.staff[0])).toBe(false);
+      95 |     },
+      96 |   },
+
+      at Object.check (__tests__/room-write-race.test.ts:93:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mode, interleaved language
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "es"
+    Received: "pt-BR"
+
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+    > 103 |     check: async (ctx) => expect(await getRoomLanguage(ctx.roomId)).toBe("es"),
+          |                                                                     ^
+      104 |   },
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+
+      at Object.check (__tests__/room-write-race.test.ts:103:69)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale mode, interleaved moderation
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+    > 107 |     check: async (ctx) => expect(await getRoomModeration(ctx.roomId)).toBe(true),
+          |                                                                       ^
+      108 |   },
+      109 | };
+      110 |
+
+      at Object.check (__tests__/room-write-race.test.ts:107:71)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale language, interleaved mint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     check: async (ctx, slot) => {
+      68 |       // The device that typed the code holds a live claim token (scenario 1).
+    > 69 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      70 |     },
+      71 |   },
+      72 |   ownerMint: {
+
+      at Object.check (__tests__/room-write-race.test.ts:69:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale language, interleaved ownerMint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      73 |     run: async (ctx, slot) => (ctx.minted[slot] = await issueRoomClaimToken(ctx.roomId, { owner: true })),
+      74 |     check: async (ctx, slot) => {
+    > 75 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      76 |     },
+      77 |   },
+      78 |   logout: {
+
+      at Object.check (__tests__/room-write-race.test.ts:75:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale language, interleaved logout
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      80 |     check: async (ctx, slot) => {
+      81 |       // A device that logged out stays logged out (no stale write restores its hash).
+    > 82 |       expect(await verifyRoomClaimToken(ctx.roomId, logoutToken(ctx, slot))).toBe(false);
+         |                                                                              ^
+      83 |     },
+      84 |   },
+      85 |   revoke: {
+
+      at Object.check (__tests__/room-write-race.test.ts:82:78)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale language, interleaved revoke
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      91 |       expect(await verifySessionValue(ctx.roomId, ctx.oldSession)).toBe(false);
+      92 |       // Claims half: the owner kept its credential, a pruned staff claim stays dead.
+    > 93 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.owner)).toBe(true);
+         |                                                                 ^
+      94 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.staff[0])).toBe(false);
+      95 |     },
+      96 |   },
+
+      at Object.check (__tests__/room-write-race.test.ts:93:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale language, interleaved mode
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "per-table-2"
+    Received: "full-karaoke"
+
+       97 |   mode: {
+       98 |     run: (ctx) => setRoomMode(ctx.roomId, "per-table-2"),
+    >  99 |     check: async (ctx) => expect(await getRoomMode(ctx.roomId)).toBe("per-table-2"),
+          |                                                                 ^
+      100 |   },
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+
+      at Object.check (__tests__/room-write-race.test.ts:99:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale language, interleaved moderation
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+    > 107 |     check: async (ctx) => expect(await getRoomModeration(ctx.roomId)).toBe(true),
+          |                                                                       ^
+      108 |   },
+      109 | };
+      110 |
+
+      at Object.check (__tests__/room-write-race.test.ts:107:71)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale moderation, interleaved mint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     check: async (ctx, slot) => {
+      68 |       // The device that typed the code holds a live claim token (scenario 1).
+    > 69 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      70 |     },
+      71 |   },
+      72 |   ownerMint: {
+
+      at Object.check (__tests__/room-write-race.test.ts:69:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale moderation, interleaved ownerMint
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      73 |     run: async (ctx, slot) => (ctx.minted[slot] = await issueRoomClaimToken(ctx.roomId, { owner: true })),
+      74 |     check: async (ctx, slot) => {
+    > 75 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.minted[slot])).toBe(true);
+         |                                                                        ^
+      76 |     },
+      77 |   },
+      78 |   logout: {
+
+      at Object.check (__tests__/room-write-race.test.ts:75:72)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale moderation, interleaved logout
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      80 |     check: async (ctx, slot) => {
+      81 |       // A device that logged out stays logged out (no stale write restores its hash).
+    > 82 |       expect(await verifyRoomClaimToken(ctx.roomId, logoutToken(ctx, slot))).toBe(false);
+         |                                                                              ^
+      83 |     },
+      84 |   },
+      85 |   revoke: {
+
+      at Object.check (__tests__/room-write-race.test.ts:82:78)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale moderation, interleaved revoke
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      91 |       expect(await verifySessionValue(ctx.roomId, ctx.oldSession)).toBe(false);
+      92 |       // Claims half: the owner kept its credential, a pruned staff claim stays dead.
+    > 93 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.owner)).toBe(true);
+         |                                                                 ^
+      94 |       expect(await verifyRoomClaimToken(ctx.roomId, ctx.staff[0])).toBe(false);
+      95 |     },
+      96 |   },
+
+      at Object.check (__tests__/room-write-race.test.ts:93:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale moderation, interleaved mode
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "per-table-2"
+    Received: "full-karaoke"
+
+       97 |   mode: {
+       98 |     run: (ctx) => setRoomMode(ctx.roomId, "per-table-2"),
+    >  99 |     check: async (ctx) => expect(await getRoomMode(ctx.roomId)).toBe("per-table-2"),
+          |                                                                 ^
+      100 |   },
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+
+      at Object.check (__tests__/room-write-race.test.ts:99:65)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+  ● TICKET-127: A reads, B commits, A writes — B's effect survives, for every pair › stale moderation, interleaved language
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "es"
+    Received: "pt-BR"
+
+      101 |   language: {
+      102 |     run: (ctx) => setRoomLanguage(ctx.roomId, "es"),
+    > 103 |     check: async (ctx) => expect(await getRoomLanguage(ctx.roomId)).toBe("es"),
+          |                                                                     ^
+      104 |   },
+      105 |   moderation: {
+      106 |     run: (ctx) => setRoomModeration(ctx.roomId, true),
+
+      at Object.check (__tests__/room-write-race.test.ts:103:69)
+      at async /Users/paulosalvatore/Documents/GitHub/boraoke/.worktrees/t127-room-write-race/__tests__/room-write-race.test.ts:199:5
+
+Test Suites: 1 failed, 1 total
+Tests:       44 failed, 2 passed, 46 total
+Snapshots:   0 total
+Time:        0.273 s, estimated 1 s
+Ran all test suites matching /__tests__\/room-write-race.test.ts/i.

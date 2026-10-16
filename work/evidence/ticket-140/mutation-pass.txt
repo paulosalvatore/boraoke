@@ -1,0 +1,23 @@
+# Triggered mutation pass (parser = identity path; route trust/blocking)
+
+M1 digit/_ rule dropped KILLED Tests:       2 failed, 130 passed, 132 total
+M2 hyphen counts as id signal KILLED Tests:       2 failed, 130 passed, 132 total
+M3 mixed-case rule removed KILLED Tests:       8 failed, 124 passed, 132 total
+M4 host check by suffix KILLED Tests:       3 failed, 129 passed, 132 total
+M5 protocol check removed SURVIVED Tests:       132 passed, 132 total
+M6 path segment count relaxed SURVIVED Tests:       132 passed, 132 total
+M7 youtu.be extra segments allowed KILLED Tests:       1 failed, 131 passed, 132 total
+M8 share punctuation not stripped KILLED Tests:       2 failed, 130 passed, 132 total
+M9 case-sensitive scheme KILLED Tests:       3 failed, 129 passed, 132 total
+M10 share text reads bare ids KILLED Tests:       1 failed, 131 passed, 132 total
+M11 not-embeddable allowed KILLED Tests:       7 failed, 125 passed, 132 total
+M12 client title wins KILLED Tests:       1 failed, 131 passed, 132 total
+M13 real key sent to stub KILLED Tests:       2 failed, 130 passed, 132 total
+M14 override honoured in prod KILLED Tests:       1 failed, 131 passed, 132 total
+M15 id mismatch accepted KILLED Tests:       1 failed, 131 passed, 132 total
+M16 oEmbed 404 treated as error (not cached) KILLED Tests:       4 failed, 128 passed, 132 total
+M17 lookup always skipped KILLED Tests:       12 failed, 120 passed, 132 total
+M6 (re-run after adding test) KILLED ['Tests:       2 failed, 86 passed, 88 total']
+
+M5 is SURVIVED-equivalent: a token without an http(s):// prefix always gets https:// prepended, so a javascript:/ftp: scheme becomes the HOST and is refused by the exact host check. The protocol check stays as defence in depth.
+M6 first SURVIVED-real-gap; fixed in-PR by two refuse cases (extra path segment after an embed/shorts id), re-run KILLED.
