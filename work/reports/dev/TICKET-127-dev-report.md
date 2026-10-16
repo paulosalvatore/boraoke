@@ -1,6 +1,6 @@
 # TICKET-127 — dev report
 
-**Status:** implemented; self-verification in progress (see the log at the bottom).
+**Status:** implemented and self-verified (full jest, build, full e2e, real-Redis suite, mutation pass all green). Draft PR #98, ready for the Cyber gate (mandatory) then Reviewer. App Tester N/A: no UI, route or copy change.
 **Branch:** `ticket/127-room-write-race` · **Worktree:** `.worktrees/t127-room-write-race` · **Base:** `origin/main` 41b77bf (includes #96, 5f6bf40) · **App port:** 3127
 **Plan:** `work/plans/TICKET-127-plan.md` (design, alternatives rejected, residuals).
 
@@ -44,7 +44,61 @@ The primitive beneath existing assertions changed: `roomBackend.update` went fro
 - `claim-token-owner-pin.test.ts` jitter probe: forwards the record unchanged, so unaffected.
 - `room-session-epoch-backend.test.ts` "reports the COUNTER when a stale whole-record write lowered the record's copy": `update(stale)` is now refused (asserted), so the stale copy is planted with a raw `set`; otherwise the test would pass without the max() it guards.
 
+## Prove the tests can fail
+
+**(b) Reverse check, the pair suite against the pre-fix `lib/`** (run before any `lib/` change, worktree at 41b77bf). Full output: `work/evidence/TICKET-127/pairs-against-prefix-lib.txt`.
+
+```
+Tests:       44 failed, 2 passed, 46 total
+```
+
+Every failure is the interleaved writer's effect being erased by the stale write, for example:
+
+```
+  ● ... › stale mint, interleaved mint            Expected: true    Received: false
+  ● ... › stale mint, interleaved logout          Expected: false   Received: true
+  ● ... › stale mint, interleaved mode            Expected: "per-table-2"   Received: "full-karaoke"
+  ● ... › stale moderation, interleaved revoke    Expected: true    Received: false
+```
+
+The 2 that pass on the pre-fix code: the pair-count meta test, and **stale revoke, interleaved logout**. That pair is already safe on main because the revoke's rebind prunes every staff hash anyway, so the stale rebind lands on a superset of what the logout wanted. It is kept in the suite (it must stay true), but it is not claimed as a regression proof. `stale X, interleaved revoke` for a moderation write and for a logout are Cyber's R1f and R1e, and both fail on main.
+
+**(a) Mutation pass on the new compare-and-set logic** (`work/evidence/TICKET-127/mutation-pass.txt`, 7 suites incl. real Redis, 230 tests per run). All 12 KILLED:
+
+```
+M1 lua: revision compare removed: KILLED — 60 failed / 230
+M2 lua: off-by-one compare: KILLED — 65 failed / 230
+M3 lua: KEEPTTL dropped: KILLED — 2 failed / 230
+M4 lua: fraction normalisation dropped: KILLED — 1 failed / 230
+M5 lua: creates a missing record: KILLED — 2 failed / 230
+M6 memory: compare removed: KILLED — 46 failed / 230
+M7 mutateRoom: no retry: KILLED — 97 failed / 230
+M8 mutateRoom: conflict treated as success: KILLED — 94 failed / 230
+M9 mutateRoom: revision not carried: KILLED — 127 failed / 230
+M10 upstash: expected revision sent +1: KILLED — 53 failed / 230
+M11 upstash: keepTtl flag inverted: KILLED — 2 failed / 230
+M12 memory: stored revision not advanced: KILLED — 48 failed / 230
+```
+
+Lua mutants M1-M5 are killed only by the real-Redis suite, as expected: nothing else interprets the Lua.
+
+**(d) triggered mutation pass:** not triggered by the house rule (no new parsing/normalisation function on a money/quantity/identity path; `normaliseRoomRev` delegates to the existing `normaliseSessionEpoch`). The pass above was run anyway because the brief asked for one on the compare-and-set, and the Lua's own normalisation is parity-tested against `normaliseRoomRev` across 13 shapes.
+
+## Self-verification
+
+- **Real Redis**, own container `boraoke-t127-redis` (`redis:7-alpine`, redis_version 7.4.11, 127.0.0.1:6427), stopped afterwards: `Tests: 68 passed, 68 total` (`work/evidence/TICKET-127/real-redis-suite.txt`).
+- **Full jest** (once, at the end): `Test Suites: 78 passed, 78 total` / `Tests: 89 skipped, 1461 passed, 1550 total`. The 89 skipped are the opt-in real-Redis suites without `REDIS_TEST_URL`.
+- **`npm run build`**: exit 0, `✓ Compiled successfully`, `bundle-es-target: OK — all 52 chunk(s) parse at ES2019.`, `css-target: OK`.
+- **Full e2e** (once, `PORT=3127 --workers=1`, no other boraoke e2e or server running beforehand): `143 passed (3.9m)`, exit 0, canary `_canary.spec.ts` tests 1/143 and 2/143 passed. Load at start `18.99 31.68 36.56`, at end `37.86 30.16 34.18`.
+- boraoke has no `scripts/verify-green-local.sh`, so the local-Docker verdict does not apply here; the runs above are the green evidence (same as #96's gates).
+
+## Friction
+
+- My first mutation-pass script read jest's `--json` from stdout and broke on interleaved output. Stopping it mid-run left a mutant in `lib/rooms.ts` (the `finally` restore did not run on the signal). Caught by `git diff --stat lib` and restored from the commit before anything else ran. The rerun writes the JSON to a file.
+- `worktree-create`'s `emit-event.sh` step appended to the worktree's `work/events/by-branch/main.jsonl`, not this branch's file. I reverted that line rather than commit a main-branch event log change on a ticket branch.
+
 ## Log
 
+- e29f218: implementation, tests, plan, first dev report. Draft PR #98 opened.
+- Mutation pass, real-Redis suite, full jest, build, e2e: all above.
 - Plan written: `work/plans/TICKET-127-plan.md`.
-- Pair suite run against the pre-fix `lib/` first: **44 failed, 2 passed** (details below).

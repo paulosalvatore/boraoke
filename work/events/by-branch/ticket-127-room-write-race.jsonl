@@ -1,1 +1,2 @@
 {"v": "1", "ts": "2026-10-16T06:46:46Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-127", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/127-room-write-race", "short_sha": "e29f218", "message_slug": "TICKET-127: compare-and-set room-record writes"}}
+{"v": "1", "ts": "2026-10-16T06:47:47Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-127", "pr": 98, "event": "pr_opened", "payload": {"pr_number": 98, "title": "TICKET-127: compare-and-set room-record writes", "draft": true}}

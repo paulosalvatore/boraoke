@@ -1,6 +1,6 @@
 # TICKET-127 — Plan: room-record writes become compare-and-set
 
-**Status:** written 2026-10-16, before implementation. Worktree `.worktrees/t127-room-write-race`, branch `ticket/127-room-write-race`, base `origin/main` 41b77bf (includes #96, 5f6bf40). App port 3127.
+**Status:** written 2026-10-16, before implementation. APPROVED-BY: auto-approved (no plan-gate escalation; the TM brief said write the plan, then implement) — validated downstream by gates + merge of PR #98. Worktree `.worktrees/t127-room-write-race`, branch `ticket/127-room-write-race`, base `origin/main` 41b77bf (includes #96, 5f6bf40). App port 3127.
 
 ## 1. The problem in one line
 
