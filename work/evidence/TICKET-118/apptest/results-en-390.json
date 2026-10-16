@@ -1,0 +1,215 @@
+{
+  "room": "bar-en-390",
+  "results": [
+    {
+      "step": "1 A (owner) sees logout",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "1 A (owner) sees revoke",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "1 labels localised",
+      "ok": true,
+      "note": "Sign out / Sign out other devices"
+    },
+    {
+      "step": "layout A header @390",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "1 B (staff) sees logout",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "1 B (staff) does NOT see revoke",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "layout B header @390",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "2 B logout confirm = this-device text, no owner warning",
+      "ok": true,
+      "note": "Sign out of this device? Other devices stay signed in. To get back in on this device, you'll need the host code."
+    },
+    {
+      "step": "layout B logout confirm @390",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "2 B lands on code gate",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "2 B still gated after reload",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "2 A still signed in after B logout",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "2 A re-enters without code after dropping session cookie (claim survived B logout)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "3 A logout confirm shows owner warning",
+      "ok": true,
+      "note": "This is the device that created the room. If you sign out here, you lose the option to sign out other devices, even after you get back in with the host code."
+    },
+    {
+      "step": "layout A logout confirm @390",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "3 cancel closes panel, A still signed in",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "4 revoke confirm copy",
+      "ok": true,
+      "note": "This signs out every other phone, tablet or computer signed in to this room's host panel, including any you don't recognise. This device stays signed in. The others will need the host code to get back in."
+    },
+    {
+      "step": "layout A revoke confirm @390",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "4 done message",
+      "ok": true,
+      "note": "Done. The other devices are signed out and will need the host code to get back in. This one is still signed in."
+    },
+    {
+      "step": "layout A done toast @390",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "4 A signed in after reload and keeps button",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "4 B's next host action is rejected (401)",
+      "ok": true,
+      "note": "status 401"
+    },
+    {
+      "step": "4 B lands on code gate (after reload)",
+      "ok": true,
+      "note": "gate without reload: false"
+    },
+    {
+      "step": "5 staff forced revoke -> 403 friendly JSON",
+      "ok": true,
+      "note": "{\"s\":403,\"b\":\"{\\\"error\\\":\\\"Only the room owner's device can sign out other devices\\\",\\\"ownerOnly\\\":true}\"}"
+    },
+    {
+      "step": "5 staff B still signed in after refused revoke",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "5 UI shows friendly owner-only message (owner hint mocked)",
+      "ok": true,
+      "note": "Only the device that created this room can sign out other devices."
+    },
+    {
+      "step": "layout B 403 toast @390",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "6 use #2 succeeds",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "6 use #3 succeeds",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "6 4th use shows throttle message",
+      "ok": true,
+      "note": "You've just done this a few times. Please wait a few minutes and try again."
+    },
+    {
+      "step": "layout A throttle toast @390",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "6 A still signed in after throttle",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "layout 320 logout confirm @320",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "layout 320 revoke confirm @320",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    }
+  ],
+  "revokeLog": [
+    "A POST 200",
+    "B POST 403",
+    "B POST 403",
+    "A POST 200",
+    "A POST 200",
+    "A POST 429"
+  ],
+  "consoleErrs": [
+    "en-390 warm: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "en-390 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 B: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "en-390 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "en-390 A: Failed to load resource: the server responded with a status of 429 (Too Many Requests)"
+  ]
+}

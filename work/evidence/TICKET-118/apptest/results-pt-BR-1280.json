@@ -1,0 +1,242 @@
+{
+  "room": "bar-pt-br-1280-q7gj",
+  "results": [
+    {
+      "step": "1 A (owner) sees logout",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "1 A (owner) sees revoke",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "1 labels localised",
+      "ok": true,
+      "note": "Sair / Desconectar outros dispositivos"
+    },
+    {
+      "step": "layout A header @1280",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "1 B (staff) sees logout",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "1 B (staff) does NOT see revoke",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "layout B header @1280",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "2 B logout confirm = this-device text, no owner warning",
+      "ok": true,
+      "note": "Sair deste dispositivo? Os outros dispositivos continuam conectados. Para entrar de novo neste dispositivo, você vai precisar do código do host."
+    },
+    {
+      "step": "layout B logout confirm @1280",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "2 B lands on code gate",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "2 B still gated after reload",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "2 A still signed in after B logout",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "2 A re-enters without code after dropping session cookie (claim survived B logout)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "3 A logout confirm shows owner warning",
+      "ok": true,
+      "note": "Este é o dispositivo que criou a sala. Se você sair aqui, perde a opção de desconectar outros dispositivos, mesmo depois de entrar de novo com o código do host."
+    },
+    {
+      "step": "layout A logout confirm @1280",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "3 cancel closes panel, A still signed in",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "4 revoke confirm copy",
+      "ok": true,
+      "note": "Isso desconecta todos os outros celulares, tablets ou computadores conectados ao painel desta sala, inclusive algum que você não reconheça. Este dispositivo continua conectado. Os outros vão precisar do código do host para entrar de novo."
+    },
+    {
+      "step": "layout A revoke confirm @1280",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "4 done message",
+      "ok": true,
+      "note": "Pronto. Os outros dispositivos foram desconectados e vão precisar do código do host para entrar de novo. Este continua conectado."
+    },
+    {
+      "step": "layout A done toast @1280",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "4 A signed in after reload and keeps button",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "4 B's next host action is rejected (401)",
+      "ok": true,
+      "note": "status 401"
+    },
+    {
+      "step": "4 B lands on code gate (after reload)",
+      "ok": true,
+      "note": "gate without reload: false"
+    },
+    {
+      "step": "5 staff forced revoke -> 403 friendly JSON",
+      "ok": true,
+      "note": "{\"s\":403,\"b\":\"{\\\"error\\\":\\\"Only the room owner's device can sign out other devices\\\",\\\"ownerOnly\\\":true}\"}"
+    },
+    {
+      "step": "5 staff B still signed in after refused revoke",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "5 UI shows friendly owner-only message (owner hint mocked)",
+      "ok": true,
+      "note": "Só o dispositivo que criou esta sala pode desconectar outros dispositivos."
+    },
+    {
+      "step": "layout B 403 toast @1280",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "6 use #2 succeeds",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "6 use #3 succeeds",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "6 4th use shows throttle message",
+      "ok": true,
+      "note": "Você acabou de fazer isso algumas vezes. Espere alguns minutos e tente de novo."
+    },
+    {
+      "step": "layout A throttle toast @1280",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "6 A still signed in after throttle",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "layout 320 logout confirm @320",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "layout 320 revoke confirm @320",
+      "ok": true,
+      "note": "{\"hscroll\":false,\"overlaps\":[],\"clipped\":[]}"
+    },
+    {
+      "step": "8 moderation toggle on",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "8 pending card appears for host",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "8 approve -> song in queue",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "8 TV shows the queued song",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "8 host pause/unpause/skip still authorised (200)",
+      "ok": true,
+      "note": "{\"pause\":200,\"unpause\":200,\"skip\":200}"
+    }
+  ],
+  "revokeLog": [
+    "A POST 200",
+    "B POST 403",
+    "B POST 403",
+    "A POST 200",
+    "A POST 200",
+    "A POST 429"
+  ],
+  "consoleErrs": [
+    "pt-BR-1280 warm: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "pt-BR-1280 A: Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+    "pt-BR-1280 A: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "pt-BR-1280 B: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+}
