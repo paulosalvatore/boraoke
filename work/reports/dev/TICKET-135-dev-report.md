@@ -1,7 +1,7 @@
 # TICKET-135 + TICKET-136 — Dev report (one PR)
 
 ## Status
-Implemented and pushed (code head `c476597`). Targeted jest and one full jest green. **Owed, not run (lane constraint, host load ~146 on 10 cores with two e2e lanes on 3118/3140):** the full e2e suite and `next build`. The TM schedules them once the heavy lanes drain. No gate requested yet.
+Round 2 (review item 1 + security MEDIUM) implemented and pushed. Fix `8d20b93`, merge of main `0febc5c`, branch head `53d3ff3`. Full jest, `npm run build` (incl. bundle ES-target + CSS target), `check:es-target`, and one full e2e are all green on the merged head. Re-review requested via TM.
 
 ## Context
 - Picking up from: fresh start, 2026-10-15. Dispatch brief from the boraoke Product TM.
@@ -166,3 +166,101 @@ Tests that pass on the old code **by design** (guards and characterisation, each
 
 ## Friction
 - `emit-event.sh --repo <worktree>` writes to `by-branch/main.jsonl`, not the worktree branch's log (seen twice: worktree_created, pr_opened). Possible framework inbox note for the framework TM.
+
+## Round 2 — review item 1 + security MEDIUM (2026-10-15/16)
+
+Picking up from: `work/reports/review/TICKET-135-review.md` (REQUEST-CHANGES, PR comment 6204331814) and `work/reports/security/TICKET-135-security.md` (PASS-WITH-NOTES, MEDIUM, comment 6204180844).
+
+### Changes (`8d20b93`)
+- **Review item 1, `\p{}` at module load.** `lib/search-prefix.ts` now builds the class via `buildNotWordChar()`: try `new RegExp("[^\\p{L}\\p{M}\\p{N}]+", "gu")`, and on throw fall back to `NOT_WORD_CHAR_FALLBACK`, which matches whitespace + ASCII/Latin-1/General-Punctuation/CJK/fullwidth punctuation and keeps every letter of every script. The TM's call was to keep the browser floor (`firefox >= 67`), so the browserslist stays as it is. Fixed the browser-support comment (Chrome 64+, Safari 11.1+, Edge 79+, Firefox only from 78; client import path named). Test hook `_usingNotWordCharFallback`.
+- **Reviewer nit.** The "a fold result always contains a letter or digit" comment in `cacheKey` is replaced: the fallback is used only when the fold is empty (no letter, mark, digit, `|` or `"`), so a fallback string contains none of those and every non-empty fold contains at least one. The non-Latin diacritic note (`й`/`и`, Vietnamese tones) is in the `foldSearchKey` doc.
+- **Security MEDIUM, operators.** Chose the preferred option: operators stay significant in the key. `foldKeyTokens()` chunks the lowercased, diacritic-stripped query with `/\|+|-*"|[^\s|"]+/g`. A `|` becomes a `|` token, a `"` becomes `"` (or `-"` for an excluded phrase), and a chunk starting with `-` keeps `-` on its first token. Mid-word hyphens stay punctuation. An excluded `-karaoke` is not moved and not merged with the sing-mode token. Without those characters the output is exactly `foldTokens(s)`, so every plain query keeps its key (the 52-string index-agreement tests still pass, and `measure:t135` is byte-identical). `+` is not treated as an operator: the Data API documents only `-` and `|`, and `+` in a query string usually arrives as a space. Upstream `q` is unchanged, so normal queries return the same results.
+- Tests added in `__tests__/search-cache-key-fold.test.ts`: 6 operator forms vs `evidencias karaoke`, all operator forms pairwise distinct, `-karaoke` placement, 8 benign variants that must still merge (incl. `evidências!!! karaokê`), and no `:` from markers. The Firefox 67-77 case: `global.RegExp` is stubbed to throw on `\p{` and the modules are re-required in `jest.isolateModules`. The checks are that the module loads on the fallback, `containsKaraoke`/`augmentQuery` behave the same, the fold works, and non-Latin scripts stay distinct.
+
+### Prove-your-test-can-fail (round 2)
+**(b) Reverse check.** The new test file was run against the pre-fix `lib/search-prefix.ts` + `lib/youtube-search.ts` (from `76c5391`), then the sources were restored (`git diff --stat` after the restore showed the new code):
+```
+Tests:       13 failed, 74 passed, 87 total
+```
+Excerpts:
+```
+● YouTube search operators stay significant in the key (security review MEDIUM) › evidencias -karaoke does not share the plain query's key
+    Expected: not "BR::evidencias karaoke"
+● YouTube search operators stay significant in the key (security review MEDIUM) › each operator form keeps its own key
+    Expected: 5
+    Received: 1
+● Unicode property escapes missing at runtime (Firefox 67-77) › the module loads, using the fallback class
+    SyntaxError: Invalid regular expression: invalid escape
+      at Object.<anonymous> (lib/search-prefix.ts:105:23)
+```
+The benign-variant merge test passes on the old code by design. It is the guard that the fix did not over-split keys, and mutant N8 kills it.
+
+**(a)/(d) Triggered mutation pass: triggered** (new normalisation on a cache-identity path). Each mutant was run against `search-cache-key-fold` + `search-query`, and the source was restored after each one (`cmp` clean):
+
+| # | Mutant | Result |
+|---|---|---|
+| N1 | no try/catch around the `\p{}` constructor | KILLED (3) |
+| N2 | fallback = Latin-only `[^a-z0-9]` | KILLED (1) |
+| N3 | fallback without ASCII punctuation | KILLED (1) |
+| N4 | `|` token dropped | KILLED (4) |
+| N5 | `"` token dropped | KILLED (5) |
+| N6 | `-"` emitted as plain `"` | SURVIVED-real-gap at first, so I added `x "karaoke"` to the pairwise-distinct set; KILLED (1) |
+| N7 | no `-` prefix on excluded token | KILLED (4) |
+| N8 | `-` anywhere in chunk = exclusion | KILLED (1) |
+| N9 | chunker ignores `|` | KILLED (1) |
+| N10 | karaoke filter also strips `-karaoke` | KILLED (3) |
+
+10/10 KILLED after the N6 gap was closed in-PR.
+
+**(c) Hollowing-out:** `foldSearchKey` changed underneath the existing fold/key assertions. For inputs without `|`, `"` or a leading `-`, the output is provably `foldTokens(s)` (whitespace is a non-word char, so per-chunk folding concatenates to the whole-string fold). The existing acceptance, index-agreement and forgery assertions therefore still exercise the same function and are not vacuous. `containsKaraoke` still uses `foldTokens` and is unchanged.
+
+### Self-verification on the merged head `53d3ff3` (main merged at `0febc5c`: #95, #96, #98; clean, no conflicts; it touches `components/SongSearch.tsx`, `lib/youtube*.ts`, `app/api/queue/route.ts`, so e2e was re-run)
+- `tsc --noEmit`: 0 errors in `lib/`, `app/`, `components/`.
+- Full jest (load 3.96 → 5.00):
+```
+Test Suites: 79 passed, 79 total
+Tests:       89 skipped, 1552 passed, 1641 total
+```
+  The skips went from 21 to 89 because of main's new Redis-gated integration suites (`room-cas-lua.integration` 68, `search-principal-lua.integration` 8, `search-budget-lua.integration` 5) plus pre-existing ones. None are in this PR.
+- `npm run build` (load 5.00 → 5.96): exit 0.
+```
+ ✓ Compiled successfully in 1984ms
+bundle-es-target: OK — all 52 chunk(s) parse at ES2019.
+css-target: OK — the TV surface uses nothing newer than Chrome 68 (18 stylesheet(s) scanned).
+```
+  `npm run check:es-target`: `bundle-es-target: OK — all 52 chunk(s) parse at ES2019.`
+- Full e2e, workers 1, port 3135, Playwright-managed build server:
+```
+E2E START 04:45:42  load averages: 6.67 6.80 10.49
+[1/143] [chromium] › e2e/_canary.spec.ts:22:7 › run-triage canary (not a product test) › the runner evaluates constants correctly
+[2/143] [chromium] › e2e/_canary.spec.ts:28:7 › run-triage canary (not a product test) › the runner's async primitives complete
+  143 passed (3.9m)
+e2e exit 0
+E2E END 04:49:38  load averages: 4.66 5.60 9.11
+```
+- `npm run measure:t135` output, byte-identical to `work/measurements/ticket-135/RESULTS.txt` (diff empty):
+```
+TICKET-135 fold check over the published production strings
+strings: 52 (graded 32, ungradable 20)
+distinct cache keys: old 52 -> folded 50
+
+MERGE "cerol na mao karaoke"
+   "cerol na mao karaoke"       want=cerol+mao
+   "cerol na mão karaoke"       want=cerol+mao
+   same graded want: yes   same TICKET-125 trace (normalizeQuery equal): yes
+MERGE "mana"
+   "maná"                       want=mana
+   "mana"                       want=mana
+   same graded want: yes   same TICKET-125 trace (normalizeQuery equal): yes
+
+merges: 2
+```
+- Pre-merge, on `8d20b93` (load ~150): full jest `72 passed` suites / `21 skipped, 1326 passed, 1347 total`; `npm run build` exit 0 with `bundle-es-target: OK — all 50 chunk(s) parse at ES2019.`
+
+### Void e2e attempts before the clean run (recorded for honesty)
+1. 20:36, load ~154: `Error: Timed out waiting 600000ms from config.webServer`. The `next build` inside the webServer took more than 10 min. No tests ran.
+2. 21:00, self-started server: the shell running it was killed (exit 144). The server died mid-run and the rest failed with `connect ECONNREFUSED ::1:3135`. Void.
+3. 21:17-21:33, detached runner, load 50→111: exit 1, but its output file was later overwritten by an unrelated process before I read it, so the failure list is lost. Void, superseded by the clean run above on the merged head.
+
+## Friction (round 2)
+- Under load ~150-200, Playwright's 600 s `webServer` timeout is too short for `next build` (measured 10 min for a manual build at load ~200). Pre-building with the suite's env plus `reuseExistingServer` works, but the server needs to be detached from the tool shell.
