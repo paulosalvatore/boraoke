@@ -206,12 +206,18 @@ describe("the owner survives other people's logins (TICKET-120)", () => {
       const preFilled = Math.floor(rand() * 8); // sometimes already at the cap
       for (let i = 0; i < preFilled; i++) await issueRoomClaimToken(roomId);
 
+      const WRITERS_N = 30;
       const realUpdate = roomBackend.update.bind(roomBackend);
       const held: Array<() => Promise<void>> = [];
-      jest.spyOn(roomBackend, "update").mockImplementation(
-        (room) => new Promise<void>((done) => held.push(() => realUpdate(room).then(done))),
+      // Hold each writer's FIRST write (all computed from the same pre-write read).
+      // Since TICKET-127 all but one of them lose the compare-and-set and retry from a
+      // fresh read; those retries pass straight through.
+      jest.spyOn(roomBackend, "update").mockImplementation((room) =>
+        held.length < WRITERS_N
+          ? new Promise((done) => held.push(() => realUpdate(room).then(done)))
+          : realUpdate(room),
       );
-      const writers = Array.from({ length: 30 }, (_, i) =>
+      const writers = Array.from({ length: WRITERS_N }, (_, i) =>
         i % 7 === 3
           ? setRoomMode(roomId, rand() < 0.5 ? "per-table-2" : "full-karaoke")
           : issueRoomClaimToken(roomId),

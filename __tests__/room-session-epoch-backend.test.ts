@@ -10,7 +10,14 @@
  * not prove Upstash's own atomicity (INCR is atomic in Redis by definition).
  */
 import type { Redis } from "@upstash/redis";
-import { UpstashRoomBackend, roomKey, roomSessionEpochKey, type Room } from "@/lib/rooms";
+import {
+  ROOM_CAS_SCRIPT,
+  UpstashRoomBackend,
+  normaliseRoomRev,
+  roomKey,
+  roomSessionEpochKey,
+  type Room,
+} from "@/lib/rooms";
 
 class FakeRedis {
   data = new Map<string, unknown>();
@@ -54,6 +61,23 @@ class FakeRedis {
   async persist(k: string) {
     this.calls.push(`persist ${k}`);
     return this.ttl.delete(k) ? 1 : 0;
+  }
+  /**
+   * The room compare-and-set (TICKET-127), modelled in JS: it pins what the backend
+   * SENDS (one EVAL, which key, which arguments). The shipped Lua itself is run
+   * against a real Redis in room-cas-lua.integration.test.ts.
+   */
+  evals: Array<{ keys: string[]; args: string[] }> = [];
+  async eval(script: string, keys: string[], args: string[]) {
+    this.calls.push(`eval ${keys.join(" ")}`);
+    if (script !== ROOM_CAS_SCRIPT) throw new Error("unexpected script");
+    this.evals.push({ keys, args });
+    const cur = this.data.get(keys[0]) as Room | undefined;
+    if (cur === undefined) return 0;
+    if (normaliseRoomRev(cur.rev) !== Number(args[0])) return -1;
+    this.data.set(keys[0], JSON.parse(args[1]));
+    if (args[2] !== "1") this.ttl.delete(keys[0]);
+    return 1;
   }
 }
 
@@ -100,8 +124,12 @@ describe("UpstashRoomBackend session epoch", () => {
     await be.create(room("bar"));
     const stale = (await be.get("bar"))!; // read before the revoke
     expect(await be.bumpSessionEpoch("bar", 0)).toBe(1);
-    await be.update({ ...(await be.get("bar"))!, sessionEpoch: 1 });
-    await be.update(stale); // the stale writer lands: record copy back to absent
+    expect(await be.update({ ...(await be.get("bar"))!, sessionEpoch: 1 })).toBe("ok");
+    // TICKET-127: the stale snapshot is now refused outright...
+    expect(await be.update(stale)).toBe("conflict");
+    // ...so plant it the only way left, a raw SET (an old-code write mid-deploy):
+    // the record copy goes back to absent, and the counter still wins.
+    await fake.set(roomKey("bar"), stale);
     expect((await be.get("bar"))!.sessionEpoch).toBe(1);
   });
 
@@ -130,7 +158,7 @@ describe("UpstashRoomBackend session epoch", () => {
     await be.create(room("bar"));
     await be.bumpSessionEpoch("bar", 0);
     fake.calls = [];
-    await be.update(room("bar", { sessionEpoch: 0 }));
+    expect(await be.update(room("bar", { sessionEpoch: 0 }))).toBe("ok");
     expect(fake.calls.every((c) => !c.includes(roomSessionEpochKey("bar")))).toBe(true);
     expect(fake.data.get(roomSessionEpochKey("bar"))).toBe(1);
   });
@@ -167,5 +195,49 @@ describe("UpstashRoomBackend session epoch", () => {
     fake.ttl.delete(roomKey("bar")); // a plain SET dropped the record's TTL (measured -1 in Redis)
     await be.bumpSessionEpoch("bar", 1);
     expect(fake.ttl.has(roomSessionEpochKey("bar"))).toBe(false);
+  });
+});
+
+describe("UpstashRoomBackend compare-and-set writes (TICKET-127)", () => {
+  it("an update is ONE eval of the CAS script on the record key, carrying the read revision", async () => {
+    const { fake, be } = backend();
+    await be.create(room("bar"));
+    fake.calls = [];
+    expect(await be.update({ ...room("bar"), name: "Bar 2" })).toBe("ok");
+    expect(fake.calls).toEqual([`eval ${roomKey("bar")}`]);
+    const [{ args }] = fake.evals;
+    expect(args[0]).toBe("0"); // a legacy record has no rev: expected 0
+    expect(JSON.parse(args[1])).toEqual({ ...room("bar"), name: "Bar 2", rev: 1 });
+    // The stored value is exactly what `get` hands back, revision included.
+    expect(await be.get("bar")).toEqual({ ...room("bar"), name: "Bar 2", rev: 1 });
+  });
+
+  it("a write from a snapshot older than the stored revision is a conflict and changes nothing", async () => {
+    const { fake, be } = backend();
+    await be.create(room("bar"));
+    const a = (await be.get("bar"))!;
+    const b = (await be.get("bar"))!;
+    expect(await be.update({ ...a, name: "A" })).toBe("ok");
+    expect(await be.update({ ...b, name: "B" })).toBe("conflict");
+    expect((fake.data.get(roomKey("bar")) as Room).name).toBe("A");
+    // A fresh read carries the new revision and goes through.
+    expect(await be.update({ ...(await be.get("bar"))!, name: "B" })).toBe("ok");
+    expect((await be.get("bar"))!).toMatchObject({ name: "B", rev: 2 });
+  });
+
+  it("never creates a record: updating a missing room is `missing`", async () => {
+    const { fake, be } = backend();
+    expect(await be.update(room("ghost"))).toBe("missing");
+    expect(fake.data.has(roomKey("ghost"))).toBe(false);
+  });
+
+  it("keeps the TTL with retention ON, and is a plain SET with it OFF (TICKET-91 unchanged)", async () => {
+    const { fake, be } = backend();
+    await be.create(room("bar"));
+    process.env.ROOM_RETENTION_DAYS = "30";
+    await be.update((await be.get("bar"))!);
+    delete process.env.ROOM_RETENTION_DAYS;
+    await be.update((await be.get("bar"))!);
+    expect(fake.evals.map((e) => e.args[2])).toEqual(["1", "0"]);
   });
 });

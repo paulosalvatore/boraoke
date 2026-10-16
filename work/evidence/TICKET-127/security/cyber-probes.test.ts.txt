@@ -1,0 +1,355 @@
+/**
+ * CYBER GATE PROBE (TICKET-127), untracked, deleted after the gate.
+ * Real Redis via UpstashRoomBackend + a RESP adapter with injected per-command latency.
+ */
+import type { Redis } from "@upstash/redis";
+import { issueSession, verifySessionValue } from "@/lib/host-auth";
+import {
+  createRoom,
+  getRoom,
+  getRoomLanguage,
+  getRoomMode,
+  getRoomModeration,
+  hashClaimToken,
+  issueRoomClaimToken,
+  revokeRoomClaimToken,
+  revokeRoomHostSessions,
+  roomBackend,
+  roomKey,
+  setRoomLanguage,
+  setRoomMode,
+  setRoomModeration,
+  verifyRoomClaimToken,
+  RoomWriteConflictError,
+  UpstashRoomBackend,
+} from "@/lib/rooms";
+import { Resp } from "./helpers/resp";
+
+const REDIS_URL = process.env.REDIS_TEST_URL!;
+jest.setTimeout(600_000);
+
+function parse(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  try {
+    const out = JSON.parse(v);
+    return typeof out === "number" && out.toString() !== v ? v : out;
+  } catch {
+    return v;
+  }
+}
+const serialize = (v: unknown) => (typeof v === "string" || typeof v === "number" ? v : JSON.stringify(v));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const LAT = { base: 0, jitter: 0 };
+const stats = { cmds: 0, evals: 0 };
+async function hop() {
+  const ms = LAT.base + Math.random() * LAT.jitter;
+  if (ms > 0) await sleep(ms);
+}
+
+class RespUpstash {
+  constructor(private readonly r: Resp) {}
+  private async c(...args: (string | number)[]) {
+    stats.cmds++;
+    await hop();
+    const out = await this.r.cmd(...args);
+    await hop();
+    return out;
+  }
+  async get(k: string) {
+    return parse(await this.c("GET", k));
+  }
+  async mget(...keys: string[]) {
+    const raw = (await this.c("EVAL", "return cjson.encode(redis.call('MGET', unpack(KEYS)))", keys.length, ...keys)) as string;
+    return (JSON.parse(raw) as unknown[]).map((v) => (v === false ? null : parse(v)));
+  }
+  async set(k: string, v: unknown, opts?: { ex?: number; keepTtl?: boolean }) {
+    const args: (string | number)[] = ["SET", k, serialize(v) as string];
+    if (opts?.ex) args.push("EX", opts.ex);
+    if (opts?.keepTtl) args.push("KEEPTTL");
+    return this.c(...args);
+  }
+  incr = (k: string) => this.c("INCR", k);
+  incrby = (k: string, by: number) => this.c("INCRBY", k, by);
+  pttl = (k: string) => this.c("PTTL", k);
+  pexpire = (k: string, ms: number) => this.c("PEXPIRE", k, ms);
+  persist = (k: string) => this.c("PERSIST", k);
+  async eval(script: string, keys: string[], args: unknown[]) {
+    stats.evals++;
+    return parse(await this.c("EVAL", script, keys.length, ...keys, ...(args as (string | number)[])));
+  }
+}
+
+let r: Resp;
+const METHODS = ["get", "create", "update", "count", "bumpSessionEpoch"] as const;
+const original = new Map<string, unknown>();
+beforeAll(async () => {
+  r = new Resp();
+  await r.connect(REDIS_URL);
+  await r.cmd("FLUSHDB");
+  const be = new UpstashRoomBackend(new RespUpstash(r) as unknown as Redis);
+  const target = roomBackend as unknown as Record<string, unknown>;
+  for (const m of METHODS) {
+    original.set(m, target[m]);
+    target[m] = (be as unknown as Record<string, (...a: unknown[]) => unknown>)[m].bind(be);
+  }
+});
+afterAll(() => {
+  const target = roomBackend as unknown as Record<string, unknown>;
+  for (const m of METHODS) target[m] = original.get(m);
+  r?.end();
+});
+
+let seq = 0;
+async function seed() {
+  const created = (await createRoom(`Cyber Probe ${++seq}`))!;
+  const roomId = created.room.id;
+  const owner = (await issueRoomClaimToken(roomId, { owner: true }))!;
+  const staff = [(await issueRoomClaimToken(roomId))!, (await issueRoomClaimToken(roomId))!, (await issueRoomClaimToken(roomId))!];
+  return { roomId, owner, staff, oldSession: (await issueSession(roomId))! };
+}
+
+// ── C1: randomized full concurrency, every writer at once, invariants ─────────
+describe("C1 randomized concurrency on real Redis", () => {
+  it("200 rounds: revoke + logouts + logins + three settings, all concurrent, jittered latency", async () => {
+    LAT.base = 0;
+    LAT.jitter = 3;
+    const violations: string[] = [];
+    for (let round = 0; round < 200; round++) {
+      const s = await seed();
+      const startedAfterRevoke: Promise<string | null>[] = [];
+      let revokeDone = false;
+      const logouts = [revokeRoomClaimToken(s.roomId, s.staff[1]).then(() => "ok", (e) => String(e))];
+      const preLogins = [0, 1].map(() => issueRoomClaimToken(s.roomId));
+      const settings = [setRoomMode(s.roomId, "per-table-2"), setRoomLanguage(s.roomId, "es"), setRoomModeration(s.roomId, true)];
+      const revoke = (async () => {
+        await sleep(Math.random() * 6);
+        const res = await revokeRoomHostSessions(s.roomId, { presentedClaimToken: s.owner });
+        revokeDone = true;
+        for (let i = 0; i < 2; i++) startedAfterRevoke.push(issueRoomClaimToken(s.roomId));
+        return res;
+      })();
+      const res = await revoke;
+      await Promise.all([...logouts, ...preLogins, ...settings]);
+      const post = await Promise.all(startedAfterRevoke);
+      const tag = `round ${round}`;
+      if (!revokeDone || !res.ok) violations.push(`${tag}: revoke not ok`);
+      if (res.ok && !res.keptClaimToken) violations.push(`${tag}: rebind did not commit`);
+      if (await verifySessionValue(s.roomId, s.oldSession)) violations.push(`${tag}: old session alive`);
+      for (const t of s.staff) if (await verifyRoomClaimToken(s.roomId, t)) violations.push(`${tag}: pre-revoke staff claim alive`);
+      if (!(await verifyRoomClaimToken(s.roomId, s.owner))) violations.push(`${tag}: owner claim dead`);
+      const room = (await getRoom(s.roomId))!;
+      if (room.ownerClaimTokenHash !== hashClaimToken(s.owner)) violations.push(`${tag}: owner pin moved/lost`);
+      const fin = (await getRoom(s.roomId))!;
+      for (const t of post) if (!t || !(await verifyRoomClaimToken(s.roomId, t))) violations.push(`${tag}: post-revoke login claim dead (null=${t === null}, listLen=${fin.claimTokenHashes?.length}, inList=${t ? fin.claimTokenHashes?.includes(hashClaimToken(t)) : "-"}, live=${fin.claimTokenEpoch}/${fin.sessionEpoch})`);
+      if ((await getRoomMode(s.roomId)) !== "per-table-2") violations.push(`${tag}: mode lost`);
+      if ((await getRoomLanguage(s.roomId)) !== "es") violations.push(`${tag}: language lost`);
+      if ((await getRoomModeration(s.roomId)) !== true) violations.push(`${tag}: moderation lost`);
+      // pin survives a later code login (R1f shape)
+      await issueRoomClaimToken(s.roomId);
+      if ((await getRoom(s.roomId))!.ownerClaimTokenHash !== hashClaimToken(s.owner)) violations.push(`${tag}: pin lost on later login`);
+    }
+    console.log("C1 violations", violations.length, violations.slice(0, 10));
+    expect(violations).toEqual([]);
+  });
+});
+
+// ── C2: legacy rev / rev manipulation ────────────────────────────────────────
+describe("C2 rev manipulation", () => {
+  it("a writer whose snapshot has rev deleted, or rev=0, against a rev>0 record is refused", async () => {
+    const s = await seed();
+    const cur = (await getRoom(s.roomId))!;
+    expect(cur.rev).toBeGreaterThan(0);
+    const stale = { ...cur, claimTokenHashes: [...(cur.claimTokenHashes ?? []), "f".repeat(64)] };
+    delete (stale as { rev?: number }).rev;
+    expect(await roomBackend.update(stale)).toBe("conflict");
+    expect(await roomBackend.update({ ...stale, rev: 0 })).toBe("conflict");
+    expect(await roomBackend.update({ ...stale, rev: "abc" as unknown as number })).toBe("conflict");
+    expect(await roomBackend.update({ ...stale, rev: -1 })).toBe("conflict");
+    expect(await roomBackend.update({ ...stale, rev: String(cur.rev) as unknown as number })).toBe("ok");
+    // string rev that equals numerically commits: this is a TS-side normalisation, the client sends a number
+    const after = (await r.cmd("GET", roomKey(s.roomId))) as string;
+    expect(JSON.parse(after).rev).toBe(cur.rev! + 1);
+  });
+
+  it("an old-code plain SET mid-deploy rolls rev back: measure the ABA it enables", async () => {
+    const s = await seed();
+    const pre = (await getRoom(s.roomId))!; // new-code writer W1 reads at rev N
+    const oldCode = (await getRoom(s.roomId))!; // old-code writer reads at rev N too
+    // new-code logout commits (rev N+1, staff[0] removed)
+    await revokeRoomClaimToken(s.roomId, s.staff[0]);
+    // old code writes stale snapshot with plain SET: restores staff[0] AND rev N
+    await r.cmd("SET", roomKey(s.roomId), JSON.stringify({ ...oldCode, settings: { ...oldCode.settings, moderation: true } }));
+    const resurrected = await verifyRoomClaimToken(s.roomId, s.staff[0]);
+    // a NEW-code stale writer that read at rev N now passes CAS on top of it
+    const w1 = await roomBackend.update({ ...pre, settings: { ...pre.settings, mode: "per-table-2" } });
+    console.log("C2 deploy-window: staff[0] resurrected by old SET =", resurrected, "; new-code stale CAS after rollback =", w1);
+  });
+});
+
+// ── C3: retry exhaustion under a flood ──────────────────────────────────────
+type Victim = "revoke" | "logout" | "settings" | "ownerMint" | "login";
+async function flood(
+  roomId: string,
+  attackers: number,
+  kind: "login" | "settings",
+  stop: { v: boolean },
+): Promise<{ commits: number; exhausted: number; reqs: number }> {
+  const out = { commits: 0, exhausted: 0, reqs: 0 };
+  await Promise.all(
+    Array.from({ length: attackers }, async () => {
+      while (!stop.v) {
+        out.reqs++;
+        try {
+          if (kind === "login") {
+            const t = await issueRoomClaimToken(roomId);
+            if (t) out.commits++;
+            else out.exhausted++;
+          } else {
+            await setRoomModeration(roomId, Math.random() < 0.5);
+            out.commits++;
+          }
+        } catch (e) {
+          if (e instanceof RoomWriteConflictError) out.exhausted++;
+          else throw e;
+        }
+      }
+    }),
+  );
+  return out;
+}
+
+async function victimOnce(v: Victim, s: Awaited<ReturnType<typeof seed>>): Promise<string> {
+  try {
+    switch (v) {
+      case "revoke": {
+        const res = await revokeRoomHostSessions(s.roomId, { presentedClaimToken: s.owner });
+        if (!res.ok) return `refused:${res.reason}`;
+        if (res.keptClaimToken) return "ok";
+        // route fallback: mint a fresh OWNER token
+        const t = await issueRoomClaimToken(s.roomId, { owner: true });
+        return t ? "rebind-exhausted;fallback-mint-ok" : "rebind-exhausted;fallback-mint-null";
+      }
+      case "logout":
+        await revokeRoomClaimToken(s.roomId, s.staff[0]);
+        return (await verifyRoomClaimToken(s.roomId, s.staff[0])) ? "BUG-still-live" : "ok";
+      case "settings":
+        await setRoomMode(s.roomId, "per-table-2");
+        return "ok";
+      case "ownerMint":
+        return (await issueRoomClaimToken(s.roomId, { owner: true })) ? "ok" : "null";
+      case "login":
+        return (await issueRoomClaimToken(s.roomId)) ? "ok" : "null";
+    }
+  } catch (e) {
+    return e instanceof RoomWriteConflictError ? "threw-conflict" : `threw:${String(e)}`;
+  }
+}
+
+describe("C3 retry-exhaustion flood", () => {
+  const matrix: Array<[number, number, number, "login" | "settings"]> = [
+    // [latency per hop ms, jitter ms, attackers, kind]
+    [1, 1, 10, "login"],
+    [1, 1, 50, "login"],
+    [1, 1, 200, "login"],
+    [5, 3, 50, "login"],
+    [5, 3, 200, "login"],
+    [5, 3, 500, "login"],
+    [15, 10, 200, "login"],
+    [15, 10, 500, "login"],
+    [5, 3, 200, "settings"],
+  ];
+  it.each(matrix)("latency %ims+%ims jitter, %i attackers, %s flood", async (base, jitter, attackers, kind) => {
+    LAT.base = base;
+    LAT.jitter = jitter;
+    const tally: Record<string, Record<string, number>> = {};
+    const victims: Victim[] = ["revoke", "logout", "settings", "ownerMint"];
+    let floodTotals = { commits: 0, exhausted: 0, reqs: 0 };
+    const evalsBefore = stats.evals;
+    const TRIALS = 6;
+    let lostPin = 0;
+    for (let trial = 0; trial < TRIALS; trial++) {
+      for (const v of victims) {
+        const s = await seed();
+        const stop = { v: false };
+        const f = flood(s.roomId, attackers, kind, stop);
+        await sleep(30 + base * 4); // let the flood reach steady state
+        const outcome = await victimOnce(v, s);
+        stop.v = true;
+        const ft = await f;
+        floodTotals = { commits: floodTotals.commits + ft.commits, exhausted: floodTotals.exhausted + ft.exhausted, reqs: floodTotals.reqs + ft.reqs };
+        (tally[v] ??= {})[outcome] = ((tally[v] ??= {})[outcome] ?? 0) + 1;
+        if (v === "revoke") {
+          const room = (await getRoom(s.roomId))!;
+          if (!room.ownerClaimTokenHash) lostPin++;
+          // attacker's pre-revoke claims dead regardless?
+          for (const t of s.staff) if (await verifyRoomClaimToken(s.roomId, t)) (tally.revoke ??= {})["BUG-staff-alive"] = 1;
+          if (await verifySessionValue(s.roomId, s.oldSession)) (tally.revoke ??= {})["BUG-old-session-alive"] = 1;
+        }
+      }
+    }
+    const evals = stats.evals - evalsBefore;
+    console.log(
+      `C3 lat=${base}+${jitter} attackers=${attackers} kind=${kind}`,
+      JSON.stringify(tally),
+      `revoke-rooms-without-pin=${lostPin}/${TRIALS}`,
+      `flood reqs=${floodTotals.reqs} commits=${floodTotals.commits} attacker-exhausted=${floodTotals.exhausted}`,
+      `CAS-evals/flood-req=${(evals / Math.max(1, floodTotals.reqs)).toFixed(2)}`,
+    );
+  });
+});
+
+describe("C4 auth path command count", () => {
+  it("verifySessionValue (requireHost) and verifyRoomClaimToken: 1 command each, 0 evals of the CAS", async () => {
+    LAT.base = 0; LAT.jitter = 0;
+    const s = await seed();
+    const recBefore = await r.cmd("GET", roomKey(s.roomId));
+    const c0 = stats.cmds, e0 = stats.evals;
+    expect(await verifySessionValue(s.roomId, s.oldSession)).toBe(true);
+    const c1 = stats.cmds, e1 = stats.evals;
+    expect(await verifyRoomClaimToken(s.roomId, s.owner)).toBe(true);
+    const c2 = stats.cmds;
+    console.log(`C4 requireHost cmds=${c1 - c0} casEvals=${e1 - e0}; verifyClaim cmds=${c2 - c1}; record unchanged=${recBefore === (await r.cmd("GET", roomKey(s.roomId)))}`);
+  });
+});
+
+describe("C5 Lua/TS normalisation parity on exotic string revs", () => {
+  it.each([['"0b1"'], ['"\\u00a07"'], ['"0x1p4"'], ['"0x10"'], ['"1e2"'], ['" 7 "'], ['"7.0"'], ['9007199254740993']])("rev %s", async (lit) => {
+    const { ROOM_CAS_SCRIPT, normaliseRoomRev } = await import("@/lib/rooms");
+    const K = "room:cyber-parity:meta";
+    const json = `{"rev":${lit}}`;
+    const js = normaliseRoomRev((JSON.parse(json) as { rev: unknown }).rev);
+    await r.cmd("SET", K, json);
+    const out = await r.cmd("EVAL", ROOM_CAS_SCRIPT, 1, K, String(js), JSON.stringify({ rev: js + 1 }), "0");
+    console.log(`C5 rev=${lit} ts=${js} lua-accepts-ts=${out === 1}`);
+  });
+});
+
+describe("C6 stolen-session settings flood, auth re-checked per request (dies at the bump)", () => {
+  it.each([[5, 3, 50], [5, 3, 200], [15, 10, 200], [15, 10, 500]])("lat %i+%i, %i in-flight", async (base, jitter, n) => {
+    LAT.base = base; LAT.jitter = jitter;
+    const tally: Record<string, number> = {};
+    let usable = 0;
+    for (let t = 0; t < 6; t++) {
+      const s = await seed();
+      const stop = { v: false };
+      let refused = 0;
+      const f = Promise.all(Array.from({ length: n }, async () => {
+        while (!stop.v) {
+          if (!(await verifySessionValue(s.roomId, s.oldSession))) { refused++; await sleep(base); continue; }
+          try { await setRoomModeration(s.roomId, Math.random() < 0.5); } catch { /* exhausted */ }
+        }
+      }));
+      await sleep(30 + base * 4);
+      const res = await revokeRoomHostSessions(s.roomId, { presentedClaimToken: s.owner });
+      let k = res.ok && res.keptClaimToken ? "ok" : "rebind-exhausted";
+      if (k !== "ok") k += (await issueRoomClaimToken(s.roomId, { owner: true })) ? ";mint-ok" : ";mint-null";
+      stop.v = true; await f;
+      tally[k] = (tally[k] ?? 0) + 1;
+      const room = (await getRoom(s.roomId))!;
+      if (room.ownerClaimTokenHash && (await verifyRoomClaimToken(s.roomId, s.owner) || room.claimTokenEpoch === room.sessionEpoch)) usable++;
+      if (await verifySessionValue(s.roomId, s.oldSession)) tally["BUG-stolen-session-alive"] = 1;
+    }
+    console.log(`C6 lat=${base}+${jitter} n=${n}`, JSON.stringify(tally), `rooms-with-live-pin=${usable}/6`);
+  });
+});

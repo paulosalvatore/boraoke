@@ -150,16 +150,14 @@ export interface Room {
    * `creatorUuid` and `claimTokenHashes`.
    *
    * WHERE THE VALUE REALLY LIVES — this field is a FLOOR, not the source of truth.
-   * Every room mutation is a whole-record read-modify-write with no compare-and-
-   * swap (TICKET-127), so if the epoch lived only here, a login or settings change
-   * that read the record before a revoke and wrote it back after would roll the
-   * epoch back and resurrect every session the owner had just ended. So the epoch
-   * is bumped in its own key (`roomSessionEpochKey`) by an atomic increment that no
-   * whole-record write ever touches, and the backend's `get` reports
+   * The epoch is bumped in its own key (`roomSessionEpochKey`) by an atomic
+   * increment that no record write ever touches, and the backend's `get` reports
    * `max(this field, that counter)`. Writers carry that effective value back into
    * this field, which keeps a copy in the record in case the counter key is ever
-   * lost. A stale writer can lower this copy; it cannot lower the counter, so the
-   * epoch a reader sees never goes backwards.
+   * lost. It was built that way when record writes were plain whole-record SETs
+   * that a stale writer could use to roll this copy back; since TICKET-127 record
+   * writes are compare-and-set (`rev`), but the counter stays the source of truth,
+   * so the epoch a reader sees never goes backwards whatever the record says.
    */
   sessionEpoch?: number;
   /**
@@ -168,18 +166,38 @@ export interface Room {
    *
    * WHY. "Sign out all devices" has to end the other devices' claim credentials
    * as well as their sessions, because `POST /api/host/claim` turns a claim token
-   * into a session. It prunes the list down to the acting device's hash. But a
-   * stale whole-record write (TICKET-127) can put the pre-revoke list straight
-   * back, the attacker's hash included. Tying the list to the epoch means a list
-   * written by anything that read the room before the revoke carries the OLD
-   * epoch, so it grants nothing: the race fails closed (claim tokens stop
-   * working, the devices fall back to their session cookie or the host code)
-   * instead of failing open (a revoked credential working again).
+   * into a session. It prunes the list down to the acting device's hash. Tying
+   * the list to the epoch means a list written by anything that read the room
+   * before the revoke's bump carries the OLD epoch, so it grants nothing: that
+   * window fails closed (claim tokens stop working until the rebind, the devices
+   * fall back to their session cookie or the host code) instead of failing open (a
+   * revoked credential working again). Before TICKET-127 this tag was also the
+   * only defence against a stale whole-record write landing after the rebind;
+   * compare-and-set writes (`rev`) now refuse such a write outright.
    *
    * Absent reads as 0, and an untouched room's epoch is 0, so every room that has
    * never been through a revoke behaves exactly as before.
    */
   claimTokenEpoch?: number;
+  /**
+   * The record's REVISION, for compare-and-set writes (TICKET-127).
+   *
+   * Every room mutation reads the record, changes it, and writes it back. Before
+   * this field the write was a plain SET, so a writer that read before someone
+   * else's commit and wrote after it silently erased that commit: a settings
+   * toggle could undo a login or a logout, and a stale write after a revoke cost
+   * the room its owner pin (Cyber R-1). Now `RoomBackend.update` writes a record
+   * only if the stored revision still equals the one the writer read, and stores
+   * it with the next revision. A writer that lost the race re-reads and recomputes
+   * (`mutateRoom`), so its write is always computed from the latest commit.
+   *
+   * The expected revision travels in the snapshot itself: a mutator builds its
+   * write from `{ ...room }`, so it carries the revision it read and cannot forget
+   * to. Absent reads as 0 (`normaliseRoomRev`), so a legacy record needs no
+   * migration, and its first write stamps 1. Server-side bookkeeping only, not in
+   * `PublicRoom`.
+   */
+  rev?: number;
 }
 
 /** Client-safe room view — never leaks the host-code hash. */
@@ -252,30 +270,43 @@ export function hashClaimToken(token: string): string {
  * 256 bits from the CSPRNG: unlike the 8-character host code (a human types it)
  * nothing has to read this out loud, so there is no reason for it to be
  * guessable at all.
+ *
+ * Also returns null when the write could not commit after `ROOM_WRITE_ATTEMPTS`
+ * compare-and-set conflicts (TICKET-127). Every caller already treats null as
+ * "no claim token issued": the device keeps its session cookie and loses only the
+ * no-typing path, which is the fail-closed direction.
  */
 export async function issueRoomClaimToken(
   roomId: string,
   opts: { owner?: boolean } = {},
 ): Promise<string | null> {
-  const room = await getRoom(roomId);
-  if (!room) return null;
   const token = nodeRandomBytes(32).toString("base64url");
   const hash = hashClaimToken(token);
-  // TICKET-118: a list written for an earlier epoch was revoked by "sign out all
-  // devices" (or restored by a stale write after one), so none of it is live.
-  // Start a fresh list rather than appending to it, and drop its owner pointer.
-  const epoch = normaliseSessionEpoch(room.sessionEpoch);
-  const bound = claimListIsLive(room);
-  const base = bound ? room.claimTokenHashes ?? [] : [];
-  const owner = opts.owner ? hash : bound ? room.ownerClaimTokenHash : undefined;
-  const next: Room = { ...room, claimTokenHashes: capClaimHashes([...base, hash], owner) };
-  if (owner !== undefined) next.ownerClaimTokenHash = owner;
-  else delete next.ownerClaimTokenHash;
-  // Only a room that has been through a revoke carries the field, so an
-  // untouched room's record keeps its exact pre-TICKET-118 shape.
-  if (epoch > 0 || next.claimTokenEpoch !== undefined) next.claimTokenEpoch = epoch;
-  await roomBackend.update(next);
-  return token;
+  let written: Room | null;
+  try {
+    written = await mutateRoom(roomId, (room) => {
+      // TICKET-118: a list written for an earlier epoch was revoked by "sign out
+      // all devices", so none of it is live. Start a fresh list rather than
+      // appending to it, and drop its owner pointer. Since TICKET-127 a list can
+      // only be in that state between a revoke's bump and its rebind (which then
+      // re-asserts the owner pin), or after a rebind that never committed.
+      const epoch = normaliseSessionEpoch(room.sessionEpoch);
+      const bound = claimListIsLive(room);
+      const base = bound ? room.claimTokenHashes ?? [] : [];
+      const owner = opts.owner ? hash : bound ? room.ownerClaimTokenHash : undefined;
+      const next: Room = { ...room, claimTokenHashes: capClaimHashes([...base, hash], owner) };
+      if (owner !== undefined) next.ownerClaimTokenHash = owner;
+      else delete next.ownerClaimTokenHash;
+      // Only a room that has been through a revoke carries the field, so an
+      // untouched room's record keeps its exact pre-TICKET-118 shape.
+      if (epoch > 0 || next.claimTokenEpoch !== undefined) next.claimTokenEpoch = epoch;
+      return next;
+    });
+  } catch (err) {
+    if (err instanceof RoomWriteConflictError) return null;
+    throw err;
+  }
+  return written ? token : null;
 }
 
 /**
@@ -358,19 +389,24 @@ export async function verifyRoomClaimToken(
  *
  * A no-op when the token is absent or not in the list, so a device with no claim
  * credential just has its cookies cleared by the route.
+ *
+ * Throws `RoomWriteConflictError` when the removal could not commit after
+ * `ROOM_WRITE_ATTEMPTS` conflicts (TICKET-127): the route then fails before it
+ * tells the client it is logged out, so a retry is safe. It never reports a
+ * logout that did not happen.
  */
 export async function revokeRoomClaimToken(roomId: string, token: unknown): Promise<void> {
   if (typeof token !== "string" || token.length === 0) return;
-  const room = await getRoom(roomId);
-  if (!room || !Array.isArray(room.claimTokenHashes)) return;
   const hash = hashClaimToken(token);
-  if (!room.claimTokenHashes.includes(hash)) return;
-  const rest = room.claimTokenHashes.filter((h) => h !== hash);
-  const next: Room = { ...room };
-  if (rest.length > 0) next.claimTokenHashes = rest;
-  else delete next.claimTokenHashes;
-  if (next.ownerClaimTokenHash === hash) delete next.ownerClaimTokenHash;
-  await roomBackend.update(next);
+  await mutateRoom(roomId, (room) => {
+    if (!Array.isArray(room.claimTokenHashes) || !room.claimTokenHashes.includes(hash)) return null;
+    const rest = room.claimTokenHashes.filter((h) => h !== hash);
+    const next: Room = { ...room };
+    if (rest.length > 0) next.claimTokenHashes = rest;
+    else delete next.claimTokenHashes;
+    if (next.ownerClaimTokenHash === hash) delete next.ownerClaimTokenHash;
+    return next;
+  });
 }
 
 /**
@@ -448,20 +484,24 @@ export async function getRoomSessionEpoch(roomId: string): Promise<number> {
  *     device that would get in a second later anyway. Dropping it would sign out
  *     a legitimate concurrent login, and an earlier version did exactly that while
  *     also dropping the acting device's own hash.
- * Every rebind re-asserts the owner's hash whatever the current list holds, so a
+ * The rebind re-asserts the owner's hash whatever the current list holds, so a
  * concurrent write can never cost the acting device its credential by making the
  * presented hash "not found" at rebind time.
  *
  * WHAT A CONCURRENT WRITE CAN STILL DO, stated rather than implied:
  *   - It can NOT undo the session half: the counter only goes up.
- *   - It can NOT resurrect a pruned claim token: a restored list carries its old
- *     epoch tag.
- *   - It CAN leave the claim list tagged with an old epoch, if a stale write lands
- *     after the rebind below has finished. Then every claim token is dead, the
- *     owner's included. The acting device still holds the session cookie the
- *     route hands back, which keeps rolling; it loses only the no-typing fallback.
- *     The remaining lockout needs this race AND a lost response. That is the
- *     residual until room writes are atomic (TICKET-127).
+ *   - It can NOT undo the claims half (TICKET-127). The rebind is a compare-and-
+ *     set write, and so is every other room write: a writer that read the record
+ *     before the rebind committed is refused and recomputes from the rebound list.
+ *     So no stale write can restore a pruned hash, put back the old epoch tag, or
+ *     drop the owner pin (Cyber R-1) once this returns.
+ *   - Sustained contention can stop the rebind committing at all within
+ *     `ROOM_WRITE_ATTEMPTS`. Then the sessions are still ended, the list keeps its
+ *     old tag (dead, fail-closed), and the route attempts to mint the owner a
+ *     fresh pinned claim token. That mint is best-effort: it is another room write
+ *     racing the same contention, and under a host-code login flood it can fail to
+ *     commit too. Then the device keeps only its session cookie and the room may
+ *     lose its owner pin (TICKET-158).
  *   - A concurrent login by someone who TYPED THE HOST CODE gets in, as it would a
  *     second later. This lever ends copied sessions and claim tokens; it does not
  *     change the host code (option C, rejected in the plan).
@@ -475,9 +515,6 @@ export async function getRoomSessionEpoch(roomId: string): Promise<number> {
 export type RevokeHostSessionsResult =
   | { ok: true; epoch: number; keptClaimToken: boolean; room: Room }
   | { ok: false; reason: "no-room" | "not-owner" };
-
-/** How many times `revokeRoomHostSessions` re-tries binding the claim list after a concurrent write clobbered it. */
-const CLAIM_REBIND_ATTEMPTS = 4;
 
 export async function revokeRoomHostSessions(
   roomId: string,
@@ -500,43 +537,44 @@ export async function revokeRoomHostSessions(
   // Half 2, claims. Rewrite the list for the CURRENT epoch (ours, or a later one if
   // another revoke got there too): the owner's hash, plus anything already tagged
   // with an epoch after the one we read (written post-bump, so by a code login).
-  // Then re-read: if a concurrent write left the list tagged with an older epoch,
-  // do it again. Only hashes written after the bump are ever carried, so a retry
-  // can never re-validate a list somebody restored from before it.
-  let last: Room = before;
-  for (let attempt = 0; attempt < CLAIM_REBIND_ATTEMPTS; attempt++) {
-    const room = await getRoom(roomId);
-    if (!room) break;
-    last = room;
-    const epoch = normaliseSessionEpoch(room.sessionEpoch);
-    const postBump =
-      epoch > beforeEpoch && claimListIsLive(room) && Array.isArray(room.claimTokenHashes)
-        ? room.claimTokenHashes.filter((h) => typeof h === "string" && h !== owner)
-        : [];
-    const next: Room = {
-      ...room,
-      sessionEpoch: epoch,
-      claimTokenEpoch: epoch,
-      claimTokenHashes: capClaimHashes([owner, ...postBump], owner),
-      ownerClaimTokenHash: owner,
-    };
-    await roomBackend.update(next);
-
-    const after = await getRoom(roomId);
-    if (!after) break;
-    last = after;
-    if (claimListIsLive(after)) {
+  // One compare-and-set write (TICKET-127): if anything committed since our read,
+  // `mutateRoom` re-reads and recomputes, and once it commits no stale writer can
+  // land on top of it. Only hashes written after the bump are ever carried, so a
+  // retry can never re-validate a list somebody wrote from before it.
+  try {
+    const rebound = await mutateRoom(roomId, (room) => {
+      const epoch = normaliseSessionEpoch(room.sessionEpoch);
+      const postBump =
+        epoch > beforeEpoch && claimListIsLive(room) && Array.isArray(room.claimTokenHashes)
+          ? room.claimTokenHashes.filter((h) => typeof h === "string" && h !== owner)
+          : [];
+      return {
+        ...room,
+        sessionEpoch: epoch,
+        claimTokenEpoch: epoch,
+        claimTokenHashes: capClaimHashes([owner, ...postBump], owner),
+        ownerClaimTokenHash: owner,
+      };
+    });
+    if (rebound) {
       return {
         ok: true,
-        epoch: normaliseSessionEpoch(after.sessionEpoch),
-        keptClaimToken: Array.isArray(after.claimTokenHashes) && after.claimTokenHashes.includes(owner),
-        room: after,
+        epoch: normaliseSessionEpoch(rebound.sessionEpoch),
+        keptClaimToken: true,
+        room: rebound,
       };
     }
+    // The record vanished mid-revoke (room deletion): nothing left to rebind.
+  } catch (err) {
+    if (!(err instanceof RoomWriteConflictError)) throw err;
   }
-  // Every rebind was clobbered. The sessions ARE ended (the bump is atomic); the
-  // claim list is tagged with an old epoch, so it grants nothing. The route mints
-  // the caller a fresh OWNER claim token, so the pin survives this path too.
+  // The rebind never committed. The sessions ARE ended (the bump is atomic); the
+  // claim list is still tagged with an older epoch, so it grants nothing. The route
+  // attempts to mint the caller a fresh OWNER claim token. That is best-effort: it
+  // races the same contention, and under a host-code login flood it can fail to
+  // commit, leaving the device with only its session cookie and the room without
+  // its pin (TICKET-158).
+  const last = (await getRoom(roomId)) ?? before;
   const epoch = Math.max(bumped, normaliseSessionEpoch(last.sessionEpoch));
   return { ok: true, epoch, keptClaimToken: false, room: { ...last, sessionEpoch: epoch } };
 }
@@ -645,15 +683,128 @@ export function generateHostCode(): string {
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
+/** Outcome of a compare-and-set room write (see `RoomBackend.update`). */
+export type RoomWriteResult = "ok" | "conflict" | "missing";
+
+/**
+ * Normalise a stored `rev` (TICKET-127). Same rule as `normaliseSessionEpoch`:
+ * a non-negative integer (or a numeric string of one) is honoured, anything else,
+ * absent included, reads as 0. `ROOM_CAS_SCRIPT` applies the same rule in Lua; if
+ * the two ever disagreed, every write to an affected room would conflict.
+ */
+export function normaliseRoomRev(raw: unknown): number {
+  return normaliseSessionEpoch(raw);
+}
+
+/**
+ * Atomic compare-and-set of a room record (TICKET-127), run by EVAL so the check
+ * and the write cannot be split by another writer.
+ *
+ * KEYS[1] = the record key (`roomKey`).
+ * ARGV[1] = the revision the writer read (already normalised, as a decimal string).
+ * ARGV[2] = the new record, as JSON, carrying revision ARGV[1] + 1.
+ * ARGV[3] = "1" to keep the key's TTL (retention ON), "0" for a plain SET.
+ *
+ * Returns 1 written, 0 no such record (nothing written, never creates one),
+ * -1 conflict (the stored revision moved on, or the stored value is not a JSON
+ * object; nothing written). The stored revision is normalised exactly like
+ * `normaliseRoomRev`: absent, null, a boolean, a negative, a fraction, a
+ * non-finite or non-numeric value all read as 0.
+ *
+ * Deliberately knows nothing about claim tokens, owners or epochs: all of that
+ * stays in TypeScript (`mutateRoom` callers), where the suite can run it.
+ */
+export const ROOM_CAS_SCRIPT = `
+local cur = redis.call('GET', KEYS[1])
+if not cur then return 0 end
+local ok, rec = pcall(cjson.decode, cur)
+if not ok or type(rec) ~= 'table' then return -1 end
+local raw = rec['rev']
+local n = nil
+if type(raw) == 'number' then
+  n = raw
+elseif type(raw) == 'string' and string.find(raw, '%S') then
+  n = tonumber(raw)
+end
+if n == nil or n ~= n or n < 0 or n >= math.huge or n ~= math.floor(n) then n = 0 end
+if n ~= tonumber(ARGV[1]) then return -1 end
+if ARGV[3] == '1' then
+  redis.call('SET', KEYS[1], ARGV[2], 'KEEPTTL')
+else
+  redis.call('SET', KEYS[1], ARGV[2])
+end
+return 1
+`;
+
+/**
+ * How many read-compute-write attempts `mutateRoom` makes before it gives up
+ * (TICKET-127). Bounded so a request can never spin.
+ *
+ * What the number means: every conflict is caused by a DIFFERENT write committing
+ * to the same room inside that attempt's read-to-write window (the windows of one
+ * operation do not overlap). So an operation fails only if 32 other writes commit
+ * to that one room while it runs. A venue's normal traffic is a handful of devices;
+ * the TICKET-120 probe fires 30 writers at once and every one of them commits.
+ */
+export const ROOM_WRITE_ATTEMPTS = 32;
+
+/** A room write that could not commit within `ROOM_WRITE_ATTEMPTS` (TICKET-127). */
+export class RoomWriteConflictError extends Error {
+  constructor(roomId: string) {
+    super(`room ${roomId}: write did not commit after ${ROOM_WRITE_ATTEMPTS} conflicting writes`);
+    this.name = "RoomWriteConflictError";
+  }
+}
+
+/**
+ * THE way to change a room record (TICKET-127). Reads the room, asks `change` for
+ * the new record, and compare-and-sets it; on a conflict it re-reads and asks
+ * again, so the write that finally commits was computed from the latest commit and
+ * cannot erase it. That is what stops a settings toggle undoing a login or a
+ * logout, a stale write dropping the owner pin, and a stale write restoring a
+ * revoked claim hash.
+ *
+ * `change` must be pure (it can run more than once) and returns the full new
+ * record, or null for "nothing to write". The revision is managed here, not by
+ * `change`: whatever it returns is written against the revision this attempt read.
+ *
+ * Returns the committed record (or the unchanged one when `change` returned null),
+ * null when the room does not exist, and throws `RoomWriteConflictError` after
+ * `ROOM_WRITE_ATTEMPTS` conflicts. Reads only through `getRoom`, so it never adds
+ * anything to the authentication path, which does not write at all.
+ */
+async function mutateRoom(roomId: string, change: (room: Room) => Room | null): Promise<Room | null> {
+  for (let attempt = 0; attempt < ROOM_WRITE_ATTEMPTS; attempt++) {
+    const room = await getRoom(roomId);
+    if (!room) return null;
+    const changed = change(room);
+    if (changed === null) return room;
+    const next: Room = { ...changed, id: room.id, rev: room.rev };
+    const result = await roomBackend.update(next);
+    if (result === "ok") return { ...next, rev: normaliseRoomRev(room.rev) + 1 };
+    if (result === "missing") return null;
+    // "conflict" (or anything unexpected): re-read and recompute.
+  }
+  throw new RoomWriteConflictError(roomId);
+}
+
 interface RoomBackend {
   get(id: string): Promise<Room | null>;
   /** Persist a NEW room record (also advances the creation counter). */
   create(room: Room): Promise<void>;
   /**
-   * Persist an UPDATED room record in place (TICKET-10, additive — does NOT
-   * touch the creation counter). No-op if the room does not exist.
+   * COMPARE-AND-SET an updated room record in place (TICKET-10; compare-and-set
+   * since TICKET-127; never touches the creation counter).
+   *
+   * Writes `room` only if the stored record's revision still equals `room.rev`
+   * (both read through `normaliseRoomRev`), and stores it with revision + 1:
+   *   - `"ok"`: written;
+   *   - `"conflict"`: someone committed since this snapshot was read, nothing was
+   *     written. The caller re-reads and recomputes (`mutateRoom`);
+   *   - `"missing"`: no such record, nothing was written (never creates one).
+   * Mutators go through `mutateRoom`, never call this directly.
    */
-  update(room: Room): Promise<void>;
+  update(room: Room): Promise<RoomWriteResult>;
   /** Total rooms ever created (ceiling input — see ROOM_MAX). */
   count(): Promise<number>;
   /**
@@ -696,8 +847,15 @@ class MemoryRoomBackend implements RoomBackend {
   async create(room: Room): Promise<void> {
     this.rooms.set(room.id, room);
   }
-  async update(room: Room): Promise<void> {
-    if (this.rooms.has(room.id)) this.rooms.set(room.id, room);
+  async update(room: Room): Promise<RoomWriteResult> {
+    // The compare and the set run with no await between them, so in one process
+    // this is as atomic as the Upstash backend's script.
+    const current = this.rooms.get(room.id);
+    if (!current) return "missing";
+    const expected = normaliseRoomRev(room.rev);
+    if (normaliseRoomRev(current.rev) !== expected) return "conflict";
+    this.rooms.set(room.id, { ...room, rev: expected + 1 });
+    return "ok";
   }
   async count(): Promise<number> {
     return this.rooms.size;
@@ -746,13 +904,26 @@ export class UpstashRoomBackend implements RoomBackend {
     // expire, which only makes the ceiling MORE conservative, never less.
     await this.redis.incr(ROOMS_COUNT_KEY);
   }
-  async update(room: Room): Promise<void> {
-    // In-place overwrite (no counter change). The caller only invokes this for a
-    // room it already read, so a `set` here never creates a phantom record.
-    // TICKET-91: when retention is ON, preserve the create-time TTL with
-    // keepTtl so a host mode/language/moderation change does not silently reset
-    // the expiry window; when OFF this is a plain SET (no behavior change).
-    await this.redis.set(roomKey(room.id), room, roomUpdateSetOptions());
+  async update(room: Room): Promise<RoomWriteResult> {
+    // TICKET-127: one EVAL, so the revision check and the write are atomic against
+    // every other writer (Redis runs a script to completion). WATCH/MULTI are not
+    // available over the REST transport; see lib/store/upstash.ts.
+    // The record is passed as the same JSON string `set(key, room)` would store, so
+    // reads (auto-parsed by @upstash/redis) see exactly what they saw before.
+    // TICKET-91: KEEPTTL when retention is ON (a host change must not reset the
+    // expiry window), a plain SET when OFF, exactly as the previous `set` did.
+    const expected = normaliseRoomRev(room.rev);
+    const keepTtl = roomUpdateSetOptions()?.keepTtl === true ? "1" : "0";
+    const result = Number(
+      await this.redis.eval(
+        ROOM_CAS_SCRIPT,
+        [roomKey(room.id)],
+        [String(expected), JSON.stringify({ ...room, rev: expected + 1 }), keepTtl],
+      ),
+    );
+    if (result === 1) return "ok";
+    if (result === 0) return "missing";
+    return "conflict";
   }
   async count(): Promise<number> {
     const v = await this.redis.get<number | string>(ROOMS_COUNT_KEY);
@@ -938,11 +1109,13 @@ export async function setRoomMode(
   roomId: string,
   mode: RoomMode,
 ): Promise<RoomMode | null> {
-  const room = await getRoom(roomId);
-  if (!room) return null;
-  const next: Room = { ...room, settings: { ...room.settings, mode } };
-  await roomBackend.update(next);
-  return mode;
+  // TICKET-127: compare-and-set, so a settings change can never write back a
+  // stale claim list (undoing a login, a logout or a revoke) or another setting.
+  const written = await mutateRoom(roomId, (room) => ({
+    ...room,
+    settings: { ...room.settings, mode },
+  }));
+  return written ? mode : null;
 }
 
 /**
@@ -965,14 +1138,13 @@ export async function setRoomLanguage(
   roomId: string,
   language: Locale,
 ): Promise<Locale | null> {
-  const room = await getRoom(roomId);
-  if (!room) return null;
-  const next: Room = {
+  // TICKET-127: compare-and-set, so a settings change can never write back a
+  // stale claim list (undoing a login, a logout or a revoke) or another setting.
+  const written = await mutateRoom(roomId, (room) => ({
     ...room,
     settings: { ...room.settings, language },
-  };
-  await roomBackend.update(next);
-  return language;
+  }));
+  return written ? language : null;
 }
 
 /**
@@ -996,14 +1168,13 @@ export async function setRoomModeration(
   roomId: string,
   moderation: boolean,
 ): Promise<boolean | null> {
-  const room = await getRoom(roomId);
-  if (!room) return null;
-  const next: Room = {
+  // TICKET-127: compare-and-set, so a settings change can never write back a
+  // stale claim list (undoing a login, a logout or a revoke) or another setting.
+  const written = await mutateRoom(roomId, (room) => ({
     ...room,
     settings: { ...room.settings, moderation },
-  };
-  await roomBackend.update(next);
-  return moderation;
+  }));
+  return written ? moderation : null;
 }
 
 /** The legacy single-queue room id (pre-multi-room prototype). */
