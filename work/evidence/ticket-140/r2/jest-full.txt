@@ -1,0 +1,19 @@
+Run 1:
+START 19:49:24 load averages: 159.59 154.59 147.42
+      at Object.<anonymous> (__tests__/karaoke-index-matcher.test.ts:136:16)
+
+
+Test Suites: 1 failed, 72 passed, 73 total
+Tests:       1 failed, 21 skipped, 1343 passed, 1365 total
+Snapshots:   0 total
+Time:        13.189 s, estimated 19 s
+Ran all test suites.
+END 19:49:46 load averages: 162.77 155.62 147.95
+Run 1's single failure: __tests__/karaoke-index-matcher.test.ts:136 'the security gate's crafted 18-word typo query is refused without scanning' — its 25 ms timing bound, at load ~160. Not touched by this PR; passes alone and in run 2.
+
+Run 2 (final head code 4ac1870):
+START 20:28:41 load averages: 165.46 150.17 132.35
+Test Suites: 73 passed, 73 total
+Tests:       21 skipped, 1344 passed, 1365 total
+Time:        14.117 s
+END 20:29:10 load averages: 170.54 152.53 133.71

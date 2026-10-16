@@ -1,0 +1,11 @@
+START 18:41:24 load averages: 91.08 105.38 124.81
+exit=0
+END 18:42:01 load averages: 72.33 98.93 121.56
+  gap inside display:flex (Chrome 84) x6 — .next/static/css/06f39afe86bd05f3.css
+  gap inside display:flex (Chrome 84) x11 — .next/static/css/6b874ce48f378a25.css
+  aspect-ratio (Chrome 88) x1 — .next/static/css/fe5a198a335cfb9b.css
+  clamp() (Chrome 79) x1 — .next/static/css/fe5a198a335cfb9b.css
+  gap inside display:flex (Chrome 84) x11 — app/(patron)/[room]/admin/admin.module.css
+  gap inside display:flex (Chrome 84) x6 — app/admin/analytics/analytics.module.css
+
+css-target: OK — the TV surface uses nothing newer than Chrome 68 (13 stylesheet(s) scanned).

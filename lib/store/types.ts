@@ -15,7 +15,16 @@ export type Mode = "sing" | "listen-dance";
 export interface QueueEntry {
   id: string; // UUID v4
   videoId: string;
-  title?: string; // optional free-text title supplied by patron
+  /**
+   * Display title. TICKET-140: resolved server-side (videos.list snippet or
+   * YouTube oEmbed) whenever possible; the patron-sent title is only the
+   * fallback when every lookup failed.
+   */
+  title?: string;
+  /** Channel name, server-resolved alongside the title (TICKET-140). */
+  channelTitle?: string;
+  /** Display duration ("3:45"), server-resolved when the videos.list call ran (TICKET-140). */
+  duration?: string;
   nickname: string;
   patronUuid: string;
   table?: string;

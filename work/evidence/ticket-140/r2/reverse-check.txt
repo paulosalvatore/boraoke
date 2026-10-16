@@ -1,0 +1,33 @@
+Reverse check, round 2 (fix head 4ac1870). Old code = 2221dc5 (merge head before the fixes).
+Old lib/youtube.ts, lib/video-meta.ts, app/api/queue/route.ts, app/api/video-meta/route.ts restored from 2221dc5, plus compile shims only:
+  lib/youtube.ts += export const MAX_PARSE_INPUT = 512 (constant only, no behaviour)
+  lib/youtube-server.ts = re-export of old lib/youtube.ts + clientTitleFallbackAllowed()=false + formatDuration stub (old code did not export it; its FAIL below is a shim artifact, Mi in mutation-pass.txt is the real proof)
+  lib/video-meta.ts += _resetMetaCacheClient (test reset only)
+Command: npx jest __tests__/youtube.test.ts __tests__/api-queue.test.ts __tests__/api-video-meta.test.ts __tests__/video-meta-cache.test.ts -t 'hostile|lookup failed|non-existent|seam|browser|formatDuration|title cache'
+
+  ● GET /api/video-meta (TICKET-140) › a found title may be cached by the browser; an empty answer never is
+    Expected: "no-store"
+    Received: "private, max-age=600"
+  ● POST /api/queue — server-side video lookup (TICKET-140) › gap 3/6: the stored title is the server's › every lookup failed: the client title is never stored, so every view shows youtu.be/<id>
+    - Expected  - 1
+    + Received  + 1
+  ● POST /api/queue — server-side video lookup (TICKET-140) › gap 3/6: the stored title is the server's › a non-existent id (videos.list empty, oEmbed 404) cannot put client text on the TV
+    Received: "FREE DRINKS at table 9"
+  ● POST /api/queue — server-side video lookup (TICKET-140) › gap 3/6: the stored title is the server's › the test-only client-title seam is off on a deployed site even with its flag set
+    - Expected  - 1
+    + Received  + 1
+  ● parser cost stays flat on hostile input (cyber MEDIUM-1) › a long punctuation run inside a link token parses in linear time
+    Expected: < 50
+    Received:   1251.024707999998
+  ● parser cost stays flat on hostile input (cyber MEDIUM-1) › the share-text path is linear too
+    Expected: < 50
+    Received:   1086.0711329999967
+  ● parser cost stays flat on hostile input (cyber MEDIUM-1) › input over the cap is refused before any regex, however long
+    Expected: < 50
+    Received:   80819.76375
+  ● formatDuration › formats minutes and hours
+    Expected: "4:05"
+    Received: ""
+Tests:       8 failed, 134 skipped, 22 passed, 164 total
+
+The title cache suite (video-meta-cache.test.ts) PASSES on the old code: the cache was correct, it was untested. Its proof is the mutation pass (Ma, Mg, ...).

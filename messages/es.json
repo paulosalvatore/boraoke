@@ -96,8 +96,6 @@
     "greeting": "Hola,",
     "addSong": "Agregar canción",
     "selected": "✓ Seleccionada: {videoId}",
-    "songTitleLabel": "Título de la canción (opcional)",
-    "songTitlePlaceholder": "ej.: La Bamba",
     "tableLabel": "Mesa (opcional)",
     "tableAria": "Número de mesa",
     "tablePlaceholder": "ej.: 7",
@@ -209,7 +207,7 @@
     "label": "Busca una canción o pega un enlace de YouTube *",
     "aria": "Busca una canción o pega un link de YouTube",
     "placeholder": "ej.: La Bamba — o pega un link de YouTube",
-    "rateLimited": "Demasiadas búsquedas — espera un momento.",
+    "rateLimited": "Demasiadas búsquedas — espera un momento o pega un enlace de YouTube.",
     "youtubeLink": "Link de YouTube",
     "pastedLink": "Link pegado",
     "degraded": "La búsqueda no está disponible — pega un enlace de YouTube",
@@ -254,7 +252,7 @@
     "errorOffline": "¿Sin conexión? Inténtalo de nuevo en un momento."
   },
   "Errors": {
-    "searchRateLimited": "Demasiadas búsquedas — espera un momento e inténtalo de nuevo.",
+    "searchRateLimited": "Demasiadas búsquedas — espera un momento e inténtalo de nuevo, o pega un enlace de YouTube.",
     "roomsRateLimited": "Se crearon demasiadas salas — inténtalo de nuevo en una hora.",
     "roomsFull": "Estamos llenos por ahora — inténtalo de nuevo más tarde.",
     "submitRateLimited": "¡Tranquilo, cantante! Demasiados pedidos en poco tiempo — espera un minutito y vuelve a intentar.",
@@ -266,7 +264,7 @@
     "submitTableCap": "Tu mesa ya tiene {cap} canciones en la fila — espera a que suene una.",
     "submitPersonCap": "Ya tienes {cap} canciones en la fila — espera a que suene una para agregar otra.",
     "pendingFull": "Hay muchas canciones esperando aprobación ahora — intenta de nuevo en un rato.",
-    "submitNotEmbeddable": "este video no permite la reproducción en pantallas — puede que no suene"
+    "submitNotEmbeddable": "Este video no se puede reproducir en la pantalla del bar — su dueño no lo permite. Prueba otra versión de la canción."
   },
   "Meta": {
     "title": "Boraoke — la fila del karaoke en la TV, en cada celular",
