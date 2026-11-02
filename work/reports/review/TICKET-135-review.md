@@ -1,3 +1,75 @@
+# TICKET-135 + TICKET-136 — Reviewer report (D-022 opus pass, round 3, delta)
+
+- PR: #97, branch `ticket/135-cache-key`, reviewed head `d650a17` (== `origin/ticket/135-cache-key`), delta `6f674b2..d650a17`: `lib/search-prefix.ts`, `__tests__/search-cache-key-fold.test.ts`, the dev report and the event log. Base `28beeb2` == current `origin/main`.
+- All runs, mutants and probes in a `git archive` copy of each head outside the worktree; the worktree stayed clean.
+- triggered mutation pass: triggered (rewritten normalisation on a cache-identity path), table below.
+
+## Verdict: APPROVE (code), merge conditional on two TM bookkeeping items
+
+Both blocking items from round 2 are closed and verified. The rewrite keeps every plain key I could find, is linear, and the key is still server-only.
+
+## Round 2 items
+
+1. **Closed.** `foldSearchKey` returns the tokens in typed order when any of `|`, `"`, `-"`, `+`, `#` is present. All six of my round-2 merging forms now get distinct keys (test groups `phrase`, `orGroup`, `orLead`), and the doc says what the code does. Mutants M1 (skip removed) and M2 (skip only on `"`) are KILLED.
+2. **Closed.** The `-` is now an operator when the character on its left is not a word character, so tab, newline, no-break space, zero-width space, `(`, `,`, `.` all keep the exclusion. M6 (left boundary is a space only, the analogue of my R10 on the new code) is KILLED, 9 failed. The round-2 non-blocking lookalikes (`−`, `–`, `—`, `－`, curly quotes, `｜`, `+`, `#`, `(-`, `,-`, `.-`) are all covered too.
+
+## Plain queries (re-run, not taken from the dev report)
+
+- `npm run measure:t135` on `6f674b2` and on `d650a17`: `diff` empty, 52 strings, 50 keys, the same 2 merges (`mana`/`maná`, `cerol na mao/mão karaoke`). That output only lists merges, so I also compared `foldSearchKey` old vs new per string: **0 of 52 production strings changed**.
+- 200,000 random strings (letters, accents, `karaoke`/`KARAOKÊ`, digits, `!?.,'&/():;*~^@$%_=<>[]{}`, tab, NBSP, ZWSP, Cyrillic, CJK, no dash/quote/bar/sign): **0 differ** old vs new.
+- Hand list, unchanged keys: `Jay-Z karaoke`, `blink-182 …`, `AC/DC - Back in Black`, `Guns N' Roses sweet child o' mine`, `rock'n'roll`, `don’t stop me now` (U+2019 is not a quote marker), `Earth, Wind & Fire`, `Nossa Senhora (Ao Vivo)`, `evidências - chitãozinho e xororó`, `a-ha take on me`, `t.A.T.u. …`, `Pão de Açúcar`, `Bon Jovi — Always`, `Beyoncé - Halo`, `abba: dancing queen`, `Earth Wind -Fire`.
+- **Newly split (over-split only, non-blocking):** `+` and `#` are now markers, so `C++ karaoke` → `c + + karaoke` (was `c karaoke`), `#1 crush karaoke` → `# 1 crush karaoke`, `1+1 beyonce` → `1 + 1 beyonce`. Because a marker also disables the karaoke move, `karaoke C++` and `C++ karaoke` now get different keys, as do `karaoke #1 crush` and `#1 crush karaoke`. Cost: at most one extra billed call for these rare spellings, never a wrong page. A dash glued after punctuation (`(-x`, `/-x`) now excludes where it used to be plain; again over-split only. Acceptable under the stated "when in doubt keep apart" rule.
+
+## Firefox 67-77 fallback vs main path
+
+- Production strings: main and fallback (stubbed `RegExp` throwing on `\p{`, `_usingNotWordCharFallback === true`) give the same `foldSearchKey` on **52/52**. Random marker-free strings: 0/200,000 differ.
+- With operators they differ only on three characters: `−` (U+2212), `﹣` (U+FE63) and `｜` (U+FF5C). Each alone gives about 48% divergence on random strings; the operator alphabet without them gives 0/200,000. Cause: `NOT_WORD_CHAR_FALLBACK` does not list them, so on the fallback they are word characters and get glued into a word. **This cannot reach a key**: `cacheKey`'s only caller is `app/api/search/route.ts:201` (Node, primary class), and the client only uses `foldTokens` (unchanged). Optional: add those three to the fallback class so the dev report's "same rule on both paths" sentence is literally true.
+
+## Long input
+
+`foldKeyTokens` is one pass over `Array.from` code points; each step is an O(1) single-character regex test (with `lastIndex` reset), string append, or `out[out.length-1]` read; `foldSearchKey` adds one `some` and one `filter`. Timings at load ~240: 100k chars 5-431 ms, 1M chars 0.3-2.3 s across `a`, `-`, `|`, `" `, `-a `, `a-`, `é`, about 5-10x for 10x input, so linear. The route rejects `q.length > 100` (`MAX_QUERY`, line 161) before `cacheKey` (line 201).
+
+## Triggered mutation pass (new code, against the 115-test fold suite)
+
+| mutant | result |
+|---|---|
+| M1 marker skip removed | KILLED, 7 failed |
+| M2 skip only on `"` | KILLED, 4 failed |
+| M3 dash ignores left glue | KILLED, 1 failed |
+| M4 no `-"` (quote after dash ignored) | KILLED, 2 failed |
+| M5 `+`/`#` dropped | KILLED, 5 failed |
+| M6 left boundary is space only | KILLED, 9 failed |
+| M7 bar runs not collapsed | SURVIVED-equivalent: only splits `a \|\| b` from `a \| b`, never merges |
+| M8 `minus` not reset in `flush` | KILLED, 2 failed |
+| M9 ASCII quote only | KILLED, 3 failed |
+| M10 `#` merged into `+` | KILLED, 1 failed |
+| M11 bar class emptied | KILLED, 8 failed |
+
+Reverse check, my run: new suite against `6f674b2`'s `lib/search-prefix.ts`: `Tests: 23 failed, 92 passed, 115 total`, matching the dev's figure.
+
+## Tests
+
+- Targeted jest on `d650a17` (`search-cache-key-fold`, `search-prefix`, `search-query`, `search-cache`, `youtube-search`, `api-search`, `api-search-budget`, `api-search-index-tier`, `api-search-personal-caps`): `Test Suites: 9 passed, 9 total`, `Tests: 5 skipped, 258 passed, 263 total`.
+- Dev's full jest 1580/1669 (89 skipped), build exit 0, `check:es-target` OK, rotation-engine 59/59: claims, not re-run (load ~240, 2-job limit).
+
+## E2E ruling: accepted, no further full run required
+
+Full run 141/143, failures `render-and-links.spec.ts:333` (`#yt-player` count in 5 s) and `rooms.spec.ts:65` (`page.goto` 30 s), both passing on targeted re-run (20 passed; 333 failed once first). Accepted because (a) both are TV-page tests and this delta touches only `lib/search-prefix.ts` plus its unit test; (b) I walked the import graph of `app/(patron)/[room]/tv/page.tsx` (24 local files) and none of `search-prefix`, `search-query`, `youtube-search` is in it, so the change cannot reach those pages; (c) the failures are timeouts at load 260, the classic load flake. Another full run at this load would add noise, not evidence.
+
+## `check:tv-runtime`: not needed for this PR
+
+Verified: the only `cacheKey` call site is `app/api/search/route.ts:201`, and the TV page's import graph contains no search module (above). The patron client does bundle `search-prefix.ts` (via `SongSearch` and `search-query`), but the new module-level code is plain regex literals without the `u` flag and a `Set`, which Chromium 68 runs; and the patron page is not what `check:tv-runtime` exercises.
+
+## Conditions before merge (TM, not Dev)
+
+- `scripts/ticket show TICKET-135 --product boraoke` still prints `app-tester: -`; record the `app-tester-waived` row (D-081). Substance is fine: the PR's files are `app/api/search/route.ts`, `lib/*`, tests, `package.json` and `work/`, no UI surface.
+- Record the CI-green stand-in. The dev named it: boraoke's own `ci.yml` steps run locally (rotation-engine `node --test`, `npm run build`, `npm test`, `npm run test:e2e`), minus `check:tv-runtime`, which is irrelevant here per the section above. The TM should adopt that in the record.
+- Optional, non-blocking: Cyber Security's report predates both operator rounds; a one-line look at this rule is still worth having.
+
+---
+
+# Round 2 report (superseded, kept for the record)
+
 # TICKET-135 + TICKET-136 — Reviewer report (D-022 opus pass, round 2)
 
 - PR: #97 (draft), branch `ticket/135-cache-key`, reviewed head `99e388f` (== `origin/ticket/135-cache-key`), code at `8d20b93` plus merge `0febc5c`. Base `28beeb2` == current `origin/main`.
