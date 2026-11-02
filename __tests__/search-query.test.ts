@@ -26,6 +26,11 @@ describe("augmentQuery (mode-aware karaoke keyword)", () => {
       );
     });
 
+    it("does NOT append a second 'karaoke' after an accented 'karaokê' (TICKET-135)", () => {
+      expect(augmentQuery("evidências karaokê", "sing")).toBe("evidências karaokê");
+      expect(augmentQuery("KARAOKÊ evidências", "sing")).toBe("KARAOKÊ evidências");
+    });
+
     it("does NOT double when 'karaoke' appears mid-query", () => {
       expect(augmentQuery("karaoke evidencias", "sing")).toBe("karaoke evidencias");
     });
@@ -80,9 +85,16 @@ describe("containsKaraoke", () => {
     expect(containsKaraoke("best Karaoke tracks")).toBe(true);
   });
 
-  it("does not match substrings or the accented Portuguese spelling", () => {
+  it("does not match substrings", () => {
     expect(containsKaraoke("karaokestar")).toBe(false);
-    expect(containsKaraoke("karaokê")).toBe(false);
     expect(containsKaraoke("evidencias")).toBe(false);
+  });
+
+  it("matches the accented Portuguese spelling and punctuation-adjacent forms (TICKET-135)", () => {
+    expect(containsKaraoke("karaokê")).toBe(true);
+    expect(containsKaraoke("Evidências KARAOKÊ")).toBe(true);
+    expect(containsKaraoke("evidencias (karaoke)")).toBe(true);
+    expect(containsKaraoke("karaoke".normalize("NFD"))).toBe(true);
+    expect(containsKaraoke("karaokê".normalize("NFD"))).toBe(true);
   });
 });

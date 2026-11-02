@@ -168,6 +168,38 @@ describe("concurrent identical queries across instances", () => {
     PROBE_TIMEOUT_MS,
   );
 
+  it("spelling variants of one folded query share ONE flight and ONE billed call (TICKET-135)", async () => {
+    // The lock key derives from cacheKey(), so the fold must reach it: accent,
+    // punctuation, case and karaoke-position variants arriving together are
+    // one question. Before TICKET-135 each variant had its own key, its own
+    // lock and its own billed call (4 here).
+    const variants = ["evidências karaokê", "evidencias karaoke", "karaoke evidencias", "Evidências, KARAOKE!"];
+    const sentQ: string[] = [];
+    const inner = global.fetch;
+    global.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/youtube/v3/search")) sentQ.push(new URL(url).searchParams.get("q") ?? "");
+      return inner(input);
+    }) as unknown as typeof fetch;
+    const routes = loadInstances();
+    const res = await Promise.all(
+      Array.from({ length: REQUESTS }, (_, i) =>
+        routes[i % INSTANCES].GET(req(i + 1, variants[i % variants.length])),
+      ),
+    );
+    const bodies = await Promise.all(res.map((r) => r.json() as Promise<Record<string, unknown>>));
+    expect(searchListCalls).toBe(1);
+    for (const b of bodies) {
+      expect(b.degraded).toBeUndefined();
+      expect(b.deferred).toBeUndefined();
+      expect((b.results as { videoId: string }[]).map((r) => r.videoId)).toEqual(["vShared01"]);
+    }
+    // Google got one patron's ORIGINAL text, not the folded key.
+    expect(sentQ).toHaveLength(1);
+    expect(variants).toContain(sentQ[0]);
+    expect([...fake.store.keys()].filter((k) => k.startsWith("sf:"))).toEqual([]);
+  }, PROBE_TIMEOUT_MS);
+
   it("NEGATIVE CONTROL: with the lock disabled the same probe bills every request", async () => {
     soloMode = true;
     await fire("escurinho do cinema");

@@ -1,0 +1,14 @@
+TICKET-135 fold check over the published production strings
+strings: 52 (graded 32, ungradable 20)
+distinct cache keys: old 52 -> folded 50
+
+MERGE "cerol na mao karaoke"
+   "cerol na mao karaoke"       want=cerol+mao
+   "cerol na mão karaoke"       want=cerol+mao
+   same graded want: yes   same TICKET-125 trace (normalizeQuery equal): yes
+MERGE "mana"
+   "maná"                       want=mana
+   "mana"                       want=mana
+   same graded want: yes   same TICKET-125 trace (normalizeQuery equal): yes
+
+merges: 2

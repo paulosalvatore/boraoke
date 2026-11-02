@@ -46,6 +46,22 @@ import { acquireSearchFlight, waitForSearchFlight } from "@/lib/search-single-fl
  * cache key, so paging back to an already-seen page costs zero. Page depth is
  * hard-capped at MAX_SEARCH_PAGES; nothing is ever prefetched.
  *
+ * STALE CACHED PAGES (TICKET-136, non-empty pages live 7 days):
+ *  - A video deleted, made private or made non-embeddable after its page was
+ *    cached can still be picked from that page. Search picks are NOT re-checked
+ *    for embeddability (lib/embed-cache.ts runs on the paste path only). The
+ *    backstop is the TV player watchdog (TICKET-41): the IFrame API raises
+ *    onError 2/5/100/101/150, `isFatalPlayerError` (components/tv/watchdog.ts)
+ *    classifies it as fatal, and TvScreen skips the video and advances the
+ *    queue with a `song_skipped` telemetry reason. No human refresh needed.
+ *  - A cached page hands out Google's `nextPageToken`, which may be older than
+ *    Google is willing to honour. Page 2 has its own cache entry; on a miss the
+ *    route calls Google with that cursor, and if Google rejects it the call
+ *    throws, nothing is cached, and the route answers
+ *    `{ degraded: true, reason: "error" }` (fail soft, as for any upstream
+ *    error). Since TICKET-135 the cursor may also come from a differently
+ *    spelled variant of the same folded query; the same rule covers that.
+ *
  * LIVE PERMISSION: the current client sends `v=2` on every request. A v2 first
  * page is INDEX-ONLY unless it also carries `live=1` — sent on Enter, after an
  * idle pause, or on "search again". A request without `v=2` is a legacy client
@@ -342,7 +358,7 @@ export async function GET(req: NextRequest) {
   try {
     const page = await searchYouTubePage(q, key, { pageToken: livePageToken || undefined });
     // Only SUCCESSFUL responses reach this line — errors threw above and are
-    // never cached. Non-empty → 12h TTL; empty → 10min TTL (see search-cache).
+    // never cached. Non-empty → 7-day TTL; empty → 10min TTL (see search-cache).
     await setCachedSearchPage(ck, page);
     await release("filled");
     void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: page.results.length, source: "live" } }); // TICKET-12: fire-and-forget, fail-open

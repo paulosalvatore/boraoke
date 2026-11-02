@@ -1,4 +1,5 @@
 import type { Mode } from "@/lib/store";
+import { foldTokens } from "@/lib/search-prefix";
 
 /**
  * Mode-aware search-query augmentation (TICKET-40).
@@ -16,7 +17,8 @@ import type { Mode } from "@/lib/store";
  * to avoid cross-mode cache poisoning; the client path is the cleaner one.
  *
  * Edge cases handled:
- *   - Already contains "karaoke" (case-insensitive, whole word) → not doubled.
+ *   - Already contains "karaoke" (case-insensitive, whole word, accent-folded,
+ *     so "karaokê" counts too — TICKET-135) → not doubled.
  *   - Empty / whitespace-only query → returned as-is (trimmed to empty), never
  *     augmented (a bare "karaoke" search would be meaningless).
  *   - Pasted YouTube links are NEVER routed through here (the caller resolves
@@ -25,9 +27,14 @@ import type { Mode } from "@/lib/store";
 
 const KARAOKE_KEYWORD = "karaoke";
 
-/** True if the query already contains "karaoke" as a whole word, case-insensitively. */
+/**
+ * True if the query already contains "karaoke" as a whole word, compared on the
+ * search-cache fold (lib/search-prefix.ts `foldTokens`): case-insensitive and
+ * accent-insensitive, so "Karaokê" counts and is not followed by a second
+ * "karaoke" (TICKET-135). "karaokestar" is still not a match.
+ */
 export function containsKaraoke(query: string): boolean {
-  return /\bkaraoke\b/i.test(query);
+  return foldTokens(query).includes(KARAOKE_KEYWORD);
 }
 
 /**
