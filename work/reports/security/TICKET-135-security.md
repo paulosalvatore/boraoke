@@ -42,3 +42,49 @@ Deleted or private videos, and old `nextPageToken`s, are handled by the TV watch
 ## Verdict
 
 PASS-WITH-NOTES. One MEDIUM (finding 1) to ticket; no BLOCKER/HIGH.
+
+---
+
+# Delta re-gate — code at d650a17 (PR head 6403938)
+
+**Verdict: PASS-WITH-NOTES**
+**Date:** 2026-11-02
+
+## Scope
+
+`git diff 829099e..d650a17` on `lib/search-prefix.ts` (`foldKeyTokens` per-character rule, `MARKER_TOKENS` skip of the `karaoke` move, `buildNotWordChar` fallback), `lib/youtube-search.ts` (`cacheKey`), `app/api/search/route.ts` (length cap, `PAGE_TOKEN_RE`). Probes ran on a scratch copy of `lib/search-prefix.ts` at d650a17 under `node --experimental-strip-types`, with the `cacheKey` composition reproduced (region `BR`, empty-fold fallback, `P:<token>::` marker). No live YouTube call. Worktree left clean. Targeted jest: `search-cache-key-fold`, `search-query`, `search-single-flight`: 3 suites, 158 tests, all pass.
+
+## Finding 1 (MEDIUM, operator forms share the plain key): RESOLVED
+
+Probe against `BR::evidencias karaoke`:
+
+- Every operator form from the original finding now has its own key: `evidencias -karaoke` -> `BR::evidencias -karaoke`, `evidencias | karaoke` -> `BR::evidencias | karaoke`, `"evidencias" karaoke` -> `BR::" evidencias " karaoke`, `"evidencias karaoke"` -> `BR::" evidencias karaoke "`, `evidencias +karaoke` -> `BR::evidencias + karaoke`, `evidencias #karaoke` -> `BR::evidencias # karaoke`, `evidencias -"karaoke"` -> `BR::evidencias -" karaoke "`.
+- Exclusion survives every separator tried on its left: tab, NBSP, ideographic space, U+2028, ZWSP, ZWJ, U+2060, BOM, U+180E, a tag space (U+E0020), `(`, `,`, and a stripped combining mark after a space. Typographic and fullwidth bars, quotes, `+`, `#` map to the same marker as ASCII.
+- Same-intent forms still share the plain key, as designed: `evidencias-karaoke`, `evidencias - karaoke`, `evidencias karaoke -`, `Evidências Karaokê`, `karaoke evidencias`, `evidencias!!! karaoke`, `evidencias_karaoke`, `evidencias.karaoke`, `evidencias (karaoke)`. The two dash cases are not Google exclusions (a dash glued on the left, or followed by a space).
+- The `karaoke` move is skipped whenever a `|`, quote, `+` or `#` marker is present, so the phrase and OR forms keep typed order.
+
+## New findings
+
+### A. LOW: characters outside the marker set still fold onto the plain key
+
+`evidencias * karaoke`, `evidencias ~karaoke`, `@evidencias karaoke`, `evidencias karaoke*`, `evidencias $karaoke`, `evidencias /karaoke`, `evidencias \karaoke`, `evidencias &karaoke` all give `BR::evidencias karaoke`. The YouTube Data API documents only `-` (NOT) and `|` (OR) for `q`, both now kept, so these are only a problem if Google returns a materially different page for them. That was not measured, to keep quota untouched. If any of them does change the result set, it is the same first-miss pinning as finding 1, for 7 days. Uppercase `OR`/`AND` stay distinct from the plain key (the token is kept), and only merge with their lowercase spelling. Remediation direction (follow-up, not blocking): one quota-cheap spot check of `*`, `~` and `@handle` against the plain query; if any differs, add it to the marker set. The cleaner long-term fix remains sending Google the folded string, which closes the class.
+
+### B. INFO: operator spellings merge with each other
+
+`evidencias -karaoke`, `evidencias –karaoke` (en dash) and `evidencias −karaoke` (minus sign) share `BR::evidencias -karaoke`; `|`, `｜` and `||` share `BR::evidencias | karaoke`. If Google treats the en dash as plain text, a first miss on it would serve a karaoke page to someone who deliberately excluded karaoke. The only victim is another exclusion searcher, never the plain query. Negligible.
+
+### C. INFO: key injection still clean
+
+The folded part never contains `:`; `PAGE_TOKEN_RE` (`^[A-Za-z0-9_\-=]{1,128}$`) keeps `:` out of the cursor, so `P:<token>::` cannot be forged from either input. The empty-fold fallback is only taken when the fold has no word character and no marker, so it cannot equal a non-empty fold.
+
+### D. INFO: length cap and linear time confirmed
+
+`route.ts` trims `q` (line 112) and returns 400 when `q.length > 100` (line 161), before `cacheKey` (line 201). The key is built only in `cacheKey` (`lib/youtube-search.ts`, server-side), called only from the route. `foldKeyTokens` is a single pass over code points with constant work per character (one single-character regex test, neighbour lookups, no backtracking). At the cap, worst of 1000 runs: 0.5 ms per key (100 astral characters), 0.4 ms (100 `|`), under 0.1 ms otherwise. Without the cap, plain letters stay flat at about 50 ns per character up to 400k characters; operator-dense input (`-a `, `-"`) rises to 400-600 ns per character at 400k from allocating one token per few characters, not from the algorithm. No ReDoS.
+
+## CI
+
+boraoke has no `verify-green-local.sh`. Only targeted suites were run (machine load). The full CI-green stand-in named in the review report (`ci.yml` steps run locally) is for the TM to record before merge.
+
+## Verdict
+
+PASS-WITH-NOTES. Finding 1 resolved by probe. One new LOW (A) for a follow-up ticket; no BLOCKER/HIGH.
