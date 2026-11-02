@@ -1,3 +1,97 @@
+# TICKET-135 + TICKET-136 — Reviewer report (D-022 opus pass, round 2)
+
+- PR: #97 (draft), branch `ticket/135-cache-key`, reviewed head `99e388f` (== `origin/ticket/135-cache-key`), code at `8d20b93` plus merge `0febc5c`. Base `28beeb2` == current `origin/main`.
+- Mutations and probes ran in a throwaway copy outside the worktree. The worktree stayed clean.
+- triggered mutation pass: triggered (new normalisation on a cache-identity path), table below.
+
+## Verdict: REQUEST-CHANGES
+
+The Firefox fix works. The operator fix closes the collapse onto the plain key for the forms it names, but two things block: the `karaoke` reorder still collapses different operator forms onto each other (item 1), and one mutant on the same fix is a SURVIVED-real-gap (item 2). Both are small.
+
+## Required
+
+1. **Moving `karaoke` still merges operator forms that mean different things to Google.** `foldSearchKey` pulls every `karaoke` token out and appends one, including from inside a phrase or an OR group. Observed keys:
+
+   | Queries | Shared key |
+   |---|---|
+   | `"evidencias karaoke"`, `"evidencias" karaoke`, `"karaoke evidencias"` | `BR::" evidencias " karaoke` |
+   | `a \| karaoke b`, `a \| b karaoke` | `BR::a \| b karaoke` |
+   | `karaoke \| x`, `\| x karaoke` | `BR::\| x karaoke` |
+
+   This is the same defect the TM ruled to fix in-PR: whoever misses first pins the page for 7 days. A patron in sing mode who types `"evidencias"` sends `"evidencias" karaoke`, and can be served the page of the reversed exact phrase. It cannot reach a plain query's key, so the blast radius is patrons who type operators, but the `foldSearchKey` doc and the test name "each operator form keeps its own key" both claim otherwise. Fix: skip the move when the tokens contain `|`, `"` or `-"`. I tried that one-liner in the copy and all 104 tests in `search-cache-key-fold` + `search-query` still pass, which also shows no test pins this. Add `"x karaoke"`, `"karaoke x"` and `a | karaoke b` vs `a | b karaoke` to the pairwise-distinct test, and correct the doc if any merge is kept on purpose.
+
+2. **SURVIVED-real-gap (severity floor): the exclusion tests only use a plain space.** Mutant R10 changes the chunker to split on a space only (`[^ |"]+`). Then `evidencias\t-karaoke` and `evidencias\u00a0-karaoke` lose the `-` and fold onto `BR::evidencias karaoke`, the exact collision being fixed, and all 104 tests stay green. The current code is correct on these inputs (both give `BR::evidencias -karaoke`). Add those two inputs to the "does not share the plain query's key" list and show that they kill R10.
+
+## Non-blocking, for the TM
+
+- **Possible remaining routes onto the plain key.** These all fold to `BR::evidencias karaoke`: `evidencias (-karaoke)`, `evidencias,-karaoke`, `evidencias .-karaoke`, `evidencias \u200b-karaoke`, `evidencias \u2212karaoke`, `evidencias \u2013karaoke`, `evidencias \u201ckaraoke\u201d`, `evidencias \uff5c karaoke`, `evidencias +karaoke`, `evidencias #karaoke`. Whether Google gives any of them operator meaning is **UNVERIFIED**: finding out costs live `search.list` calls, which I did not spend. Attacker impact is as in the security report: a real but off-intent page on a popular key for 7 days. Over-splitting here costs one extra call on spellings nobody types, so the cheap hardening is to keep the `-` when only non-word characters precede it in the chunk, and treat `\uff5c` and curly quotes as markers. Security's option (b), sending Google the folded text, is the only thing that closes the whole class. Not required by this review. It is worth one line from Cyber Security, whose report predates this fix (it audited `829099e`).
+- **Minor test gaps** (R6, R7, R8 below). Optional, and cheap to add with item 2.
+
+## Fix 1: Firefox 67-77 (verified)
+
+- Reverse check, run myself: the new test file against `lib/search-prefix.ts` from `76c5391` gives `Tests: 13 failed, 74 passed, 87 total`, including all 4 tests in the Firefox group and the operator tests. This reproduces the dev's count.
+- Mutant R1 (catch rethrows) is KILLED by 3 tests.
+- The production bundle keeps the guard. In `.next/static/chunks/app/(patron)/[room]/page-ee151fc429650411.js`: `C=function(){try{return RegExp("[^\\p{L}\\p{M}\\p{N}]+","gu")}catch(e){return I}}()`. The minifier did not turn it into a literal, which would have been a parse error on those browsers. That is the only client chunk containing `p{L}`. `.next` dates from the dev's merged-head build (`BUILD_ID` Oct 16 04:45), and code has not changed since.
+- The other `\p{}` literals are in `lib/karaoke-index/title-parser.ts`, and no client chunk carries them (grep for `Extended_Pictographic` and `\p{Lu}` over `.next/static`: no match).
+- Not run on a real Firefox 67-77. The evidence is the stubbed `RegExp` plus the bundle read.
+
+## Fallback key consistency (verified, one negligible split)
+
+- `cacheKey` has one caller, `app/api/search/route.ts:201`, and `foldSearchKey` one, `lib/youtube-search.ts`. The fold chunker regex is in `.next/server/chunks/4662.js` and in no `.next/static` file, so the key is only ever built in Node, with the primary class. The fallback cannot produce a key.
+- The one indirect route is the old client's `containsKaraoke` deciding whether to append `karaoke`. I compared server keys for primary-client vs fallback-client augmentation over the 52 production strings plus 16 extras, in both modes (136 pairs), and exhaustively for `x karaoke<cp>` over every code point (1,112,032).
+- Where the fallback under-splits (emoji, symbols), the client appends a second `karaoke`, and the server fold dedupes it to the same key.
+- Where it over-splits, the key differs: exactly 35 code points (`\xb2 \xb3 \xb5 \xb9 \xbc-\xbe` and CJK iteration marks and Hangzhou numerals in `\u3005-\u303c`), and only when glued directly to `karaoke`, for example `karaoke\xb2`. That is one extra cache entry on Firefox 67-77 for input nobody types. All 52 production strings match. Not worth a change. Optional: drop those from the fallback class.
+
+## Fix 2: operators (partly verified)
+
+- `evidencias -karaoke`, `evidencias | karaoke`, `evidencias|karaoke`, `"evidencias" karaoke`, `"evidencias karaoke"`, `evidencias -"karaoke"` all have keys distinct from the plain query, and fail on the old code (reverse check above).
+- Benign variants still merge, and `measure:t135`'s committed result stands because plain queries take the same path (52 index-agreement tests pass).
+- No `:` can enter the key from a marker. Letterless inputs (`???`, `-`, `- ?`) keep the fallback; `|`, `"` and `-"` get a key of their own.
+
+## Triggered mutation pass (mine, targeting the round 2 code)
+
+| # | Mutant | Result |
+|---|---|---|
+| R1 | catch rethrows, no fallback | KILLED (3) |
+| R2 | fallback drops CJK punctuation | KILLED (1) |
+| R3 | fallback drops General Punctuation | SURVIVED-equivalent for the key: an under-split only adds a `karaoke` the server dedupes |
+| R4 | fallback drops fullwidth punctuation | SURVIVED-equivalent, same argument |
+| R5 | fallback drops most of Latin-1 | SURVIVED-equivalent, same argument |
+| R6 | chunker `-*"` to `-?"` | SURVIVED, minor: `--"x"` loses its exclusion mark, and Google's reading of `--"` is unknown |
+| R7 | `-` on every token of the chunk | SURVIVED, minor: `-foo.bar baz` and `-foo bar baz` share a key today, and nothing pins either behaviour |
+| R8 | `\|` run not collapsed | SURVIVED, minor: the doc says runs collapse, and the failure direction is an over-split, which is safe |
+| R9 | no diacritic strip before chunking | SURVIVED-equivalent: `foldTokens` strips each chunk again, and stripping cannot change `\|`, `"`, `-` or whitespace |
+| R10 | chunker splits on a space only | **SURVIVED-real-gap: item 2** |
+| R11 | `-"` emitted as `"` | KILLED (1) |
+
+## Merge with main (verified clean)
+
+- No file is changed on both sides (`comm` of the two name lists is empty), and `git diff-tree --cc 0febc5c` shows no resolved hunks.
+- `git diff 8d20b93 HEAD` over `lib/search-prefix.ts`, `lib/search-query.ts`, `lib/search-cache.ts`, `lib/youtube-search.ts`, `app/api/search/route.ts` and the fold test is empty.
+- `git grep` finds no new caller of `cacheKey`/`foldSearchKey`/`containsKaraoke` from main. Non-`work/`, non-test files in the PR diff: the 5 above and `package.json`.
+- The dev report says main touched `lib/youtube*.ts`; that is not `lib/youtube-search.ts`, per the empty diff.
+
+## Tests and evidence
+
+- Targeted jest, my run on the worktree (`search-cache-key-fold`, `search-query`, `search-cache`, `search-single-flight`, `search-pagination`, `youtube-search`): `Test Suites: 6 passed, 6 total` / `Tests: 197 passed, 197 total`.
+- Dev's full jest (79 suites), `npm run build`, `check:es-target` and e2e 143/143 on the merged head: accepted as **claims**, not re-run (load about 24-30 and the lane limit). They need re-running after this round anyway, at least targeted jest and build, since the fold changes.
+- Dev declarations on hollowing-out and the triggered pass are present. Its N6 gap was closed and verified.
+
+## Other gates
+
+- **App Tester waiver: not in the ticket store.** `scripts/ticket show TICKET-135 --product boraoke` prints `app-tester: -` with only `plan-approved` and `worktree-created` rows; the waiver exists only as the PR-body line "waived, no UI files changed". The diff touches no UI file, so a waiver is valid in substance, but D-081 wants the `app-tester-waived` row before the final APPROVE.
+- **CI-green stand-in:** boraoke has no `verify-green-local.sh`, and my round 1 asked the TM to name the stand-in. Still to be recorded.
+
+## Re-review checklist
+
+- Item 1 fixed and tested, doc corrected.
+- Item 2 tests added, shown to kill R10.
+- `app-tester-waived` row recorded, CI-green stand-in named.
+
+---
+
+# Round 1 report (superseded, kept for the record)
+
 # TICKET-135 + TICKET-136 — Reviewer report (D-022 opus pass)
 
 - PR: #97 (draft), branch `ticket/135-cache-key`, reviewed head `829099e` (== `origin/ticket/135-cache-key`; code head `c476597`).
