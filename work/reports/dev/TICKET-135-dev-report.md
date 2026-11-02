@@ -264,3 +264,49 @@ merges: 2
 
 ## Friction (round 2)
 - Under load ~150-200, Playwright's 600 s `webServer` timeout is too short for `next build` (measured 10 min for a manual build at load ~200). Pre-building with the suite's env plus `reuseExistingServer` works, but the server needs to be detached from the tool shell.
+
+## Round 3 (fix for the opus re-review REQUEST-CHANGES, comment 6569978661)
+
+Picking up from: head 6f674b2 (review report only, no code change since 99e388f). Main had not moved (`git rev-list --count HEAD..origin/main` = 0), so nothing merged in, no force-push.
+
+### What changed
+`foldKeyTokens` in `lib/search-prefix.ts` was rewritten as one per-character rule instead of a chunk regex:
+- a letter, mark or digit (any script) belongs to a word, as before;
+- any other character ends the word; a bar (`|`, `｜`), a quote (`"`, curly, guillemets, fullwidth) or `+` / `#` (also fullwidth) becomes a marker token;
+- a dash-like character (`-`, U+2010-2015, `−`, `﹣`, `－`) is an exclusion operator when it is NOT glued to a word on its left (start of string, any whitespace including tab, no-break space, zero-width space, `(`, `,`, `.`, ...) and IS followed by a word or quote: the `-` goes on that word (`-karaoke`) or quote (`-"`). Hyphens inside a word and a lone trailing dash stay plain punctuation, as before.
+- `foldSearchKey` no longer moves `karaoke` when any marker token (`|`, `"`, `-"`, `+`, `#`) is present: inside a phrase or OR group its position changes Google's answer. Plain queries and `-karaoke` still fold exactly as before.
+
+Doc comments on `foldKeyTokens` and `foldSearchKey` updated to match. The Firefox 67-77 path is unchanged: `isWordChar` goes through the same guarded `NOT_WORD_CHAR` (property-escape class, or `NOT_WORD_CHAR_FALLBACK`), and the fallback test now also checks a tab exclusion, a phrase and `(-karaoke)`.
+
+### Tests added (`__tests__/search-cache-key-fold.test.ts`, 87 -> 115)
+- pairwise-distinct groups: basic, phrase, orGroup, orLead, excluded, signs (the Reviewer's exact forms plus extras), named "each operator form keeps its own key (<group>)";
+- karaoke keeps its typed place next to a bar or quote;
+- exclusion after tab / newline / no-break space / zero-width space / double space / space;
+- 14 lookalike forms (`(-karaoke)`, `,-karaoke`, `.-karaoke`, `−`, `–`, `—`, `－`, curly quotes, `｜`, `＋`, `＃`, `+`, `#`) do not fold onto the plain key; typographic forms equal their ASCII forms; excluded phrase `x (-"karaoke")`.
+
+### Proof the tests can fail
+(a) Reverse check: new test file against the pre-fix `lib/search-prefix.ts` (6f674b2): `Tests: 23 failed, 92 passed, 115 total`. Failing groups include phrase, orGroup, orLead, signs, the typed-place test, the zero-width-space exclusion, the excluded phrase and the Firefox fallback test.
+
+(b) Mutants of the new code, each against the new suite:
+| mutant | result |
+|---|---|
+| left boundary of `-` is a space only | KILLED (tab, newline, no-break, zero-width, `(-`, `,-` ...) |
+| no karaoke-move skip | KILLED, `Tests: 7 failed, 108 passed` |
+| move skipped on `|` only | KILLED, `Tests: 5 failed, 110 passed` |
+| dash class ASCII only | KILLED, `Tests: 5 failed, 110 passed` |
+
+(c) The Reviewer's mutant, old chunker splitting on a space only (`[^ |"]+`, on the old code): old 87 tests `87 passed` (SURVIVED, the gap); new suite `Tests: 26 failed, 89 passed`, including tab, newline, no-break space and zero-width space exclusions. KILLED.
+
+(d) hollowing-out: no primitive beneath existing assertions changed (the key tests still go through `cacheKey`/`foldSearchKey`). Triggered mutation pass: covered above for the rewritten parser; the earlier 11-mutant table in the review stands for the unchanged parts.
+
+### Self-verification (final head; see PR for SHA)
+- `npm run measure:t135`: output byte-identical to the pre-change output (`diff` empty), 2 merges only (maná/mana, cerol na mão/mao).
+- Targeted: `search-cache-key-fold` 115 passed.
+- Full jest: `Test Suites: 79 passed, 79 total`, `Tests: 89 skipped, 1580 passed, 1669 total`.
+- `npm run build` exit 0 (`Compiled successfully`), `bundle-es-target: OK — all 52 chunk(s) parse at ES2019`, `css-target: OK`.
+- Full e2e, workers 1, port 3135, pre-built `.next-e2e` + detached server (suite env), load averages 284/271/200 at start (extreme): `141 passed, 2 failed (11.1m)`. The 2 failures were `render-and-links.spec.ts:333` (`#yt-player` count within 5 s) and `rooms.spec.ts:65` (`page.goto` 30 s timeout), both TV-page timing under load and unrelated to search keys. Re-run alone at load ~150: rooms:65 passed; render-and-links:333 failed once then passed (load ~100). Re-run of both whole spec files together: `20 passed (2.2m)`. So the single full run is NOT a clean 143/143; the evidence is 141 + 2 load-flaky tests passing on re-run. Counts for the two test files are not independent of load, treat as a known flake class.
+- `packages/rotation-engine` `node --test` (the other ci.yml unit step): `tests 59, pass 59, fail 0`.
+- Which command is the CI-green stand-in for boraoke: the house `scripts/verify-green-local.sh` only runs the framework's `md-doctor` + `shell-tests` and does not cover this repo; boraoke has no verify-green script. Its own gate is `.github/workflows/ci.yml`, whose steps I ran locally: `node --test` (rotation-engine), `npm run build` (includes `check:es-target` and `check:css-target`), `npm test`, `npm run test:e2e`. The Chromium-68 runtime gate (`check:tv-runtime`, needs a pinned download) was not run.
+
+### Friction (round 3)
+- Same as round 2: load 200-300 makes the whole e2e run 11 min and flakes TV tests; pre-built `.next-e2e` plus a detached server worked fine.

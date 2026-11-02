@@ -148,42 +148,81 @@ export function foldTokens(s: string): string[] {
     .filter(Boolean);
 }
 
-/**
- * Chunks of a query for the key fold: a run of `|`, a `"` (with any `-` right
- * before it), or a run of anything that is not whitespace, `|` or `"`.
- */
-const KEY_CHUNK = /\|+|-*"|[^\s|"]+/g;
+/** Is `ch` (one code point) a letter, mark or digit, in the engine's own word class? */
+function isWordChar(ch: string): boolean {
+  NOT_WORD_CHAR.lastIndex = 0;
+  return !NOT_WORD_CHAR.test(ch);
+}
+
+/** Every dash-like character a patron or a phone keyboard can produce. */
+const DASH = /^[-\u2010-\u2015\u2212\uFE63\uFF0D]$/;
+/** Quote characters, straight and typographic, all read as a phrase marker. */
+const QUOTE = /^["\u201C\u201D\u201E\u201F\u00AB\u00BB\uFF02]$/;
+/** `|` and its fullwidth form. */
+const BAR = /^[|\uFF5C]$/;
+/** `+` and `#` (and fullwidth forms): not documented as operators, kept apart to be safe. */
+const SIGN = /^[+#\uFF0B\uFF03]$/;
+
+/** Marker tokens: the karaoke token must not be moved across any of them. */
+const MARKER_TOKENS = new Set(["|", '"', '-"', "+", "#"]);
 
 /**
- * Fold tokens plus the YouTube search operators the Data API honours in `q`:
- * `-word` (exclude), `|` (OR) and `"` (phrase). These change WHICH results
- * Google returns, so they must survive into the cache key, or
- * `evidencias -karaoke` would share an entry with `evidencias karaoke` and
- * whoever missed first would pin an off-intent page on every variant for the
- * whole TTL (TICKET-135 security review, MEDIUM).
+ * Fold tokens plus the characters that may be search operators in the `q` the
+ * Data API receives: `-word` (exclude), `|` (OR), `"` (phrase), and, to be safe,
+ * `+` and `#`. They change WHICH results Google returns, so they must survive
+ * into the cache key, or `evidencias -karaoke` would share an entry with
+ * `evidencias karaoke` and whoever missed first would pin an off-intent page on
+ * every variant for the whole TTL (TICKET-135 security review, MEDIUM).
  *
- *  - a `|` anywhere becomes a `|` token (runs collapse to one);
- *  - a `"` becomes a `"` token, or `-"` when a `-` opens it (excluded phrase);
- *  - a chunk that STARTS with `-` keeps the `-` on its first token
- *    (`-karaoke`). A hyphen inside a word (`evidencias-karaoke`) is plain
+ * One rule, applied per character instead of a list of forms:
+ *
+ *  - a letter, mark or digit (any script) belongs to a word, as before;
+ *  - any other character ends the word. If it is a bar, a quote, `+` or `#`
+ *    (ASCII, fullwidth or typographic) it becomes a marker token (a run of bars
+ *    collapses to one);
+ *  - a dash-like character is an exclusion operator when it is NOT glued to a
+ *    word on its left (start, space, tab, zero-width space, `(`, `,`, `.`, ...)
+ *    and IS glued to a word or quote on its right: the `-` goes on that word
+ *    (`-karaoke`) or the quote (`-"`). A hyphen inside a word
+ *    (`evidencias-karaoke`) or a lone dash (`evidencias karaoke -`) is plain
  *    punctuation, as before.
  *
- * Without any of these characters the result is exactly `foldTokens(s)`, so
- * every plain query keeps the key it had.
+ * Over-splitting costs a cache miss; a wrong merge pins an off-intent page for
+ * 7 days. So when in doubt this keeps forms apart. Without any such character the
+ * result is exactly `foldTokens(s)`, so every plain query keeps the key it had.
  */
 function foldKeyTokens(s: string): string[] {
+  const chars = Array.from(stripDiacritics(String(s).toLowerCase()));
   const out: string[] = [];
-  for (const chunk of stripDiacritics(String(s).toLowerCase()).match(KEY_CHUNK) ?? []) {
-    if (chunk[0] === "|") {
-      out.push("|");
-    } else if (chunk.endsWith('"')) {
-      out.push(chunk[0] === "-" ? '-"' : '"');
-    } else {
-      const tokens = foldTokens(chunk);
-      if (tokens.length > 0 && chunk[0] === "-") tokens[0] = `-${tokens[0]}`;
-      out.push(...tokens);
+  let word = "";
+  let minus = false;
+  const flush = () => {
+    if (!word) return;
+    out.push((minus ? "-" : "") + word);
+    word = "";
+    minus = false;
+  };
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (isWordChar(ch)) {
+      word += ch;
+      continue;
+    }
+    flush();
+    if (BAR.test(ch)) {
+      if (out[out.length - 1] !== "|") out.push("|");
+    } else if (QUOTE.test(ch)) {
+      out.push(minus ? '-"' : '"');
+      minus = false;
+    } else if (SIGN.test(ch)) {
+      out.push(ch === "+" || ch === "\uFF0B" ? "+" : "#");
+    } else if (DASH.test(ch)) {
+      const prev = i > 0 ? chars[i - 1] : "";
+      const next = i + 1 < chars.length ? chars[i + 1] : "";
+      if (!(prev && isWordChar(prev)) && next && (isWordChar(next) || QUOTE.test(next))) minus = true;
     }
   }
+  flush();
   return out;
 }
 
@@ -201,13 +240,15 @@ function foldKeyTokens(s: string): string[] {
  *  2. Every `karaoke` token (which includes an accented `karaokê`, after step
  *     1) is removed and ONE is put back at the end. Sing mode appends it
  *     client-side, and patrons also type it first, so its position carries no
- *     meaning. An excluded `-karaoke` is a different token and stays put.
+ *     meaning. An excluded `-karaoke` is a different token and stays put. The
+ *     move is skipped when the query holds a `|`, a quote, `+` or `#`: inside a
+ *     phrase or OR group the position does change Google's answer.
  *
- * Search operators (`-word`, `|`, `"`) are the exception to step 1: Google
- * receives the patron's original `q`, and those characters change its answer,
- * so they are kept as markers (see `foldKeyTokens`). `x -karaoke`,
- * `x | karaoke` and `"x" karaoke` each get their own key; `x!!! karaokê` still
- * shares `x karaoke`'s.
+ * Search operators (`-word`, `|`, `"`, `+`, `#`) are the exception to step 1:
+ * Google receives the patron's original `q`, and those characters may change its
+ * answer, so they are kept as markers (see `foldKeyTokens`). `x -karaoke`,
+ * `x | karaoke`, `"x" karaoke` and `"x karaoke"` each get their own key;
+ * `x!!! karaokê` still shares `x karaoke`'s.
  *
  * ONE DELIBERATE DIFFERENCE FROM `normalizeQuery`: letters and digits of every
  * script are kept (`\p{L}`, `\p{M}`, `\p{N}`), where `normalizeQuery` keeps only
@@ -225,6 +266,9 @@ function foldKeyTokens(s: string): string[] {
  */
 export function foldSearchKey(s: string): string {
   const tokens = foldKeyTokens(s);
+  // Inside a phrase or an OR group, where `karaoke` sits changes what Google
+  // returns, so with any marker present the tokens stay in typed order.
+  if (tokens.some((t) => MARKER_TOKENS.has(t))) return tokens.join(" ");
   const words = tokens.filter((t) => t !== KARAOKE_TOKEN);
   if (words.length < tokens.length) words.push(KARAOKE_TOKEN);
   return words.join(" ");

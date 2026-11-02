@@ -107,9 +107,64 @@ describe("YouTube search operators stay significant in the key (security review 
     expect(cacheKey(q, "BR")).not.toBe(plain);
   });
 
-  it("each operator form keeps its own key", () => {
-    const forms = ["x karaoke", "x -karaoke", "x | karaoke", '"x" karaoke', 'x "karaoke"', 'x -"karaoke"'];
-    expect(new Set(forms.map((q) => cacheKey(q, "BR"))).size).toBe(forms.length);
+  // Every form in a group is read differently by Google, so no two may share a key.
+  const distinctGroups: Record<string, string[]> = {
+    basic: ["x karaoke", "x -karaoke", "x | karaoke", '"x" karaoke', 'x "karaoke"', 'x -"karaoke"'],
+    phrase: ['"evidencias karaoke"', '"evidencias" karaoke', '"karaoke evidencias"', 'karaoke "evidencias"', "evidencias karaoke"],
+    orGroup: ["a | karaoke b", "a | b karaoke", "karaoke a | b", "a | b | karaoke"],
+    orLead: ["karaoke | x", "| x karaoke", "x karaoke", "x | karaoke", "| karaoke x"],
+    excluded: ["evidencias -karaoke", "-karaoke evidencias", "evidencias karaoke", "evidencias karaoke -karaoke"],
+    signs: ["evidencias karaoke", "evidencias +karaoke", "evidencias #karaoke", "evidencias karaoke +", "evidencias karaoke #"],
+  };
+  it.each(Object.entries(distinctGroups))("each operator form keeps its own key (%s)", (_name, forms) => {
+    const keys = forms.map((q) => cacheKey(q, "BR"));
+    expect(new Set(keys).size).toBe(forms.length);
+  });
+
+  it("karaoke keeps its typed place next to a bar or a quote", () => {
+    expect(foldSearchKey("karaoke | x")).toBe("karaoke | x");
+    expect(foldSearchKey("| x karaoke")).toBe("| x karaoke");
+    expect(foldSearchKey('"evidencias" karaoke')).toBe('" evidencias " karaoke');
+    expect(foldSearchKey('"karaoke evidencias"')).toBe('" karaoke evidencias "');
+  });
+
+  // The operator is recognised after ANY non-word character, not just a space.
+  it.each([
+    ["tab", "evidencias\t-karaoke"],
+    ["newline", "evidencias\n-karaoke"],
+    ["no-break space", "evidencias\u00A0-karaoke"],
+    ["zero-width space", "evidencias\u200B-karaoke"],
+    ["double space", "evidencias  -karaoke"],
+    ["space", "evidencias -karaoke"],
+  ])("an exclusion after %s keeps its own key", (_name, q) => {
+    expect(foldSearchKey(q)).toBe("evidencias -karaoke");
+    expect(cacheKey(q, "BR")).not.toBe(cacheKey("evidencias karaoke", "BR"));
+    expect(cacheKey(q, "BR")).toBe(cacheKey("evidencias -karaoke", "BR"));
+  });
+
+  it.each([
+    "evidencias (-karaoke)",
+    "evidencias,-karaoke",
+    "evidencias.-karaoke",
+    "evidencias \u2212karaoke",
+    "evidencias \u2013karaoke",
+    "evidencias \u2014karaoke",
+    "evidencias \uFF0Dkaraoke",
+    "evidencias \u201Ckaraoke\u201D",
+    "evidencias \u201Ekaraoke\u201F",
+    "evidencias \uFF5C karaoke",
+    "evidencias \uFF0Bkaraoke",
+    "evidencias \uFF03karaoke",
+    "evidencias +karaoke",
+    "evidencias #karaoke",
+  ])("lookalike operator %j does not fold onto the plain key", (q) => {
+    expect(cacheKey(q, "BR")).not.toBe(cacheKey("evidencias karaoke", "BR"));
+  });
+
+  it("typographic quotes and the fullwidth bar match their ASCII forms", () => {
+    expect(foldSearchKey("evidencias \u201Ckaraoke\u201D")).toBe(foldSearchKey('evidencias "karaoke"'));
+    expect(foldSearchKey("evidencias \uFF5C karaoke")).toBe(foldSearchKey("evidencias | karaoke"));
+    expect(foldSearchKey("evidencias \u2212karaoke")).toBe(foldSearchKey("evidencias -karaoke"));
   });
 
   it("an excluded karaoke is not moved or merged with the sing-mode token", () => {
@@ -130,6 +185,10 @@ describe("YouTube search operators stay significant in the key (security review 
     ]) {
       expect(cacheKey(q, "BR")).toBe(plain);
     }
+  });
+
+  it("an excluded phrase keeps its own key", () => {
+    expect(foldSearchKey('x (-"karaoke")')).toBe('x -" karaoke "');
   });
 
   it("operator markers never put a ':' in the key", () => {
@@ -185,6 +244,9 @@ describe("Unicode property escapes missing at runtime (Firefox 67-77)", () => {
     expect(query.augmentQuery("evidências karaokê", "sing")).toBe("evidências karaokê");
     expect(fold.foldTokens("Evidências!!! (Karaokê)")).toEqual(["evidencias", "karaoke"]);
     expect(fold.foldSearchKey("evidências!!! karaokê")).toBe("evidencias karaoke");
+    expect(fold.foldSearchKey("evidencias\t-karaoke")).toBe("evidencias -karaoke");
+    expect(fold.foldSearchKey('"evidencias karaoke"')).toBe('" evidencias karaoke "');
+    expect(fold.foldSearchKey("evidencias (-karaoke)")).toBe("evidencias -karaoke");
   });
 
   it("non-Latin scripts keep distinct tokens", () => {
