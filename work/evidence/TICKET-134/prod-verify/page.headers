@@ -1,0 +1,13 @@
+HTTP/2 200 
+age: 0
+cache-control: private, no-cache, no-store, max-age=0, must-revalidate
+content-type: text/html; charset=utf-8
+date: Tue, 03 Nov 2026 10:36:33 GMT
+server: Vercel
+strict-transport-security: max-age=63072000
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+x-matched-path: /
+x-powered-by: Next.js
+x-vercel-cache: MISS
+x-vercel-id: sin1::iad1::66p5g-1793702192680-9b8121962f24
+
