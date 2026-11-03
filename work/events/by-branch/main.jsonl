@@ -126,3 +126,4 @@
 {"v": "1", "ts": "2026-10-16T07:42:30Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-127", "pr": 98, "event": "merged", "payload": {"pr": 98, "tickets": ["TICKET-127"]}}
 {"v": "1", "ts": "2026-10-16T07:42:30Z", "actor": "tech-manager", "product": "boraoke", "ticket": "TICKET-127", "pr": 98, "event": "ticket_status_changed", "payload": {"status": "done", "pr": 98}}
 {"v": "1", "ts": "2026-10-16T07:42:57Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "89ebba0", "message_slug": "chore(events): record TICKET-127 merge (#98) and t127 worktree removal"}}
+{"v": "1", "ts": "2026-11-03T07:56:34Z", "actor": "dev", "product": "boraoke", "ticket": null, "pr": null, "event": "work_committed", "payload": {"branch": "main", "short_sha": "3586853", "message_slug": "docs(boraoke): record #97 merge, prod smoke evidence, file TICKET-159 fo"}}
