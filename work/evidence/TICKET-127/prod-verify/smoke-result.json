@@ -1,0 +1,92 @@
+{
+  "at": "2026-10-16T07:41:12.723Z",
+  "base": "https://boraoke.com",
+  "room": "t125-prod-verify-throwaway",
+  "checks": {
+    "home": {
+      "status": 200,
+      "title": "Boraoke — a fila do karaokê na TV, no celular de todos"
+    },
+    "patron": {
+      "status": 200,
+      "url": "https://boraoke.com/t125-prod-verify-throwaway"
+    },
+    "apiQueue": {
+      "status": 200,
+      "keys": [
+        "items",
+        "nowPlaying",
+        "paused",
+        "mode",
+        "moderation"
+      ],
+      "items": 1,
+      "mode": "full-karaoke",
+      "moderation": false,
+      "paused": false
+    },
+    "tv": {
+      "status": 200,
+      "url": "https://boraoke.com/t125-prod-verify-throwaway/tv"
+    }
+  },
+  "searchRequests": [],
+  "queueResponses": [
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    },
+    {
+      "url": "https://boraoke.com/api/queue?room=t125-prod-verify-throwaway",
+      "status": 200,
+      "items": 1
+    }
+  ],
+  "pageErrors": []
+}

@@ -1,0 +1,29 @@
+{
+  "items": [
+    {
+      "id": "6458b719-144c-47d4-9dd7-d5a3f657cda6",
+      "videoId": "dQw4w9WgXcQ",
+      "nickname": "ProdVerify140",
+      "patronUuid": "465d1055-bb76-4515-862c-6b4541cf3ff8",
+      "mode": "sing",
+      "submittedAt": "2026-10-16T06:13:08.719Z",
+      "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+      "channelTitle": "Rick Astley",
+      "duration": "3:34"
+    }
+  ],
+  "nowPlaying": {
+    "id": "6458b719-144c-47d4-9dd7-d5a3f657cda6",
+    "videoId": "dQw4w9WgXcQ",
+    "nickname": "ProdVerify140",
+    "patronUuid": "465d1055-bb76-4515-862c-6b4541cf3ff8",
+    "mode": "sing",
+    "submittedAt": "2026-10-16T06:13:08.719Z",
+    "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+    "channelTitle": "Rick Astley",
+    "duration": "3:34"
+  },
+  "paused": false,
+  "mode": "full-karaoke",
+  "moderation": false
+}

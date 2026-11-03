@@ -201,6 +201,8 @@ _Prior: (heartbeat #5: backlog reconciliation — corrected the stale `[HIGH] At
 
 ## Follow-ups (filed by gates, unscheduled)
 
+- **[LOW] TICKET-159 (TICKET-135 gates): spot-check whether `*`, `~`, `@` change Google results (they fold onto the plain cache key) and add U+2212, U+FE63, U+FF5C to `NOT_WORD_CHAR_FALLBACK`** — Cyber LOW(A) and Reviewer optional note on PR #97; nothing reaches a key today.
+
 - **BINDING for TICKET-28 (accounts/claim): claim-path AC (PR #22 opus)** — the server MUST treat localStorage `claimable`/posted room-id lists as an untrusted claim REQUEST, never ownership evidence; authorize only via the server-registered anon uuid's `identity:{uuid}:rooms` index (TICKET-26) or host-token proof for legacy rooms; sign-out clears device memory (AC4).
 - **TICKET-45 (next slot): advance-auth screen-token + per-room rate limit** — design complete in work/plans/TICKET-41-plan.md (HMAC screen-token, log-only→enforce rollout, e2e drain-helper migration). TL-directed (skip-from-patron hole). Launch after #21/#24 merge.
 - **Paste-submit embeddability warning** (TICKET-41 deferral; after #40 merges — patron-form file).
