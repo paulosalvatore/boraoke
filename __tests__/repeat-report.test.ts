@@ -39,6 +39,11 @@ describe("repeatRates window math", () => {
     expect(rate(repeatRates([[12 * H + 1, "x"], [0, "x"]]), "12h").repeats).toBe(0);
   });
 
+  it("measures each gap from the most recent occurrence, not the first", () => {
+    const r2 = repeatRates([[0, "x"], [8 * H, "x"], [16 * H, "x"]]);
+    expect(rate(r2, "12h").repeats).toBe(2);
+  });
+
   it("same-instant duplicates are not a repeat; empty gives null rates", () => {
     expect(rate(repeatRates([[5, "x"], [5, "x"]]), "30d").repeats).toBe(0);
     expect(rate(repeatRates([]), "12h").rate).toBeNull();

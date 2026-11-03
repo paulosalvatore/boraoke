@@ -20,7 +20,7 @@ Hashes live in event `props`, so they share the raw-event TTL: `TELEMETRY_RETENT
 - Salt-missing branch replaced by a constant fallback salt: 3 fail.
 - Report window boundary `<=` to `<`: 1 fails.
 - Hollowing-out: no primitive beneath existing assertions changed.
-- Triggered mutation pass: not triggered, no new parsing/normalisation function on a money/quantity/identity path (the fold is TICKET-135's, unchanged).
+- Triggered mutation pass: TRIGGERED (the hash helpers sit on an identity path). Reviewer's 13-mutant pass found two real gaps, both now killed: window gap anchored to the first occurrence (new 0h/8h/16h case) and videoHash dropped from the host-approve emit (new moderated-approve test).
 - Reverse-check against pre-fix code: the new files test new fields that the pre-change routes do not emit, so they fail there by construction (route tests assert `keyHash`/`videoHash`).
 
 ## Self-verification
