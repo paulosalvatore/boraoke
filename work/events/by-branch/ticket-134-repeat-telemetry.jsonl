@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-11-03T08:01:31Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-134", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/134-repeat-telemetry", "short_sha": "08565c3", "message_slug": "TICKET-134: salted key and song hashes in telemetry plus a repeat-rate r"}}
