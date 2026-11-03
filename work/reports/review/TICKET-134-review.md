@@ -51,3 +51,16 @@ M8 is not equivalent. For a hash at 0 h, 8 h and 16 h, the correct 12 h count is
 - After the salt is set in prod, record its set-date with the deploy note, so a reader of the report knows where the windows start.
 
 triggered mutation pass: run, 13 mutants, 11 KILLED, 2 SURVIVED-real-gap (M8, M10).
+
+## Round 2 (delta re-review)
+
+**Reviewed head:** `e9159eb` (code commit `f204c10`, then an event-log auto-commit) · **Verdict:** APPROVE
+
+- Item 1: `__tests__/repeat-report.test.ts` adds the case `[[0,x],[8h,x],[16h,x]]` and expects 12h repeats = 2. Re-ran M8 (anchor to the first occurrence): **KILLED** (1 failed, 31 passed).
+- Item 2: `__tests__/api-moderation.test.ts` adds a submit-then-approve test in a moderated room. With the salt set it asserts `toMatchObject({kind:"moderated", videoHash: hashVideoId(VIDEO)})`. Without the salt it asserts `kind === "moderated"` and that there is no `videoHash`. Re-ran M10 (drop the spread in the approve route): **KILLED** (1 failed, 31 passed). The salt is restored in a `finally`.
+- Item 3: the dev report's mutation line now says TRIGGERED and references both gaps.
+- Fresh patron uuids: they do not mask anything. `videoHash` depends only on the videoId and the salt, never on the uuid. Each run uses a fresh room and clears telemetry first, and the approve call is asserted to return 200, so a throttled submit would fail loudly rather than pass. The suspected rate-limit carry-over between tests is a pre-existing isolation trait of the moderation suite, not something this PR introduces.
+- Targeted jest (`repeat-hash`, `repeat-report`, `api-moderation`): 32 passed, 32 total.
+- Not re-run by me: full `npm test` (the Dev reports 1600 passed) and local-Docker verify-green. The TM must see verify-green GREEN on this head before merging.
+
+triggered mutation pass: 13 mutants, 13 KILLED after round 2.
