@@ -6,6 +6,7 @@ import { getRoomMode } from "@/lib/rooms";
 import { checkSubmit, relayQueue } from "@/lib/rotation";
 import { getTranslations } from "next-intl/server";
 import { track } from "@/lib/telemetry";
+import { videoHashProp } from "@/lib/repeat-hash";
 
 const MAX_BODY_BYTES = 1024;
 
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
   void track("song_queued", {
     roomId,
     uuid: item.entry.patronUuid,
-    props: { kind: "moderated", mode: item.entry.mode },
+    props: { kind: "moderated", mode: item.entry.mode, ...videoHashProp(item.entry.videoId) },
   });
 
   // Minimal ack — the host admin UI ignores this body and refetches both the

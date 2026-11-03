@@ -19,6 +19,7 @@ import { isLegacyClient, liveAllowed, liveCooldown, LIVE_COOLDOWN_MS } from "@/l
 import { clientIpFrom, UNKNOWN_CLIENT_IP } from "@/lib/client-ip";
 import { IDENTITY_COOKIE, isValidUuid } from "@/lib/identity";
 import { acquireSearchFlight, waitForSearchFlight } from "@/lib/search-single-flight";
+import { keyHashProp } from "@/lib/repeat-hash";
 
 /**
  * GET /api/search?q=<query>&uuid=<patronUuid>[&v=2[&live=1]][&pageToken=<token>&page=<n>]
@@ -361,7 +362,7 @@ export async function GET(req: NextRequest) {
     // never cached. Non-empty → 7-day TTL; empty → 10min TTL (see search-cache).
     await setCachedSearchPage(ck, page);
     await release("filled");
-    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: page.results.length, source: "live" } }); // TICKET-12: fire-and-forget, fail-open
+    void track("search_performed", { roomId: params.get("room") ?? "", uuid, props: { results: page.results.length, source: "live", ...keyHashProp(ck) } }); // TICKET-12: fire-and-forget, fail-open
     return NextResponse.json({ results: page.results, nextPageToken: page.nextPageToken });
   } catch (err) {
     await release("failed");

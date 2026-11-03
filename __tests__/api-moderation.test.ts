@@ -16,6 +16,7 @@ import { POST as REJECT_POST } from "@/app/api/host/pending/reject/route";
 import { store } from "@/lib/store";
 import { pendingStore } from "@/lib/pending-store";
 import { telemetryStore } from "@/lib/telemetry-store";
+import { hashVideoId } from "@/lib/repeat-hash";
 import { createRoom, setRoomModeration } from "@/lib/rooms";
 import { issueSession, hostCookieName } from "@/lib/host-auth";
 
@@ -146,6 +147,36 @@ describe("moderation ON", () => {
     // …and gone from pending.
     const after = await (await hostPending(room)).json();
     expect(after.items.filter((p: { status: string }) => p.status === "pending")).toHaveLength(0);
+  });
+
+  it("host approve emits song_queued kind=moderated with videoHash only when the salt is set", async () => {
+    const SALT = process.env.TELEMETRY_HASH_SALT;
+    const today = new Date().toISOString().slice(0, 10);
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const run = async (name: string, uuid: string) => {
+      await telemetryStore.clear();
+      const room = await freshRoom(name);
+      await setModeration(room, true);
+      const sub = await (await QUEUE_POST(submit(room, uuid))).json();
+      expect((await approve(room, sub.pendingId)).status).toBe(200);
+      await flush();
+      const events = await telemetryStore.listRange(today, today);
+      return events.find((e) => e.event === "song_queued")!;
+    };
+    try {
+      process.env.TELEMETRY_HASH_SALT = "mod-salt";
+      const withSalt = await run("Hash Bar", "323e4567-e89b-42d3-a456-426614174222");
+      expect(withSalt.props).toMatchObject({ kind: "moderated", videoHash: hashVideoId(VIDEO) });
+      expect(hashVideoId(VIDEO)).toBeDefined();
+
+      delete process.env.TELEMETRY_HASH_SALT;
+      const noSalt = await run("No Salt Bar", "423e4567-e89b-42d3-a456-426614174333");
+      expect(noSalt.props?.kind).toBe("moderated");
+      expect(noSalt.props).not.toHaveProperty("videoHash");
+    } finally {
+      if (SALT === undefined) delete process.env.TELEMETRY_HASH_SALT;
+      else process.env.TELEMETRY_HASH_SALT = SALT;
+    }
   });
 
   it("host reject flips the entry to rejected (patron sees it), never queued", async () => {
