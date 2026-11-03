@@ -10,6 +10,7 @@ import { isValidVideoId, parseYouTubeVideoId } from "@/lib/youtube";
 import { lookupForSubmit } from "@/lib/video-meta";
 import { clientTitleFallbackAllowed } from "@/lib/youtube-server";
 import { track } from "@/lib/telemetry";
+import { videoHashProp } from "@/lib/repeat-hash";
 import { pendingStore } from "@/lib/pending-store";
 import {
   generatePendingId,
@@ -308,7 +309,7 @@ export async function POST(req: NextRequest) {
   // TICKET-61: `kind` now uses the single `isPaste` derivation above. It used to
   // read `videoId`-presence alone, which the patron form always sets (it parses
   // pasted links client-side) — so every submit was logged as "search".
-  void track("song_queued", { roomId, uuid: entry.patronUuid, props: { kind: isPaste ? "paste" : "search", mode: resolvedMode } }); // TICKET-12: fire-and-forget, fail-open
+  void track("song_queued", { roomId, uuid: entry.patronUuid, props: { kind: isPaste ? "paste" : "search", mode: resolvedMode, ...videoHashProp(resolvedVideoId) } }); // TICKET-12: fire-and-forget, fail-open
   // Minimal ack — the patron client discards this body and refetches the queue
   // (GET /api/queue), so we do NOT echo the full QueueEntry / patronUuid back
   // (PR#25 sec LOW-2: trim needless PII/enumeration surface). TICKET-140
