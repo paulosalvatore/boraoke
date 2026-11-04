@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-11-04T00:45:01Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-151", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/151-delete-room", "short_sha": "11bb7d8", "message_slug": "feat: gated delete-room ops script with snapshot and restore [TICKET-151"}}
