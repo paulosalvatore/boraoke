@@ -126,6 +126,23 @@ function suite(name: string, make: () => Promise<{ kv: Kv; reset: () => Promise<
       expect(await kv.scan(`*${TARGET}*`)).toEqual([]);
     });
 
+    it("shows the plan before the confirmation prompt, and a declined confirmation writes nothing", async () => {
+      const before = await everything(kv);
+      const order: string[] = [];
+      const save = jest.fn(() => "snap.json");
+      const res = await runDelete(kv, {
+        slug: TARGET,
+        apply: true,
+        onPlan: (p) => order.push(`plan:${p.keys.length}:${p.memberships.length}`),
+        confirm: async () => { order.push("prompt"); return ""; },
+        saveSnapshot: save,
+      });
+      expect(order).toEqual(["plan:8:2", "prompt"]);
+      expect(res.status).toBe("confirmation-mismatch");
+      expect(save).not.toHaveBeenCalled();
+      expect(await everything(kv)).toEqual(before);
+    });
+
     it("refuses to apply when a room:<slug>:* key is not on the code-derived list", async () => {
       await kv.set(`room:${TARGET}:mystery`, "x");
       const plan = await buildPlan(kv, TARGET);

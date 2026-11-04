@@ -229,6 +229,8 @@ export type RunStatus = "dry-run" | "refused" | "confirmation-mismatch" | "delet
 export interface RunOptions {
   slug: string;
   apply: boolean;
+  /** Called with the plan right after it is built, before any confirmation is asked, so the operator sees what will go first. */
+  onPlan?: (plan: DeletePlan) => void;
   /** Asked for only after the plan is applicable and `apply` is set; must return exactly the slug. */
   confirm: () => Promise<string>;
   /** Persists the snapshot and returns where it went; a throw aborts before anything is deleted. */
@@ -247,6 +249,7 @@ export interface RunResult {
 /** The whole gated flow, so the dry-run default and the confirmation gate are testable. */
 export async function runDelete(kv: Kv, opts: RunOptions): Promise<RunResult> {
   const plan = await buildPlan(kv, opts.slug);
+  opts.onPlan?.(plan);
   const gate = isApplicable(plan);
   if (!opts.apply) return { status: "dry-run", plan, reason: gate.ok ? undefined : gate.reason };
   if (!gate.ok) return { status: "refused", plan, reason: gate.reason };

@@ -114,6 +114,10 @@ async function main() {
   const res = await engine.runDelete(kv, {
     slug: args.room,
     apply: args.apply,
+    onPlan: (plan) => {
+      printPlan(plan);
+      if (args.apply) console.log(`Snapshot will be written to: ${join(process.cwd(), ".room-delete-snapshots", `${plan.slug}-<timestamp>.json`)}`);
+    },
     confirm: async () => {
       if (args.confirm !== undefined) return args.confirm;
       const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -131,7 +135,6 @@ async function main() {
       return file;
     },
   });
-  if (res.status !== "refused" || res.plan.keys.length > 0 || res.plan.unaccounted.length > 0) printPlan(res.plan);
   switch (res.status) {
     case "dry-run":
       console.log(res.reason ? `\nDRY RUN: ${res.reason}` : "\nDRY RUN: nothing was written. Re-run with --apply to delete.");
