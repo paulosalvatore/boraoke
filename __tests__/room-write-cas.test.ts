@@ -15,6 +15,9 @@ import { POST as claimRoute } from "@/app/api/host/claim/route";
 import { GET as sessionProbe, POST as logoutRoute } from "@/app/api/host/session/route";
 import { POST as modeRoute } from "@/app/api/host/mode/route";
 import {
+  NON_OWNER_MINT_ATTEMPTS,
+  OWNER_MINT_FENCED_ATTEMPTS,
+  OWNER_MINT_OPEN_ATTEMPTS,
   ROOM_WRITE_ATTEMPTS,
   RoomWriteConflictError,
   createRoom,
@@ -117,13 +120,21 @@ describe("the authentication path still never writes, and still reads once (TICK
 });
 
 describe("when a write can never commit, every caller fails closed", () => {
-  it("a login mint returns null after exactly ROOM_WRITE_ATTEMPTS tries, and changes nothing", async () => {
+  it("an owner mint tries openly, then fenced, then returns null", async () => {
+    const r = await room();
+    const spy = alwaysConflict();
+    expect(await issueRoomClaimToken(r.id, { owner: true })).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(OWNER_MINT_OPEN_ATTEMPTS + OWNER_MINT_FENCED_ATTEMPTS);
+    spy.mockRestore();
+  });
+
+  it("a login mint returns null after exactly NON_OWNER_MINT_ATTEMPTS tries, and changes nothing", async () => {
     const r = await room();
     const owner = (await issueRoomClaimToken(r.id, { owner: true }))!;
     const before = await getRoom(r.id);
     const spy = alwaysConflict();
     expect(await issueRoomClaimToken(r.id)).toBeNull();
-    expect(spy).toHaveBeenCalledTimes(ROOM_WRITE_ATTEMPTS);
+    expect(spy).toHaveBeenCalledTimes(NON_OWNER_MINT_ATTEMPTS);
     spy.mockRestore();
     expect(await getRoom(r.id)).toEqual(before);
     expect(await verifyRoomClaimToken(r.id, owner)).toBe(true);

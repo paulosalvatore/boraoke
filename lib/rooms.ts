@@ -284,7 +284,7 @@ export async function issueRoomClaimToken(
   const hash = hashClaimToken(token);
   let written: Room | null;
   try {
-    written = await mutateRoom(roomId, (room) => {
+    const change = (room: Room): Room => {
       // TICKET-118: a list written for an earlier epoch was revoked by "sign out
       // all devices", so none of it is live. Start a fresh list rather than
       // appending to it, and drop its owner pointer. Since TICKET-127 a list can
@@ -301,7 +301,10 @@ export async function issueRoomClaimToken(
       // untouched room's record keeps its exact pre-TICKET-118 shape.
       if (epoch > 0 || next.claimTokenEpoch !== undefined) next.claimTokenEpoch = epoch;
       return next;
-    });
+    };
+    written = opts.owner
+      ? await mutateOwnerMint(roomId, change)
+      : await mutateRoom(roomId, change, { attempts: NON_OWNER_MINT_ATTEMPTS });
   } catch (err) {
     if (err instanceof RoomWriteConflictError) return null;
     throw err;
@@ -497,11 +500,11 @@ export async function getRoomSessionEpoch(roomId: string): Promise<number> {
  *     drop the owner pin (Cyber R-1) once this returns.
  *   - Sustained contention can stop the rebind committing at all within
  *     `ROOM_WRITE_ATTEMPTS`. Then the sessions are still ended, the list keeps its
- *     old tag (dead, fail-closed), and the route attempts to mint the owner a
- *     fresh pinned claim token. That mint is best-effort: it is another room write
- *     racing the same contention, and under a host-code login flood it can fail to
- *     commit too. Then the device keeps only its session cookie and the room may
- *     lose its owner pin (TICKET-158).
+ *     old tag (dead, fail-closed), and the route mints the owner a fresh pinned
+ *     claim token. That mint does not race the contention for long: it fences the
+ *     room (`OWNER_MINT_OPEN_ATTEMPTS`) so every other writer is refused while it
+ *     commits. Only a store failure can still leave the device with just its
+ *     session cookie and the room without its owner pin.
  *   - A concurrent login by someone who TYPED THE HOST CODE gets in, as it would a
  *     second later. This lever ends copied sessions and claim tokens; it does not
  *     change the host code (option C, rejected in the plan).
@@ -570,10 +573,9 @@ export async function revokeRoomHostSessions(
   }
   // The rebind never committed. The sessions ARE ended (the bump is atomic); the
   // claim list is still tagged with an older epoch, so it grants nothing. The route
-  // attempts to mint the caller a fresh OWNER claim token. That is best-effort: it
-  // races the same contention, and under a host-code login flood it can fail to
-  // commit, leaving the device with only its session cookie and the room without
-  // its pin (TICKET-158).
+  // mints the caller a fresh OWNER claim token, fenced against the contention
+  // (`mutateOwnerMint`); if even that cannot commit (a store failure), the device
+  // keeps only its session cookie and the room is left without its pin.
   const last = (await getRoom(roomId)) ?? before;
   const epoch = Math.max(bumped, normaliseSessionEpoch(last.sessionEpoch));
   return { ok: true, epoch, keptClaimToken: false, room: { ...last, sessionEpoch: epoch } };
@@ -595,6 +597,9 @@ export const roomKey = (roomId: string) => `room:${roomId}:meta`;
  * A room deletion (TICKET-151) must delete this key too.
  */
 export const roomSessionEpochKey = (roomId: string) => `room:${roomId}:session-epoch`;
+
+/** Redis key of a room's owner-mint fence (see `OWNER_MINT_OPEN_ATTEMPTS`). */
+export const roomOwnerFenceKey = (roomId: string) => `room:${roomId}:owner-fence`;
 
 /**
  * Valid room id: lowercase alnum + hyphen, 1–64 chars. SECURITY-CRITICAL — the
@@ -704,9 +709,18 @@ export function normaliseRoomRev(raw: unknown): number {
  * ARGV[1] = the revision the writer read (already normalised, as a decimal string).
  * ARGV[2] = the new record, as JSON, carrying revision ARGV[1] + 1.
  * ARGV[3] = "1" to keep the key's TTL (retention ON), "0" for a plain SET.
+ * KEYS[2] = optional owner-mint fence key (`roomOwnerFenceKey`).
+ * ARGV[4] = optional, "1" when the writer is the fenced owner mint itself.
+ *
+ * While the fence key exists, every writer except the one that set it (ARGV[4]
+ * "1") is refused with -2 and writes nothing. The fence is held for a few hundred
+ * milliseconds by the revoke's fallback owner mint so it commits instead of racing
+ * a flood; it is the only thing that can make a mint win against sustained
+ * contention without being a rate limit on anyone's writes. A caller that passes
+ * one key and no flag (older code, the unit tests) is never fenced.
  *
  * Returns 1 written, 0 no such record (nothing written, never creates one),
- * -1 conflict (the stored revision moved on, or the stored value is not a JSON
+ * -2 fenced (nothing written), -1 conflict (the stored revision moved on, or the stored value is not a JSON
  * object; nothing written). The stored revision is normalised exactly like
  * `normaliseRoomRev`: absent, null, a boolean, a negative, a fraction, a
  * non-finite or non-numeric value all read as 0.
@@ -715,6 +729,7 @@ export function normaliseRoomRev(raw: unknown): number {
  * stays in TypeScript (`mutateRoom` callers), where the suite can run it.
  */
 export const ROOM_CAS_SCRIPT = `
+if KEYS[2] and ARGV[4] ~= '1' and redis.call('EXISTS', KEYS[2]) == 1 then return -2 end
 local cur = redis.call('GET', KEYS[1])
 if not cur then return 0 end
 local ok, rec = pcall(cjson.decode, cur)
@@ -748,10 +763,48 @@ return 1
  */
 export const ROOM_WRITE_ATTEMPTS = 32;
 
-/** A room write that could not commit within `ROOM_WRITE_ATTEMPTS` (TICKET-127). */
+/**
+ * Attempt bound for an ORDINARY claim mint (a host-code login). Lower than
+ * `ROOM_WRITE_ATTEMPTS` on purpose: a mint that has lost this many times in a row
+ * is one of a crowd, and giving up (the device keeps its session cookie and only
+ * loses the no-typing path) is the cheap, safe outcome, whereas 32 immediate
+ * retries from every flooder is what multiplied the store commands per login.
+ */
+export const NON_OWNER_MINT_ATTEMPTS = 12;
+
+/**
+ * An OWNER mint (the revoke's fallback, room creation) first tries like any other
+ * writer, `OWNER_MINT_OPEN_ATTEMPTS` times. Uncontended it commits on the first
+ * and costs nothing extra. If it is still losing, it fences the room
+ * (`ROOM_CAS_SCRIPT`: every other writer is refused for the fence's lifetime) and
+ * makes `OWNER_MINT_FENCED_ATTEMPTS` more, which can only lose to a write that was
+ * already in flight when the fence went up. The fence is dropped the moment the
+ * mint settles, and expires on its own after `OWNER_FENCE_TTL_MS` if that never
+ * happens.
+ */
+export const OWNER_MINT_OPEN_ATTEMPTS = 4;
+export const OWNER_MINT_FENCED_ATTEMPTS = 8;
+export const OWNER_FENCE_TTL_MS = 3000;
+
+/** Backoff between `mutateRoom` attempts: full-jitter exponential, in ms. */
+export const ROOM_BACKOFF_BASE_MS = 4;
+export const ROOM_BACKOFF_CAP_MS = 80;
+
+/**
+ * Delay before retry number `retry` (1 = the first retry): a uniform random value
+ * in [0, min(cap, base * 2^(retry-1))). Full jitter decorrelates writers that
+ * collided, so a crowd stops retrying in lockstep. Pure given `rand`. Exported
+ * for tests.
+ */
+export function roomRetryDelayMs(retry: number, rand: () => number = Math.random): number {
+  const ceiling = Math.min(ROOM_BACKOFF_CAP_MS, ROOM_BACKOFF_BASE_MS * 2 ** Math.max(0, retry - 1));
+  return Math.floor(rand() * ceiling);
+}
+
+/** A room write that could not commit within its attempt bound (TICKET-127). */
 export class RoomWriteConflictError extends Error {
-  constructor(roomId: string) {
-    super(`room ${roomId}: write did not commit after ${ROOM_WRITE_ATTEMPTS} conflicting writes`);
+  constructor(roomId: string, attempts: number = ROOM_WRITE_ATTEMPTS) {
+    super(`room ${roomId}: write did not commit after ${attempts} conflicting writes`);
     this.name = "RoomWriteConflictError";
   }
 }
@@ -773,19 +826,59 @@ export class RoomWriteConflictError extends Error {
  * `ROOM_WRITE_ATTEMPTS` conflicts. Reads only through `getRoom`, so it never adds
  * anything to the authentication path, which does not write at all.
  */
-async function mutateRoom(roomId: string, change: (room: Room) => Room | null): Promise<Room | null> {
-  for (let attempt = 0; attempt < ROOM_WRITE_ATTEMPTS; attempt++) {
+async function mutateRoom(
+  roomId: string,
+  change: (room: Room) => Room | null,
+  opts: { attempts?: number; priority?: boolean } = {},
+): Promise<Room | null> {
+  const attempts = opts.attempts ?? ROOM_WRITE_ATTEMPTS;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    // Jittered exponential backoff before every retry (never before the first
+    // attempt), so colliding writers spread out instead of re-colliding at once.
+    if (attempt > 0) await sleepMs(roomRetryDelayMs(attempt));
     const room = await getRoom(roomId);
     if (!room) return null;
     const changed = change(room);
     if (changed === null) return room;
     const next: Room = { ...changed, id: room.id, rev: room.rev };
-    const result = await roomBackend.update(next);
+    const result = await roomBackend.update(next, opts.priority ? { priority: true } : undefined);
     if (result === "ok") return { ...next, rev: normaliseRoomRev(room.rev) + 1 };
     if (result === "missing") return null;
     // "conflict" (or anything unexpected): re-read and recompute.
   }
-  throw new RoomWriteConflictError(roomId);
+  throw new RoomWriteConflictError(roomId, attempts);
+}
+
+/**
+ * `mutateRoom` for an OWNER mint: open attempts first, then, if a flood is still
+ * beating it, the same change under the room's owner-mint fence (see
+ * `OWNER_MINT_OPEN_ATTEMPTS`). The fence is a short, self-expiring flag only this
+ * path sets, and it is released in `finally`. If the fence cannot be set or
+ * released (a store error) the mint carries on without it rather than failing
+ * earlier than before.
+ */
+async function mutateOwnerMint(roomId: string, change: (room: Room) => Room | null): Promise<Room | null> {
+  try {
+    return await mutateRoom(roomId, change, { attempts: OWNER_MINT_OPEN_ATTEMPTS });
+  } catch (err) {
+    if (!(err instanceof RoomWriteConflictError)) throw err;
+  }
+  let fenced = false;
+  try {
+    await roomBackend.holdFence(roomId, OWNER_FENCE_TTL_MS);
+    fenced = true;
+  } catch {
+    // carry on unfenced
+  }
+  try {
+    return await mutateRoom(roomId, change, { attempts: OWNER_MINT_FENCED_ATTEMPTS, priority: fenced });
+  } finally {
+    if (fenced) await roomBackend.releaseFence(roomId).catch(() => undefined);
+  }
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
 interface RoomBackend {
@@ -804,7 +897,14 @@ interface RoomBackend {
    *   - `"missing"`: no such record, nothing was written (never creates one).
    * Mutators go through `mutateRoom`, never call this directly.
    */
-  update(room: Room): Promise<RoomWriteResult>;
+  update(room: Room, opts?: { priority?: boolean }): Promise<RoomWriteResult>;
+  /**
+   * Raise the room's owner-mint fence for `ttlMs`: until it is released or
+   * expires, every `update` without `priority` reports `"conflict"` and writes
+   * nothing. Only the revoke's fallback owner mint uses it (`mutateOwnerMint`).
+   */
+  holdFence(id: string, ttlMs: number): Promise<void>;
+  releaseFence(id: string): Promise<void>;
   /** Total rooms ever created (ceiling input — see ROOM_MAX). */
   count(): Promise<number>;
   /**
@@ -847,9 +947,17 @@ class MemoryRoomBackend implements RoomBackend {
   async create(room: Room): Promise<void> {
     this.rooms.set(room.id, room);
   }
-  async update(room: Room): Promise<RoomWriteResult> {
+  private fences = new Map<string, number>();
+  async holdFence(id: string, ttlMs: number): Promise<void> {
+    this.fences.set(id, Date.now() + ttlMs);
+  }
+  async releaseFence(id: string): Promise<void> {
+    this.fences.delete(id);
+  }
+  async update(room: Room, opts?: { priority?: boolean }): Promise<RoomWriteResult> {
     // The compare and the set run with no await between them, so in one process
     // this is as atomic as the Upstash backend's script.
+    if (!opts?.priority && (this.fences.get(room.id) ?? 0) > Date.now()) return "conflict";
     const current = this.rooms.get(room.id);
     if (!current) return "missing";
     const expected = normaliseRoomRev(room.rev);
@@ -904,7 +1012,13 @@ export class UpstashRoomBackend implements RoomBackend {
     // expire, which only makes the ceiling MORE conservative, never less.
     await this.redis.incr(ROOMS_COUNT_KEY);
   }
-  async update(room: Room): Promise<RoomWriteResult> {
+  async holdFence(id: string, ttlMs: number): Promise<void> {
+    await this.redis.set(roomOwnerFenceKey(id), "1", { px: ttlMs });
+  }
+  async releaseFence(id: string): Promise<void> {
+    await this.redis.del(roomOwnerFenceKey(id));
+  }
+  async update(room: Room, opts?: { priority?: boolean }): Promise<RoomWriteResult> {
     // TICKET-127: one EVAL, so the revision check and the write are atomic against
     // every other writer (Redis runs a script to completion). WATCH/MULTI are not
     // available over the REST transport; see lib/store/upstash.ts.
@@ -917,8 +1031,8 @@ export class UpstashRoomBackend implements RoomBackend {
     const result = Number(
       await this.redis.eval(
         ROOM_CAS_SCRIPT,
-        [roomKey(room.id)],
-        [String(expected), JSON.stringify({ ...room, rev: expected + 1 }), keepTtl],
+        [roomKey(room.id), roomOwnerFenceKey(room.id)],
+        [String(expected), JSON.stringify({ ...room, rev: expected + 1 }), keepTtl, opts?.priority ? "1" : "0"],
       ),
     );
     if (result === 1) return "ok";

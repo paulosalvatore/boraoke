@@ -92,9 +92,8 @@ import { DEFAULT_ROOM, revokeRoomHostSessions } from "@/lib/rooms";
  *
  * Responses: 200 `{ ok: true, epoch }` on success, with a refreshed session
  * cookie (and a rolled claim cookie, or, when every rebind was clobbered, a
- * best-effort attempt at a freshly minted OWNER one, which can itself fail to
- * commit under a host-code login flood, leaving only the session cookie and the
- * room without its pin, TICKET-158); 400 on a malformed room id; 401 on either refusal,
+ * freshly minted OWNER one, committed under the room's owner-mint fence so a
+ * host-code login flood cannot starve it); 400 on a malformed room id; 401 on either refusal,
  * undifferentiated; 403 `{ ownerOnly: true }` when the caller is signed in but
  * is not the owner's device; 429 `{ throttled: true }` once the room's budget is
  * spent; 404 when the room has no record (the legacy `default` room is governed by the
@@ -159,10 +158,10 @@ export async function POST(req: NextRequest) {
   } else {
     // Every rebind was clobbered by concurrent stale writes, so no claim token is
     // live. Try to mint the owner a fresh one, pinned as the owner's, so the room
-    // keeps its owner pin. Best-effort: this mint races the same contention, and
-    // under a host-code login flood it can fail to commit, so the room can still
-    // lose its pin here (TICKET-158). The session cookie above is what keeps this
-    // device in, and it is already set.
+    // keeps its owner pin. The mint fences the room against the same contention
+    // (see `issueRoomClaimToken`), so a login flood cannot starve it; only a store
+    // failure can still leave the room without its pin. The session cookie above is
+    // what keeps this device in, and it is already set.
     await attachClaimCookie(res, roomId, { owner: true });
   }
 

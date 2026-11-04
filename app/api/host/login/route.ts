@@ -11,6 +11,7 @@ import {
   registerLoginFailure,
   resetLoginThrottle,
   attachClaimCookie,
+  chargeLoginMint,
   rollClaimCookie,
   claimStatus,
 } from "@/lib/host-auth";
@@ -71,6 +72,22 @@ export async function POST(req: NextRequest) {
   }
   await resetLoginThrottle(ip);
 
+  // One read answers both "does this device already hold a live claim token" and
+  // "is it the owner's" (TICKET-118 S3: the admin page shows "sign out other
+  // devices" only on the owner's device). Same single read `verifyClaim` made.
+  const claim = await claimStatus(req, roomId);
+
+  // Cap on successful logins that must MINT a claim token (a store write), per IP
+  // and per room. A device presenting a live claim token (the owner's included)
+  // mints nothing and is never charged, so the owner is never throttled by it.
+  // Answers with the failure throttle's own status and copy.
+  if (!claim.live && !(await chargeLoginMint(ip, roomId))) {
+    return NextResponse.json(
+      { error: "Too many failed attempts — try again in a minute." },
+      { status: 429 },
+    );
+  }
+
   const session = await issueSession(roomId);
   if (!session) {
     return NextResponse.json(
@@ -79,10 +96,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // One read answers both "does this device already hold a live claim token" and
-  // "is it the owner's" (TICKET-118 S3: the admin page shows "sign out other
-  // devices" only on the owner's device). Same single read `verifyClaim` made.
-  const claim = await claimStatus(req, roomId);
   const res = NextResponse.json({ ok: true, owner: claim.owner });
   res.cookies.set(hostCookieName(roomId), session, hostCookieOptions());
   // TICKET-104: presenting the host code proves possession, so this device earns

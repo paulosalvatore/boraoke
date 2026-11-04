@@ -15,6 +15,7 @@ import {
   UpstashRoomBackend,
   normaliseRoomRev,
   roomKey,
+  roomOwnerFenceKey,
   roomSessionEpochKey,
   type Room,
 } from "@/lib/rooms";
@@ -204,7 +205,7 @@ describe("UpstashRoomBackend compare-and-set writes (TICKET-127)", () => {
     await be.create(room("bar"));
     fake.calls = [];
     expect(await be.update({ ...room("bar"), name: "Bar 2" })).toBe("ok");
-    expect(fake.calls).toEqual([`eval ${roomKey("bar")}`]);
+    expect(fake.calls).toEqual([`eval ${roomKey("bar")} ${roomOwnerFenceKey("bar")}`]);
     const [{ args }] = fake.evals;
     expect(args[0]).toBe("0"); // a legacy record has no rev: expected 0
     expect(JSON.parse(args[1])).toEqual({ ...room("bar"), name: "Bar 2", rev: 1 });
