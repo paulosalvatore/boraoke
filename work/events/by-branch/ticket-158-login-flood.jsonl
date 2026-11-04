@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-11-04T12:27:35Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-158", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/158-login-flood", "short_sha": "b10cca9", "message_slug": "WIP: cap login mints, jittered backoff, fenced owner mint (flood pin los"}}
