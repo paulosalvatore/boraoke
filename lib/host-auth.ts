@@ -590,7 +590,7 @@ export { clientIpFrom } from "./client-ip";
 // budget.
 const REVOKE_THROTTLE_OPTS: CounterOptions = { max: 3, windowMs: 10 * 60_000 };
 
-function revokeKey(roomId: string): string {
+export function revokeKey(roomId: string): string {
   return `hostrevoke:${roomId}`;
 }
 
