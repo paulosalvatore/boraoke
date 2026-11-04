@@ -135,3 +135,7 @@ R5: with no shape check, an empty-list entry passes validation, and `rpush` with
 ### Required
 
 1. Add tests that KILL R5 and R11: (a) a wrong-shape value, i.e. an empty list for `room:<slug>:queue`, a non-string array item and a non-string value for a string key, is refused and the keyspace is unchanged; (b) a snapshot with a duplicated key is refused. Show each new assertion failing with its guard removed.
+
+## Round 4 (head `8ccf0b4`)
+
+**APPROVE.** The diff since `e5b69a6` touches only tests, reports and events; `lib/room-delete.ts` is byte-identical. room-delete 35/35 on real Redis. R5 (value-shape check) and R11 (duplicate-key check) are now KILLED, 2 failures each.
