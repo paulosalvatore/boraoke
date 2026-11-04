@@ -80,3 +80,18 @@ triggered mutation pass: not triggered — no new parsing/normalisation function
 - Cyber Security PASS: **missing** (ticket store `TICKET-151` has only dev facts; there is no `work/reports/{cyber,security}/` file for 151). The story makes this gate mandatory. No merge until it lands.
 - App Tester: PR body says "App Tester N/A". The diff (`.gitignore`, `__tests__/`, `lib/`, `package.json`, `scripts/`, `work/`) touches no UI surface, so a D-081 waiver is valid once recorded. No `app-tester-waived` row exists yet.
 - reviewer-approve: **not recorded** (verdict is REQUEST-CHANGES).
+
+## Round 2 (delta re-review at head `1537201`)
+
+**Verdict:** APPROVE.
+
+- Required item 1 is resolved. `runDelete` calls `opts.onPlan?.(plan)` right after `buildPlan`, before the gate and before `confirm()` (lib/room-delete.ts). The CLI's `onPlan` prints the keys, the memberships and, on `--apply`, the snapshot path pattern. The post-run `printPlan` call is gone.
+- New test: "shows the plan before the confirmation prompt, and a declined confirmation writes nothing" asserts the order `["plan:8:2","prompt"]`, `confirmation-mismatch`, no snapshot save and an unchanged keyspace.
+- Targeted jest: `npx jest room-delete` 21/21 against real Redis 7 (`REDIS_TEST_URL`), and 10 passed + 1 skipped on the fake alone.
+- Mutants:
+  - onPlan moved after `confirm()`: KILLED (2 failed, both backends).
+  - `confirm()` awaited before onPlan: KILLED (2).
+  - onPlan dropped: KILLED (2).
+  - onPlan moved below the dry-run/refused returns but still before the prompt: SURVIVED. It is equivalent for the confirmation gate, but the CLI would stop printing the plan on dry-run and refused runs, and nothing asserts that. Nit only (optional: assert onPlan fires on a dry run).
+- Preconditions: the app-tester waiver is now recorded (the TM says so; the diff touches no UI). The Cyber Security PASS is still the TM's to confirm before merge.
+- Prod-run conditions from round 1 still stand: run from the main checkout, and rehearse `--apply`/`--restore` on a disposable room on the same Upstash first.
