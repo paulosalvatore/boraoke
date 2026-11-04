@@ -648,6 +648,8 @@ export const LOGIN_MINT_LIMITS = { perIp: MINT_IP_OPTS.max, perRoom: MINT_ROOM_O
  * unreachable counter must not lock a venue out), like the failure throttle.
  */
 export async function chargeLoginMint(ip: string, roomId: string): Promise<boolean> {
+  // The legacy default room has no record, so a login there mints nothing and writes nothing.
+  if (roomId === DEFAULT_ROOM) return true;
   const ipCount = await registerFailureCount(`hostmint:ip:${ip}:${roomId}`, MINT_IP_OPTS);
   if (ipCount !== null && ipCount > MINT_IP_OPTS.max) return false;
   const roomCount = await registerFailureCount(`hostmint:room:${roomId}`, MINT_ROOM_OPTS);

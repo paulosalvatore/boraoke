@@ -128,6 +128,11 @@ describe("the cap on successful logins that mint a claim token", () => {
     expect((await res.json()).owner).toBe(false);
   });
 
+  it("the legacy default room mints nothing, so it is never charged", async () => {
+    const { chargeLoginMint } = await import("@/lib/host-auth");
+    for (let i = 0; i < LOGIN_MINT_LIMITS.perRoom + 20; i++) expect(await chargeLoginMint("198.51.100.94", "default")).toBe(true);
+  });
+
   it("a plain code login never takes the owner pin, capped or not", async () => {
     const { room: r, hostCode } = await room();
     // Room without a pin (as after a lost pin).
