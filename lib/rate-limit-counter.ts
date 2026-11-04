@@ -112,7 +112,7 @@ function getRedis(): Redis | null {
   }
 }
 
-function redisKey(key: string): string {
+export function redisKey(key: string): string {
   return `${REDIS_PREFIX}${key}`;
 }
 

@@ -47,3 +47,6 @@ next-env.d.ts
 
 # TICKET-143 labelled sample = YouTube titles + labels derived from them: local only, never committed.
 /work/measurements/ticket-143/labelled-sample.json
+
+# TICKET-151 — soft-delete snapshots written by scripts/delete-room.ts hold a room record (host-code hash, claim hashes); never commit.
+/.room-delete-snapshots/

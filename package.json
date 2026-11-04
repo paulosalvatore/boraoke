@@ -10,6 +10,7 @@
     "test:e2e": "playwright test",
     "telemetry:rollup": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/telemetry-rollup.ts",
     "telemetry:repeats": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/telemetry-repeat-report.ts",
+    "room:delete": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' scripts/delete-room.ts",
     "check:es-target": "node scripts/check-bundle-es-target.mjs",
     "check:css-target": "node scripts/check-css-target.mjs",
     "measure:t108": "ts-node --transpile-only --compilerOptions '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' work/measurements/ticket-108/replay.ts",
