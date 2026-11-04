@@ -204,6 +204,33 @@ function suite(name: string, make: () => Promise<{ kv: Kv; reset: () => Promise<
         expect(() => validateSnapshot(typed)).toThrow(/unexpected type/);
       });
 
+      it("a malformed value (empty list, wrong type, non-string items) refuses the whole snapshot with zero writes", async () => {
+        const base = await legit();
+        await wipe();
+        const after = await everything(kv);
+        const q = qk.queue(TARGET);
+        for (const bad of [[], "not-a-list", [1, 2], null]) {
+          const snap = JSON.parse(JSON.stringify(base));
+          snap.keys.find((k: { key: string }) => k.key === q).value = bad;
+          await expect(restoreSnapshot(kv, snap)).rejects.toThrow(/unexpected shape/);
+          expect(await everything(kv)).toEqual(after);
+        }
+        const str = JSON.parse(JSON.stringify(base));
+        str.keys.find((k: { key: string }) => k.key === roomKey(TARGET)).value = { not: "a string" };
+        await expect(restoreSnapshot(kv, str)).rejects.toThrow(/unexpected shape/);
+        expect(await everything(kv)).toEqual(after);
+      });
+
+      it("a snapshot repeating a key with different values is refused with zero writes", async () => {
+        const snap = await legit();
+        await wipe();
+        const after = await everything(kv);
+        const meta = snap.keys.find((k: { key: string }) => k.key === roomKey(TARGET));
+        snap.keys.push({ ...meta, value: JSON.stringify({ id: TARGET, name: "forged" }) });
+        await expect(restoreSnapshot(kv, snap)).rejects.toThrow(/duplicate key/);
+        expect(await everything(kv)).toEqual(after);
+      });
+
       it("a forged snapshot never touches an existing membership set beyond SADD of its own slug", async () => {
         const snap = await legit();
         await wipe();
