@@ -45,3 +45,21 @@ Run from a subdirectory, the snapshot lands outside the root-anchored ignore. Re
 ## Friction
 
 Restore/import paths that take a serialized file need an allow-list of what they may write; worth a checklist line.
+
+## Delta re-gate at `e5b69a6` (fix commit `f8eff09`): PASS
+
+Probed `restoreSnapshot` against `MemoryKv` (temporary jest file, removed). Results:
+
+| Attempt | Outcome |
+|---|---|
+| Forged key `admin:secret` | refused, whole snapshot |
+| Pending item id not in the snapshot's index | refused |
+| Index (wrong shape) plus another room's item key `room:other:pending:item:q` | refused |
+| Index naming `room:other:meta` as an id | accepted, but the key written is `room:ab:pending:item:room:other:meta`, inside this room's own prefix, so no other room is touched |
+| Header slug `ab` with key `room:cd:meta` | refused |
+| Membership as a non-string, or with a newline, empty id or extra colon | refused |
+| Room record typed as list; duplicate keys; `__proto__` key | refused |
+
+MEDIUM-1 resolved; LOW-1 (restore dry-run) and LOW-2 (repo-root anchor) accepted per the Dev's claim, not re-probed beyond the code read.
+
+Residual INFO: a forged snapshot can still SADD this snapshot's own slug into any `identity:<id>:rooms` set (the id pattern is the only constraint). Impact is limited to adding one room slug to a "my rooms" list and needs a forged local file; no key outside the room is written or overwritten. Local-Docker GREEN was not re-run by this agent.
