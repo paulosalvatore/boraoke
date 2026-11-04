@@ -95,3 +95,43 @@ triggered mutation pass: not triggered — no new parsing/normalisation function
   - onPlan moved below the dry-run/refused returns but still before the prompt: SURVIVED. It is equivalent for the confirmation gate, but the CLI would stop printing the plan on dry-run and refused runs, and nothing asserts that. Nit only (optional: assert onPlan fires on a dry run).
 - Preconditions: the app-tester waiver is now recorded (the TM says so; the diff touches no UI). The Cyber Security PASS is still the TM's to confirm before merge.
 - Prod-run conditions from round 1 still stand: run from the main checkout, and rehearse `--apply`/`--restore` on a disposable room on the same Upstash first.
+
+## Round 3 (delta re-review at head `4b6444f`, code at `e5b69a6`)
+
+**Verdict:** REQUEST-CHANGES (1 required item, tests only). The round-2 reviewer-approve row stays; no new approve row is recorded for this round.
+
+Scope: `git diff 1537201..HEAD -- lib scripts __tests__`.
+
+### Correctness
+
+- The shared key builders are reused, not duplicated. `typeOfAllowed` and `validateSnapshot` call `roomKey`, `roomSessionEpochKey`, `queueKeys.*`, `pendingKeys.*` and `counterKey(revokeKey())`. The list of fixed keys is written out a second time, though (buildPlan's `derived` vs `typeOfAllowed`). A key later added to only one of them makes restore refuse, which is fail-safe. optional: one shared `roomFixedKeys(slug)`.
+- Types match Redis TYPE for every key: meta, epoch (INCR value), paused and `rl:hostrevoke` are strings; queue and pending index are lists. Pending items are allowed only for ids in the snapshot's own index, which matches how buildPlan derives them. Rejected items stay in the index.
+- Restore is still SADD-only and writes the record last. `runRestore` order is plan, then clash refusal, then dry-run, then typed slug, then write.
+- **A legit snapshot restores identically.** I added a scratch real-Redis test (not committed). It seeds every key with distinct TTLs and pending index order `p3,p1,p2`, deletes, restores, then compares type, value and TTL (10 s buckets) of every `*<slug>*` key. Result: identical, index order kept, paused `"1"` kept.
+- Cyber INFO (a forged file can SADD its own slug into any `identity:<id>:rooms`): not material. Whoever runs restore already holds the Upstash write token and can SADD directly. The guard's job is to stop wholesale set writes, and it does. A stray membership only lists a room under an identity; hosting still needs the host code. Agree INFO.
+- nit: `args` is now parsed at module top level, outside `main().catch`, so an unknown argument throws an uncaught stack trace instead of the clean one-line error.
+- `SNAPSHOT_DIR = __dirname/..` is the worktree root when run from a worktree. The round-1 prod-run condition (run from the main checkout) still stands.
+
+### Tests
+
+`REDIS_TEST_URL=… npx jest room-delete` + my scratch fidelity test: **32 passed, 32 total** (31 theirs + 1 mine).
+
+| Mutant (lib/room-delete.ts) | Result |
+|---|---|
+| R1 allow any key | KILLED (4) |
+| R2 pending item with any id | KILLED (2) |
+| R3 drop `MEMBERSHIP_RE` | KILLED (2) |
+| R4 drop the type check | KILLED (2) |
+| R5 drop the value-shape check (`okValue`) | **SURVIVED-real-gap** |
+| R6 skip `validateSnapshot` in `planRestore` | KILLED (2) |
+| R7 drop the restore dry-run default | KILLED (2) |
+| R8 drop the restore slug confirmation | KILLED (2) |
+| R9 reverse list order on restore | KILLED (3) |
+| R10 drop TTL restore | KILLED (3) |
+| R11 drop the duplicate-key check | **SURVIVED-real-gap** |
+
+R5: with no shape check, an empty-list entry passes validation, and `rpush` with no values then errors partway through the restore. Keys written before it stay, which breaks the "refuse-all, writes nothing" claim. A non-string value would be written as a serialized object. R11: a duplicated list entry passes and `rpush`es twice, doubling the queue. Both are untested guards on a function whose whole job is Cyber MEDIUM-1 validation, so the severity floor applies.
+
+### Required
+
+1. Add tests that KILL R5 and R11: (a) a wrong-shape value, i.e. an empty list for `room:<slug>:queue`, a non-string array item and a non-string value for a string key, is refused and the keyspace is unchanged; (b) a snapshot with a duplicated key is refused. Show each new assertion failing with its guard removed.
