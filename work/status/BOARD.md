@@ -201,6 +201,8 @@ _Prior: (heartbeat #5: backlog reconciliation — corrected the stale `[HIGH] At
 
 ## Follow-ups (filed by gates, unscheduled)
 
+- **[LOW] TICKET-160 (TICKET-151 gates): POST /api/queue (and other room writers) don't check the room exists, so an open patron tab can re-create an orphan queue key after a room is deleted** (pre-existing; Reviewer, PR #101). Also: test that delete-room prints its plan on dry-run and refused runs (Reviewer nit).
+
 - **[LOW] TICKET-159 (TICKET-135 gates): spot-check whether `*`, `~`, `@` change Google results (they fold onto the plain cache key) and add U+2212, U+FE63, U+FF5C to `NOT_WORD_CHAR_FALLBACK`** — Cyber LOW(A) and Reviewer optional note on PR #97; nothing reaches a key today.
 
 - **BINDING for TICKET-28 (accounts/claim): claim-path AC (PR #22 opus)** — the server MUST treat localStorage `claimable`/posted room-id lists as an untrusted claim REQUEST, never ownership evidence; authorize only via the server-registered anon uuid's `identity:{uuid}:rooms` index (TICKET-26) or host-token proof for legacy rooms; sign-out clears device memory (AC4).
