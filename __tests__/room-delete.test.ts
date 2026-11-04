@@ -6,7 +6,7 @@
  * ). Key names come from the app's own key builders, so a renamed key breaks here.
  */
 import {
-  applyDelete, buildPlan, runDelete, isApplicable, restoreSnapshot, takeSnapshot, RoomDeleteError, type Kv,
+  applyDelete, buildPlan, runDelete, runRestore, validateSnapshot, isApplicable, restoreSnapshot, takeSnapshot, RoomDeleteError, type Kv,
 } from "@/lib/room-delete";
 import { roomKey, roomSessionEpochKey, ROOM_CAS_SCRIPT } from "@/lib/rooms";
 import { keys as qk } from "@/lib/store/types";
@@ -170,6 +170,67 @@ function suite(name: string, make: () => Promise<{ kv: Kv; reset: () => Promise<
       expect(await kv.smembers(identityKeys.rooms(OTHER_CREATOR))).toEqual(expect.arrayContaining([TARGET, OTHER]));
       const again = await buildPlan(kv, TARGET);
       expect(again.keys.map((k) => k.key).sort()).toEqual(plan.keys.map((k) => k.key).sort());
+    });
+
+    describe("restore only writes keys inside the room's key set", () => {
+      const legit = async () => JSON.parse(JSON.stringify(await takeSnapshot(kv, await buildPlan(kv, TARGET))));
+      const wipe = async () => applyDelete(kv, await buildPlan(kv, TARGET));
+
+      it("a forged foreign key writes nothing", async () => {
+        const snap = await legit();
+        await wipe();
+        const after = await everything(kv);
+        snap.keys.push({ key: "admin:secret", type: "string", pttl: -1, value: "x" });
+        await expect(restoreSnapshot(kv, snap)).rejects.toThrow(/outside the room's key set/);
+        expect(await everything(kv)).toEqual(after);
+      });
+
+      it("a foreign room's key, a foreign identity set as a key, and a pending item not in the index are refused", async () => {
+        for (const key of [roomKey(OTHER), identityKeys.rooms(OTHER_CREATOR), pendingKeys.item(TARGET, "not-in-index"), `room:${TARGET}:mystery`]) {
+          const snap = await legit();
+          snap.keys.push({ key, type: "string", pttl: -1, value: "x" });
+          expect(() => validateSnapshot(snap)).toThrow(/outside the room's key set/);
+        }
+      });
+
+      it("a foreign slug, a foreign membership entry and a wrong-typed value are refused", async () => {
+        const bad = await legit(); bad.slug = "Bad*Slug";
+        expect(() => validateSnapshot(bad)).toThrow(RoomDeleteError);
+        for (const m of ["admin:secret", "identity:*:rooms", "identity:x:rooms:extra", { key: "identity:a:rooms", member: "other" }]) {
+          const snap = await legit(); snap.memberships.push(m);
+          expect(() => validateSnapshot(snap)).toThrow(/outside identity/);
+        }
+        const typed = await legit(); typed.keys.find((k: { key: string }) => k.key === qk.queue(TARGET)).type = "set";
+        expect(() => validateSnapshot(typed)).toThrow(/unexpected type/);
+      });
+
+      it("a forged snapshot never touches an existing membership set beyond SADD of its own slug", async () => {
+        const snap = await legit();
+        await wipe();
+        const before = (await kv.smembers(identityKeys.rooms(OTHER_CREATOR))).sort();
+        await restoreSnapshot(kv, snap);
+        const afterSet = (await kv.smembers(identityKeys.rooms(OTHER_CREATOR))).sort();
+        expect(afterSet).toEqual([...before, TARGET].sort());
+        expect(await kv.smembers(identityKeys.rooms(OTHER_CREATOR))).toContain(OTHER);
+      });
+
+      it("runRestore is a dry run by default and gates --apply on the typed slug", async () => {
+        const snap = await legit();
+        await wipe();
+        const after = await everything(kv);
+        const seen: string[] = [];
+        const dry = await runRestore(kv, snap, { apply: false, onPlan: () => seen.push("plan"), confirm: async () => { seen.push("prompt"); return TARGET; } });
+        expect(dry.status).toBe("dry-run");
+        expect(seen).toEqual(["plan"]);
+        expect(await everything(kv)).toEqual(after);
+        const wrong = await runRestore(kv, snap, { apply: true, confirm: async () => "nope" });
+        expect(wrong.status).toBe("confirmation-mismatch");
+        expect(await everything(kv)).toEqual(after);
+        const ok = await runRestore(kv, snap, { apply: true, onPlan: () => seen.push("plan2"), confirm: async () => { seen.push("prompt2"); return TARGET; } });
+        expect(ok.status).toBe("restored");
+        expect(seen.slice(-2)).toEqual(["plan2", "prompt2"]);
+        expect(await kv.get(roomKey(TARGET))).not.toBeNull();
+      });
     });
 
     it("restore refuses to overwrite existing keys", async () => {

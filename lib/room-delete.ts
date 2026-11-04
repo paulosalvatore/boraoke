@@ -199,29 +199,99 @@ export async function applyDelete(kv: Kv, plan: DeletePlan): Promise<{ leftoverK
   return { leftoverKeys: [...after.keys.map((k) => k.key), ...after.unaccounted], leftoverMemberships: after.memberships };
 }
 
-export async function restoreSnapshot(kv: Kv, snap: Snapshot): Promise<void> {
-  if (snap?.version !== 1) throw new RoomDeleteError("unrecognised snapshot version");
+const MEMBERSHIP_RE = /^identity:[A-Za-z0-9-]{1,64}:rooms$/;
+
+/** Value shape each allowed key must carry, so a forged entry cannot smuggle another type in. */
+function typeOfAllowed(key: string, slug: string): KvType | null {
+  if (key === roomKey(slug) || key === roomSessionEpochKey(slug) || key === queueKeys.paused(slug) || key === counterKey(revokeKey(slug))) return "string";
+  if (key === queueKeys.queue(slug) || key === pendingKeys.index(slug)) return "list";
+  return null;
+}
+
+/**
+ * Validate a snapshot against the key set delete itself derives, and throw on the
+ * first entry outside it, so a forged or edited file writes nothing at all.
+ * Allowed: the fixed per-room keys, pending items whose id is in the snapshot's own
+ * pending index, and `identity:<id>:rooms` memberships, which restore only SADDs
+ * the snapshot's slug into.
+ */
+export function validateSnapshot(snap: Snapshot): void {
+  if (!snap || snap.version !== 1) throw new RoomDeleteError("unrecognised snapshot version");
   assertSlug(snap.slug);
+  if (!Array.isArray(snap.keys) || !Array.isArray(snap.memberships)) throw new RoomDeleteError("malformed snapshot");
+  const slug = snap.slug;
+  const index = snap.keys.find((k) => k?.key === pendingKeys.index(slug));
+  const ids = new Set(Array.isArray(index?.value) ? (index!.value as unknown[]).filter((v): v is string => typeof v === "string") : []);
+  const seen = new Set<string>();
+  for (const k of snap.keys) {
+    if (!k || typeof k.key !== "string") throw new RoomDeleteError("malformed snapshot entry");
+    if (seen.has(k.key)) throw new RoomDeleteError(`duplicate key in snapshot: ${k.key}`);
+    seen.add(k.key);
+    let want = typeOfAllowed(k.key, slug);
+    if (want === null) {
+      const prefix = pendingKeys.item(slug, "");
+      if (k.key.startsWith(prefix) && ids.has(k.key.slice(prefix.length))) want = "string";
+    }
+    if (want === null) throw new RoomDeleteError(`snapshot key outside the room's key set, refusing the whole snapshot: ${k.key}`);
+    if (k.type !== want) throw new RoomDeleteError(`snapshot key has unexpected type: ${k.key}`);
+    const okValue = want === "string" ? typeof k.value === "string" : Array.isArray(k.value) && k.value.every((v) => typeof v === "string") && k.value.length > 0;
+    if (!okValue) throw new RoomDeleteError(`snapshot value has unexpected shape: ${k.key}`);
+    if (typeof k.pttl !== "number") throw new RoomDeleteError(`snapshot ttl malformed: ${k.key}`);
+  }
+  for (const m of snap.memberships) {
+    if (typeof m !== "string" || !MEMBERSHIP_RE.test(m)) throw new RoomDeleteError(`snapshot membership outside identity:<id>:rooms, refusing: ${String(m)}`);
+  }
+}
+
+export interface RestorePlan {
+  slug: string;
+  keys: string[];
+  /** Sets the slug would be SADDed into. */
+  memberships: string[];
+  /** Keys that already exist; non-empty = refuse. */
+  clashes: string[];
+}
+
+export async function planRestore(kv: Kv, snap: Snapshot): Promise<RestorePlan> {
+  validateSnapshot(snap);
   const clashes: string[] = [];
   for (const k of snap.keys) {
     if ((await kv.type(k.key)) !== "none") clashes.push(k.key);
   }
-  if (clashes.length > 0) {
-    throw new RoomDeleteError(`refusing to restore over existing keys: ${clashes.join(", ")}`);
+  return { slug: snap.slug, keys: snap.keys.map((k) => k.key), memberships: [...snap.memberships], clashes };
+}
+
+export async function restoreSnapshot(kv: Kv, snap: Snapshot): Promise<void> {
+  const plan = await planRestore(kv, snap);
+  if (plan.clashes.length > 0) {
+    throw new RoomDeleteError(`refusing to restore over existing keys: ${plan.clashes.join(", ")}`);
   }
   // The record goes back LAST, so the room only reappears once it is complete.
   const meta = roomKey(snap.slug);
   const ordered = [...snap.keys.filter((k) => k.key !== meta), ...snap.keys.filter((k) => k.key === meta)];
   for (const k of ordered) {
     if (k.type === "string") await kv.set(k.key, k.value as string);
-    else if (k.type === "list") await kv.rpush(k.key, ...(k.value as string[]));
-    else if (k.type === "set") await kv.sadd(k.key, ...(k.value as string[]));
-    else if (k.type === "zset") await kv.zadd(k.key, k.value as Array<[string, number]>);
-    else if (k.type === "hash") await kv.hset(k.key, k.value as Record<string, string>);
-    else throw new RoomDeleteError(`unsupported type in snapshot at ${k.key}`);
+    else await kv.rpush(k.key, ...(k.value as string[]));
     if (k.pttl > 0) await kv.pexpire(k.key, k.pttl);
   }
+  // Membership is only ever an SADD of this snapshot's own slug, never a wholesale set write.
   for (const setKey of snap.memberships) await kv.sadd(setKey, snap.slug);
+}
+
+export interface RestoreRunOptions {
+  apply: boolean;
+  onPlan?: (plan: RestorePlan) => void;
+  confirm: () => Promise<string>;
+}
+
+export async function runRestore(kv: Kv, snap: Snapshot, opts: RestoreRunOptions): Promise<{ status: "dry-run" | "refused" | "confirmation-mismatch" | "restored"; plan: RestorePlan; reason?: string }> {
+  const plan = await planRestore(kv, snap);
+  opts.onPlan?.(plan);
+  if (plan.clashes.length > 0) return { status: "refused", plan, reason: `refusing to restore over existing keys: ${plan.clashes.join(", ")}` };
+  if (!opts.apply) return { status: "dry-run", plan };
+  if ((await opts.confirm()) !== plan.slug) return { status: "confirmation-mismatch", plan };
+  await restoreSnapshot(kv, snap);
+  return { status: "restored", plan };
 }
 
 export type RunStatus = "dry-run" | "refused" | "confirmation-mismatch" | "deleted" | "deleted-with-leftovers";

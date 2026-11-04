@@ -4,7 +4,8 @@
  *   npm run room:delete -- --room <slug>                     # dry run (default): prints the plan, writes nothing
  *   npm run room:delete -- --room <slug> --apply             # snapshot, then delete after typing the slug to confirm
  *   npm run room:delete -- --room <slug> --apply --confirm <slug>   # same, non-interactive
- *   npm run room:delete -- --restore <snapshot.json>         # put a deleted room back
+ *   npm run room:delete -- --restore <snapshot.json>         # dry run: prints what a restore would write
+ *   npm run room:delete -- --restore <snapshot.json> --apply [--confirm <slug>]   # put a deleted room back
  *
  * Needs UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in the environment
  * (never printed). The engine lives in lib/room-delete.ts.
@@ -99,14 +100,40 @@ function printPlan(plan: Awaited<ReturnType<typeof engine.buildPlan>>) {
   }
 }
 
+async function askSlug(slug: string, verb: string): Promise<string> {
+  if (args.confirm !== undefined) return args.confirm;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const typed = await rl.question(`\nType the room slug (${slug}) to confirm ${verb}: `);
+  rl.close();
+  return typed;
+}
+
+// Snapshots live under the repo root, whatever directory the script is run from.
+const SNAPSHOT_DIR = join(__dirname, "..", ".room-delete-snapshots");
+const args = parseArgs(process.argv.slice(2));
+
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
   const kv = upstashKv();
 
   if (args.restore) {
     const snap = JSON.parse(readFileSync(resolve(args.restore), "utf8")) as Snapshot;
-    await engine.restoreSnapshot(kv, snap);
-    console.log(`Restored room ${snap.slug}: ${snap.keys.length} key(s), ${snap.memberships.length} membership(s).`);
+    const res = await engine.runRestore(kv, snap, {
+      apply: args.apply,
+      onPlan: (plan) => {
+        console.log(`Restore room: ${plan.slug}`);
+        console.log(`Keys that would be written (${plan.keys.length}):`);
+        for (const k of plan.keys) console.log(`  ${k}`);
+        console.log(`Memberships that would be added (SADD ${plan.slug}) (${plan.memberships.length}):`);
+        for (const m of plan.memberships) console.log(`  ${m}`);
+      },
+      confirm: () => askSlug(snap.slug, "restore"),
+    });
+    if (res.status === "restored") console.log("\nRestored.");
+    else if (res.status === "dry-run") console.log("\nDRY RUN: nothing was written. Re-run with --apply to restore.");
+    else {
+      console.error(`\n${res.reason ?? "Confirmation did not match the slug. Nothing was written."}`);
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -116,17 +143,11 @@ async function main() {
     apply: args.apply,
     onPlan: (plan) => {
       printPlan(plan);
-      if (args.apply) console.log(`Snapshot will be written to: ${join(process.cwd(), ".room-delete-snapshots", `${plan.slug}-<timestamp>.json`)}`);
+      if (args.apply) console.log(`Snapshot will be written to: ${join(SNAPSHOT_DIR, `${plan.slug}-<timestamp>.json`)}`);
     },
-    confirm: async () => {
-      if (args.confirm !== undefined) return args.confirm;
-      const rl = createInterface({ input: process.stdin, output: process.stdout });
-      const typed = await rl.question(`\nType the room slug (${args.room}) to confirm deletion: `);
-      rl.close();
-      return typed;
-    },
+    confirm: () => askSlug(args.room as string, "deletion"),
     saveSnapshot: (snap) => {
-      const dir = join(process.cwd(), ".room-delete-snapshots");
+      const dir = SNAPSHOT_DIR;
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       const file = join(dir, `${snap.slug}-${snap.takenAt.replace(/[:.]/g, "-")}.json`);
       writeFileSync(file, JSON.stringify(snap, null, 2), { mode: 0o600 });
