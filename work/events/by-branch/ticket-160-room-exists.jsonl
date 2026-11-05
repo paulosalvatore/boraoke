@@ -1,0 +1,1 @@
+{"v": "1", "ts": "2026-11-05T02:50:52Z", "actor": "dev", "product": "boraoke", "ticket": "TICKET-160", "pr": null, "event": "work_committed", "payload": {"branch": "ticket/160-room-exists", "short_sha": "adcd35f", "message_slug": "WIP: refuse queue writes to a room whose record no longer exists (parked"}}
