@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { store, DEFAULT_ROOM, QUEUE_MAX, type Mode, type QueueEntry } from "@/lib/store";
-import { isValidRoomId, getRoomMode, getRoomModeration } from "@/lib/rooms";
+import { isValidRoomId, getRoom, getRoomMode, getRoomModeration } from "@/lib/rooms";
+import { normalizeRoomMode } from "@/lib/rotation-modes";
 import { checkSubmit, orderQueue, relayQueue } from "@/lib/rotation";
 import { submitRateLimitOk } from "@/lib/queue-rate-limit";
 import { getTranslations } from "next-intl/server";
@@ -185,7 +186,19 @@ export async function POST(req: NextRequest) {
   // TICKET-10: rotation-mode enforcement (caps / table-required / duplicate)
   // BEFORE the entry is stored. Friendly pt-BR copy for the patron; a 409 so the
   // client can distinguish it from a validation 400 or the capacity 429.
-  const roomMode = await getRoomMode(roomId);
+  // A write must never create a room's keys: after a room is deleted, an open
+  // patron tab would otherwise re-create an orphan queue. This is the one record
+  // read the route already did to get the mode, reused for the existence check.
+  // The legacy `default` room has no record by design and stays writable.
+  const roomRecord = await getRoom(roomId);
+  if (!roomRecord && roomId !== DEFAULT_ROOM) {
+    const tp = await getTranslations("Patron");
+    return NextResponse.json(
+      { error: tp("notFoundLead"), reason: "room-not-found" },
+      { status: 404 },
+    );
+  }
+  const roomMode = normalizeRoomMode(roomRecord?.settings?.mode);
   const currentQueue = await store.getQueue(roomId);
   const check = checkSubmit(currentQueue, entry, roomMode);
   if (!check.ok) {

@@ -126,6 +126,30 @@ function suite(name: string, make: () => Promise<{ kv: Kv; reset: () => Promise<
       expect(await kv.scan(`*${TARGET}*`)).toEqual([]);
     });
 
+    it("hands the plan to the printer on a dry run and on a refused run, even though nothing is deleted", async () => {
+      const plans: string[] = [];
+      const onPlan = (p: { slug: string; keys: unknown[]; unaccounted: string[] }) => plans.push(`${p.slug}:${p.keys.length}:${p.unaccounted.length}`);
+      const confirm = jest.fn(async () => TARGET);
+      const save = jest.fn(() => "snap.json");
+
+      const dry = await runDelete(kv, { slug: TARGET, apply: false, onPlan, confirm, saveSnapshot: save });
+      expect(dry.status).toBe("dry-run");
+      expect(plans).toEqual([`${TARGET}:8:0`]);
+
+      // A key the code-derived list does not know makes the plan non-applicable.
+      await kv.set(`room:${TARGET}:stray`, "x");
+      const refused = await runDelete(kv, { slug: TARGET, apply: true, onPlan, confirm, saveSnapshot: save });
+      expect(refused.status).toBe("refused");
+      expect(plans).toEqual([`${TARGET}:8:0`, `${TARGET}:8:1`]);
+      expect(confirm).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+
+      // A room with nothing to delete is refused too, and still prints (an empty) plan.
+      const none = await runDelete(kv, { slug: "t151-nothing", apply: true, onPlan, confirm, saveSnapshot: save });
+      expect(none.status).toBe("refused");
+      expect(plans[2]).toBe("t151-nothing:0:0");
+    });
+
     it("shows the plan before the confirmation prompt, and a declined confirmation writes nothing", async () => {
       const before = await everything(kv);
       const order: string[] = [];
