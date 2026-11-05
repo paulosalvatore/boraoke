@@ -223,7 +223,7 @@ maybe("UpstashRoomBackend on a real Redis", () => {
 
 maybe("every writer pair, worst order, with the room backend on a real Redis", () => {
   let r: Resp;
-  const METHODS = ["get", "create", "update", "count", "bumpSessionEpoch"] as const;
+  const METHODS = ["get", "create", "update", "count", "bumpSessionEpoch", "holdFence", "releaseFence"] as const;
   const original = new Map<string, unknown>();
   beforeAll(async () => {
     r = new Resp();

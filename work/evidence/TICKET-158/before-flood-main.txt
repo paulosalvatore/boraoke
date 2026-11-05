@@ -1,0 +1,14 @@
+load: 22:39  up 3 days, 18:33, 2 users, load averages: 16.31 13.14 16.33
+    FLOOD mode=lib attackers=50 lat=5+3ms trials=6 pinLost=1/6 attackerReqs=522 committedLogins=444 storeCmdsPerAttackerReq=35.89
+    FLOOD mode=lib attackers=200 lat=5+3ms trials=6 pinLost=2/6 attackerReqs=2954 committedLogins=1018 storeCmdsPerAttackerReq=54.00
+    FLOOD mode=lib attackers=500 lat=5+3ms trials=6 pinLost=5/6 attackerReqs=8241 committedLogins=1224 storeCmdsPerAttackerReq=59.71
+    FLOOD mode=route-ip attackers=50 lat=5+3ms trials=6 pinLost=1/6 attackerReqs=959 committedLogins=959 storeCmdsPerAttackerReq=37.28
+    FLOOD mode=route-ip attackers=200 lat=5+3ms trials=6 pinLost=2/6 attackerReqs=2219 committedLogins=2219 storeCmdsPerAttackerReq=56.53
+    FLOOD mode=route-ip attackers=500 lat=5+3ms trials=6 pinLost=3/6 attackerReqs=7112 committedLogins=7112 storeCmdsPerAttackerReq=62.40
+      176 |       `FLOOD mode=${mode} attackers=${attackers} lat=${BASE_MS}+${JITTER_MS}ms trials=${TRIALS} pinLost=${lost}/${TRIALS} attackerReqs=${reqs} committedLogins=${okLogins} storeCmdsPerAttackerReq=${perReq}`,
+      176 |       `FLOOD mode=${mode} attackers=${attackers} lat=${BASE_MS}+${JITTER_MS}ms trials=${TRIALS} pinLost=${lost}/${TRIALS} attackerReqs=${reqs} committedLogins=${okLogins} storeCmdsPerAttackerReq=${perReq}`,
+      176 |       `FLOOD mode=${mode} attackers=${attackers} lat=${BASE_MS}+${JITTER_MS}ms trials=${TRIALS} pinLost=${lost}/${TRIALS} attackerReqs=${reqs} committedLogins=${okLogins} storeCmdsPerAttackerReq=${perReq}`,
+      176 |       `FLOOD mode=${mode} attackers=${attackers} lat=${BASE_MS}+${JITTER_MS}ms trials=${TRIALS} pinLost=${lost}/${TRIALS} attackerReqs=${reqs} committedLogins=${okLogins} storeCmdsPerAttackerReq=${perReq}`,
+      176 |       `FLOOD mode=${mode} attackers=${attackers} lat=${BASE_MS}+${JITTER_MS}ms trials=${TRIALS} pinLost=${lost}/${TRIALS} attackerReqs=${reqs} committedLogins=${okLogins} storeCmdsPerAttackerReq=${perReq}`,
+      176 |       `FLOOD mode=${mode} attackers=${attackers} lat=${BASE_MS}+${JITTER_MS}ms trials=${TRIALS} pinLost=${lost}/${TRIALS} attackerReqs=${reqs} committedLogins=${okLogins} storeCmdsPerAttackerReq=${perReq}`,
+Tests:       6 failed, 6 total

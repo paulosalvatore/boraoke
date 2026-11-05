@@ -1,0 +1,11 @@
+load: 22:38  up 3 days, 18:32, 2 users, load averages: 14.82 12.29 16.41
+    FLOOD mode=lib attackers=50 lat=5+3ms trials=6 pinLost=0/6 attackerReqs=564 committedLogins=378 storeCmdsPerAttackerReq=17.27
+    FLOOD mode=lib attackers=200 lat=5+3ms trials=6 pinLost=0/6 attackerReqs=3221 committedLogins=781 storeCmdsPerAttackerReq=21.80
+    FLOOD mode=lib attackers=500 lat=5+3ms trials=6 pinLost=0/6 attackerReqs=7959 committedLogins=859 storeCmdsPerAttackerReq=23.03
+    FLOOD mode=route-ip attackers=50 lat=5+3ms trials=6 pinLost=0/6 attackerReqs=1711 committedLogins=60 storeCmdsPerAttackerReq=2.41
+    FLOOD mode=route-ip attackers=200 lat=5+3ms trials=6 pinLost=0/6 attackerReqs=6891 committedLogins=60 storeCmdsPerAttackerReq=2.10
+    FLOOD mode=route-ip attackers=500 lat=5+3ms trials=6 pinLost=0/6 attackerReqs=16245 committedLogins=60 storeCmdsPerAttackerReq=2.04
+    FLOOD mode=route-many attackers=50 lat=5+3ms trials=6 pinLost=0/6 attackerReqs=2664 committedLogins=180 storeCmdsPerAttackerReq=3.04
+    FLOOD mode=route-many attackers=200 lat=5+3ms trials=6 pinLost=0/6 attackerReqs=12168 committedLogins=180 storeCmdsPerAttackerReq=2.23
+    FLOOD mode=route-many attackers=500 lat=5+3ms trials=6 pinLost=0/6 attackerReqs=24565 committedLogins=180 storeCmdsPerAttackerReq=2.11
+Tests:       9 passed, 9 total

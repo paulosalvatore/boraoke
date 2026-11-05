@@ -1,0 +1,14 @@
+    ✕ refuses a single IP past its mint budget, with the failure throttle's own status and copy (2 ms)
+    ✕ caps the room across many IPs, so a distributed flood is bounded too
+    ✕ one IP cannot spend the room's shared budget past its own cap
+    ✕ never throttles a request presenting the live owner token, however many it sends (1 ms)
+    ✓ a plain code login never takes the owner pin, capped or not (7 ms)
+    ✓ charges only the mint path: a wrong code is a failure, not a mint (1 ms)
+    ✕ roomRetryDelayMs doubles up to the cap and stays inside [0, ceiling)
+    ✕ a conflicted write sleeps before each retry and never before the first attempt (4 ms)
+    ✓ an uncontended write does not sleep at all (1 ms)
+    ✕ an ordinary mint gives up sooner than an owner mint, and settings keep the full bound
+    ✕ commits the owner pin when the rebind and every open attempt lose (2 ms)
+    ✕ an ordinary mint is refused while the fence is up, and the fence is released afterwards
+    ✓ a plain code login on a pin-less room under the fence never becomes the owner
+Tests:       9 failed, 4 passed, 13 total

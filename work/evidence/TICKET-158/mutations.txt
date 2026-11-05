@@ -1,0 +1,39 @@
+== MUTANT: M1 cap exemption removed (live token charged)
+    ✕ never throttles a request presenting the live owner token, however many it sends (5 ms)
+Tests:       1 failed, 12 passed, 13 total
+== MUTANT: M1b exempt only owner (live staff charged too)
+Tests:       13 passed, 13 total
+== MUTANT: M2 per-IP cap removed
+    ✕ refuses a single IP past its mint budget, with the failure throttle's own status and copy (18 ms)
+    ✕ one IP cannot spend the room's shared budget past its own cap (7 ms)
+Tests:       2 failed, 11 passed, 13 total
+== MUTANT: M3 per-room cap removed
+    ✕ caps the room across many IPs, so a distributed flood is bounded too (10 ms)
+Tests:       1 failed, 12 passed, 13 total
+== MUTANT: M3b room key unique per call
+    ✕ caps the room across many IPs, so a distributed flood is bounded too (10 ms)
+Tests:       1 failed, 12 passed, 13 total
+== MUTANT: M4 backoff removed
+    ✕ a conflicted write sleeps before each retry and never before the first attempt (5 ms)
+Tests:       1 failed, 12 passed, 13 total
+== MUTANT: M5 backoff not exponential
+    ✕ roomRetryDelayMs doubles up to the cap and stays inside [0, ceiling) (1 ms)
+Tests:       1 failed, 12 passed, 13 total
+== MUTANT: M6 non-owner bound not lowered
+    ✕ an ordinary mint gives up sooner than an owner mint, and settings keep the full bound (2 ms)
+Tests:       1 failed, 12 passed, 13 total
+== MUTANT: M7 fallback does not use priority
+    ✕ commits the owner pin when the rebind and every open attempt lose (2 ms)
+    ✕ an ordinary mint is refused while the fence is up, and the fence is released afterwards (1 ms)
+Tests:       2 failed, 11 passed, 13 total
+== MUTANT: M8 fence never raised
+Tests:       13 passed, 13 total
+== MUTANT: M9 fence never released
+    ✕ an ordinary mint is refused while the fence is up, and the fence is released afterwards (1 ms)
+Tests:       1 failed, 12 passed, 13 total
+== MUTANT: M10 memory fence ignored
+    ✕ an ordinary mint is refused while the fence is up, and the fence is released afterwards (1 ms)
+Tests:       1 failed, 12 passed, 13 total
+M1b exempt only owner (live staff charged too): KILLED by 'returning device with a live NON-owner claim token'
+M8 fence never raised: KILLED by 'the fence is raised only after the open attempts lose'
+M11 Lua fence line removed: KILLED by real-Lua fence test

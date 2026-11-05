@@ -607,6 +607,55 @@ export async function chargeRevoke(roomId: string): Promise<boolean> {
   return count === null || count <= REVOKE_THROTTLE_OPTS.max;
 }
 
+// ─── Successful-login MINT cap (per IP, per room) ────────────────────────────
+//
+// A host-code login that has to mint a claim token is a compare-and-set write to
+// the room record. Uncapped, a code holder can run hundreds of those at once and
+// starve the owner's own record writes (the revoke's rebind and its fallback mint),
+// which can leave the room without its owner pin. Capping SUCCESSFUL mints bounds
+// the commit rate a flood can sustain, which is the only input to that exhaustion.
+//
+// This is deliberately NOT a per-room write budget: a budget on all writes would
+// be spendable by the same code holder and would refuse the owner's rebind just
+// as the contention does. It counts only the code-login mint path. Revoke, owner
+// mints, settings and logout are never charged, and a request that presents a live
+// claim token (the owner's, or any returning device's) mints nothing and is never
+// charged.
+//
+// The IP budget is per IP AND per room, not per IP across the site: many venues
+// share one carrier-grade NAT address, and a room's own contention is the only
+// thing this guards, so one address logging in to many rooms is not a flood on any
+// of them (and every room is still held to the room cap above).
+//
+// Sizing. A venue has at most MAX_CLAIM_TOKENS (5) live devices and a returning
+// device presents its token, so a busy venue mints a handful an hour. 10 per IP
+// per 10 minutes tolerates a whole staff on one shared wifi address re-logging in
+// after clearing cookies; 30 per room per 10 minutes tolerates the same with
+// several addresses, and is the bound that holds against an attacker spread over
+// many IPs. Both are an order of magnitude above real use.
+const MINT_IP_OPTS: CounterOptions = { max: 10, windowMs: 10 * 60_000 };
+const MINT_ROOM_OPTS: CounterOptions = { max: 30, windowMs: 10 * 60_000 };
+
+/** Exported for tests. */
+export const LOGIN_MINT_LIMITS = { perIp: MINT_IP_OPTS.max, perRoom: MINT_ROOM_OPTS.max } as const;
+
+/**
+ * Charge one code-login claim mint to the caller's IP and to the room, and say
+ * whether it is within both. Charge-then-check on atomic counters, so a burst
+ * cannot all pass before any is counted. The IP is charged first and the room
+ * only if the IP was within budget, so a single address cannot spend the room's
+ * shared budget past its own cap. Fails open when the counter store errors (an
+ * unreachable counter must not lock a venue out), like the failure throttle.
+ */
+export async function chargeLoginMint(ip: string, roomId: string): Promise<boolean> {
+  // The legacy default room has no record, so a login there mints nothing and writes nothing.
+  if (roomId === DEFAULT_ROOM) return true;
+  const ipCount = await registerFailureCount(`hostmint:ip:${ip}:${roomId}`, MINT_IP_OPTS);
+  if (ipCount !== null && ipCount > MINT_IP_OPTS.max) return false;
+  const roomCount = await registerFailureCount(`hostmint:room:${roomId}`, MINT_ROOM_OPTS);
+  return roomCount === null || roomCount <= MINT_ROOM_OPTS.max;
+}
+
 /** True when this IP has exhausted its failure budget for the current window. */
 export function isLoginThrottled(ip: string): Promise<boolean> {
   return isThrottled(loginKey(ip), LOGIN_THROTTLE_OPTS);
